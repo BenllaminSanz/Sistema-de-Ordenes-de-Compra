@@ -503,34 +503,48 @@ async function generarOC() {
 }
 
 // ── Cotizaciones ──────────────────────────────────────────────
+// Línea: al final del archivo
+
 async function cargarCotizaciones(reqId) {
-  const contenedor = document.getElementById('lista-cotizaciones');
   try {
-    const cots = await Api.get(`/requerimientos/${reqId}/cotizaciones`);
-    if (!cots.length) {
-      contenedor.innerHTML = '<p class="text-muted text-sm">Sin cotizaciones registradas</p>';
-      return;
+    const res = await fetch(`/api/cotizaciones/requerimiento/${reqId}`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    });
+    const cotizaciones = await res.json();
+    
+    const tbody = document.querySelector('#tablaCotizaciones tbody');
+    tbody.innerHTML = cotizaciones.map(c => `
+      <tr>
+        <td>${c.proveedor_nombre}</td>
+        <td>$${c.monto_total}</td>
+        <td>${c.fecha_recepcion || 'Pendiente'}</td>
+        <td>${c.archivo_url ? `<a href="${c.archivo_url}" target="_blank">Ver PDF</a>` : 'Sin PDF'}</td>
+        <td>${c.seleccionada ? '✅ Seleccionada' : ''}</td>
+        <td>
+          <button class="btn btn-success btn-sm" onclick="seleccionarCotizacion(${c.id})">Seleccionar</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (error) {
+    console.error('Error al cargar cotizaciones:', error);
+  }
+}
+
+async function seleccionarCotizacion(cotizacionId) {
+  if (!confirm('¿Marcar esta cotización como seleccionada?')) return;
+  
+  try {
+    const res = await fetch(`/api/cotizaciones/${cotizacionId}/seleccionar`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    });
+    if (res.ok) {
+      alert('Cotización seleccionada correctamente');
+      // Recargar la tabla
+      cargarCotizaciones(currentRequerimientoId); // usa la variable global o parámetro
     }
-    contenedor.innerHTML = cots.map(c => `
-      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;
-                  ${c.seleccionada ? 'border-color:#1D9E75;background:#f0fdf4' : ''}">
-        <div class="d-flex align-center justify-between">
-          <span class="fw-600">${c.proveedor_nombre}</span>
-          ${c.seleccionada
-            ? '<span class="badge badge-aprobado">Seleccionada</span>'
-            : Auth.puedeHacer(['gerente','admin'])
-              ? `<button class="btn btn-sm btn-outline"
-                         onclick="seleccionarCotizacion(${c.id})">Seleccionar</button>`
-              : ''}
-        </div>
-        <div style="margin-top:6px;font-size:13px;color:#6b7280">
-          $${Number(c.monto_total).toLocaleString('es-MX')} ${c.moneda}
-          ${c.fecha_envio ? ' · Enviado: ' + UI.fecha(c.fecha_envio) : ''}
-        </div>
-        ${c.notas ? `<div class="text-sm text-muted mt-2">${c.notas}</div>` : ''}
-      </div>`).join('');
-  } catch {
-    contenedor.innerHTML = '<p class="text-muted text-sm">Error al cargar cotizaciones</p>';
+  } catch (error) {
+    alert('Error al seleccionar cotización');
   }
 }
 

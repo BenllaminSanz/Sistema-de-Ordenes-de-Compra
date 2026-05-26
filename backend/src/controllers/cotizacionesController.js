@@ -83,4 +83,24 @@ async function eliminar(req, res) {
   }
 }
 
-export { listar, crear, actualizar, seleccionar, eliminar };
+export const getCotizacionesByRequerimiento = async (req, res) => {
+  try {
+    const { requerimientoId } = req.params;
+    const cotizaciones = await Cotizacion.getByRequerimiento(requerimientoId);
+    res.json(cotizaciones);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const marcarCotizacionSeleccionada = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await Cotizacion.marcarComoSeleccionada(id);
+    res.json({ message: 'Cotización seleccionada correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export { listar, crear, actualizar, seleccionar, eliminar};

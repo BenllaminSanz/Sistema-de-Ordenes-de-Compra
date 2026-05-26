@@ -1,6 +1,5 @@
 import pool from '../config/db.js';
 
-
 async function listarPorRequerimiento(requerimiento_id) {
   const [rows] = await pool.query(
     `SELECT c.*, p.nombre AS proveedor_nombre, p.email AS proveedor_email
@@ -93,4 +92,25 @@ async function eliminar(id) {
   return r.affectedRows;
 }
 
-export { listarPorRequerimiento, obtenerPorId, crear, actualizar, seleccionar, eliminar };
+async function getByRequerimiento(requerimientoId) {
+    const [rows] = await pool.execute(`
+      SELECT c.*, p.nombre as proveedor_nombre 
+      FROM cotizaciones c
+      JOIN proveedores p ON c.proveedor_id = p.id
+      WHERE c.requerimiento_id = ?
+      ORDER BY c.monto_total ASC
+    `, [requerimientoId]);
+    return rows;
+  }
+
+  async function marcarComoSeleccionada(id) {
+    // Desmarcar todas las demás del mismo requerimiento
+    const [cotizacion] = await pool.execute('SELECT requerimiento_id FROM cotizaciones WHERE id = ?', [id]);
+    if (cotizacion.length === 0) throw new Error('Cotización no encontrada');
+
+    await pool.execute('UPDATE cotizaciones SET seleccionada = 0 WHERE requerimiento_id = ?', [cotizacion[0].requerimiento_id]);
+    await pool.execute('UPDATE cotizaciones SET seleccionada = 1 WHERE id = ?', [id]);
+    return true;
+  }
+
+export { listarPorRequerimiento, obtenerPorId, crear, actualizar, seleccionar, eliminar, getByRequerimiento, marcarComoSeleccionada};
