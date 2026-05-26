@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Órdenes de Compra — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app-layout">
+  <aside id="sidebar"></aside>
+
+  <div style="flex:1">
+    <header id="topbar"></header>
+
+    <main id="main-content">
+
+      <!-- ── Lista ─────────────────────────────────────────── -->
+      <div id="vista-lista">
+        <div class="card">
+          <div class="card-title">Órdenes de Compra</div>
+
+          <div class="filters-bar">
+            <select id="fil-estado" class="form-control">
+              <option value="">Todos los estados</option>
+              <option value="generada">Generada</option>
+              <option value="distribuida">Distribuida</option>
+              <option value="en_proceso">En proceso</option>
+              <option value="recibida">Recibida</option>
+              <option value="cerrada">Cerrada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="cargarOrdenes(1)">Filtrar</button>
+          </div>
+
+          <div id="tabla-oc"></div>
+          <div id="paginacion-oc"></div>
+        </div>
+      </div>
+
+      <!-- ── Detalle ────────────────────────────────────────── -->
+      <div id="vista-detalle" style="display:none">
+        <div class="d-flex align-center gap-2" style="margin-bottom:16px">
+          <button class="btn btn-outline btn-sm" onclick="volverLista()">← Volver</button>
+          <h2 style="margin:0;font-size:16px" id="detalle-titulo">Orden de Compra</h2>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
+          <div>
+            <div class="card" id="detalle-info"></div>
+            <div class="card" id="detalle-recepciones">
+              <div class="d-flex align-center justify-between" style="margin-bottom:14px">
+                <div class="card-title mb-0">Recepciones</div>
+                <button class="btn btn-sm btn-outline" id="btn-nueva-recepcion"
+                        onclick="UI.abrirModal('modal-recepcion')">+ Registrar recepción</button>
+              </div>
+              <div id="lista-recepciones"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card" id="panel-acciones"></div>
+            <div class="card">
+              <div class="card-title">Historial</div>
+              <div class="timeline" id="historial-timeline"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ── Modal: Cambiar estado ──────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-estado">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-estado-titulo">Cambiar estado</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-estado')">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <textarea id="estado-notas" class="form-control" rows="3"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="UI.cerrarModal('modal-estado')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-confirmar-estado">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Registrar recepción ─────────────────────────────── -->
+<div class="modal-backdrop" id="modal-recepcion">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title">Registrar recepción</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-recepcion')">×</button>
+    </div>
+    <form id="form-recepcion">
+      <div class="form-group">
+        <label class="form-label">Estado de recepción</label>
+        <select id="rec-estado" class="form-control">
+          <option value="recibido_completo">Recibido completo</option>
+          <option value="recibido_parcial">Recibido parcial</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ID en DataTextNow (opcional)</label>
+        <input type="text" id="rec-datatextnow" class="form-control" placeholder="DTN-…">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas</label>
+        <textarea id="rec-notas" class="form-control" rows="2"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline"
+                onclick="UI.cerrarModal('modal-recepcion')">Cancelar</button>
+        <button type="submit" class="btn btn-success">Confirmar recepción</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/app.js"></script>
+<script>
+Auth.requiereAuth();
+renderSidebar();
+renderTopbar('Órdenes de Compra');
+
+let ocActual = null;
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('id')) {
+  abrirDetalle(params.get('id'));
+} else {
+  cargarOrdenes(1);
+}
+
+// ── LISTA ─────────────────────────────────────────────────────
+async function cargarOrdenes(pagina) {
+  const contenedor = document.getElementById('tabla-oc');
+  UI.spinner(contenedor);
+
+  const estado = document.getElementById('fil-estado').value;
+  let qs = `?pagina=${pagina}&limite=15`;
+  if (estado) qs += `&estado=${estado}`;
+
+  try {
+    const { datos, total, limite } = await Api.get('/ordenes-compra' + qs);
+
+    if (!datos.length) { UI.empty(contenedor, 'No hay órdenes de compra'); return; }
+
+    contenedor.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Número OC</th><th>Requerimiento</th><th>Tipo</th>
+            <th>Proveedor</th><th>Monto</th><th>Autorizado por</th>
+            <th>Estado</th><th>Fecha</th><th></th>
+          </tr></thead>
+          <tbody>${datos.map(o => `
+            <tr>
+              <td class="fw-600">${o.numero_oc}</td>
+              <td>${o.consecutivo}</td>
+              <td>${o.tipo}</td>
+              <td>${o.proveedor_nombre || '—'}</td>
+              <td>${o.monto_total
+                    ? '$' + Number(o.monto_total).toLocaleString('es-MX') + ' ' + o.moneda
+                    : '—'}</td>
+              <td>${o.autorizado_por_nombre}</td>
+              <td>${UI.badge(o.estado)}</td>
+              <td class="text-muted text-sm">${UI.fecha(o.created_at)}</td>
+              <td>
+                <button class="btn btn-sm btn-outline"
+                        onclick="abrirDetalle(${o.id})">Ver</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    UI.paginacion(
+      document.getElementById('paginacion-oc'),
+      total, pagina, limite,
+      (p) => cargarOrdenes(p)
+    );
+  } catch (err) {
+    UI.empty(contenedor, 'Error al cargar');
+    Toast.error(err.mensaje || 'Error al cargar OC');
+  }
+}
+
+// ── DETALLE ───────────────────────────────────────────────────
+async function abrirDetalle(id) {
+  document.getElementById('vista-lista').style.display   = 'none';
+  document.getElementById('vista-detalle').style.display = 'block';
+  document.getElementById('detalle-info').innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const oc = await Api.get(`/ordenes-compra/${id}`);
+    ocActual  = oc;
+    renderDetalle(oc);
+    cargarRecepciones(oc.id);
+  } catch { Toast.error('No se pudo cargar la OC'); }
+}
+
+function volverLista() {
+  document.getElementById('vista-lista').style.display   = 'block';
+  document.getElementById('vista-detalle').style.display = 'none';
+  ocActual = null;
+  cargarOrdenes(1);
+  history.replaceState(null, '', window.location.pathname);
+}
+
+function renderDetalle(oc) {
+  document.getElementById('detalle-titulo').textContent = oc.numero_oc;
+
+  document.getElementById('detalle-info').innerHTML = `
+    <div class="card-title">Información de la OC</div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><td style="padding:6px 0;color:#6b7280;width:150px">Número OC</td>
+          <td class="fw-600">${oc.numero_oc}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
+          <td>${UI.badge(oc.estado)}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Requerimiento</td>
+          <td>
+            <a href="requerimientos.html?id=${oc.requerimiento_id}"
+               style="color:var(--primary)">${oc.consecutivo}</a>
+          </td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
+          <td>${oc.tipo}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
+          <td>${oc.proveedor_nombre || '—'}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Monto</td>
+          <td>${oc.monto_total
+                ? '$' + Number(oc.monto_total).toLocaleString('es-MX') + ' ' + oc.moneda
+                : '—'}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Autorizado por</td>
+          <td>${oc.autorizado_por_nombre}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Fecha autorización</td>
+          <td>${UI.fecha(oc.fecha_autorizacion)}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">DataTextNow</td>
+          <td>${oc.datatextnow_id || '—'}</td></tr>
+    </table>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Descripción del requerimiento</div>
+      <p style="margin:0;line-height:1.6;font-size:13px">${oc.descripcion}</p>
+    </div>`;
+
+  // Historial
+  const tl = document.getElementById('historial-timeline');
+  if (!oc.historial?.length) {
+    tl.innerHTML = '<p class="text-muted text-sm">Sin historial</p>';
+  } else {
+    tl.innerHTML = oc.historial.map(h => `
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-date">${UI.fecha(h.created_at)} · ${h.cambiado_por}</div>
+        <div class="timeline-text">
+          ${h.estado_anterior
+            ? `${UI.badge(h.estado_anterior)} → ${UI.badge(h.estado_nuevo)}`
+            : `OC creada como ${UI.badge(h.estado_nuevo)}`}
+          ${h.notas ? `<div class="text-sm text-muted mt-2">${h.notas}</div>` : ''}
+        </div>
+      </div>`).join('');
+  }
+
+  renderAcciones(oc);
+
+  // Mostrar botón recepción solo cuando aplica
+  const btnRec = document.getElementById('btn-nueva-recepcion');
+  const puedeRecepcionar = Auth.puedeHacer(['contabilidad','admin']) &&
+    ['distribuida','en_proceso'].includes(oc.estado);
+  btnRec.style.display = puedeRecepcionar ? '' : 'none';
+}
+
+function renderAcciones(oc) {
+  const panel = document.getElementById('panel-acciones');
+  const u = Auth.getUsuario();
+
+  const TRANSICIONES = {
+    generada:    [{ label:'Distribuir',    estado:'distribuida', clase:'btn-primary' }],
+    distribuida: [{ label:'En proceso',    estado:'en_proceso',  clase:'btn-primary' },
+                  { label:'Cancelar OC',   estado:'cancelada',   clase:'btn-danger'  }],
+    en_proceso:  [{ label:'Registrar recepción', accion:'abrirRecepcion', clase:'btn-success' },
+                  { label:'Cancelar OC',   estado:'cancelada',   clase:'btn-danger'  }],
+    recibida:    [{ label:'Cerrar OC',     estado:'cerrada',     clase:'btn-success' }],
+  };
+
+  const opciones = TRANSICIONES[oc.estado];
+  const puedeActuar = ['contabilidad','gerente','admin'].includes(u.rol);
+
+  if (!opciones || !puedeActuar) { panel.style.display = 'none'; return; }
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="card-title">Acciones</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${opciones.map(a => `
+        <button class="btn ${a.clase}"
+                onclick="${a.accion ? a.accion + '()' : `prepararCambioEstado('${a.estado}','${a.label}')`}">
+          ${a.label}
+        </button>`).join('')}
+    </div>`;
+}
+
+function abrirRecepcion() {
+  UI.abrirModal('modal-recepcion');
+}
+
+function prepararCambioEstado(estado, label) {
+  document.getElementById('modal-estado-titulo').textContent = label;
+  document.getElementById('estado-notas').value = '';
+  UI.abrirModal('modal-estado');
+
+  document.getElementById('btn-confirmar-estado').onclick = async () => {
+    try {
+      await Api.patch(`/ordenes-compra/${ocActual.id}/estado`, {
+        estado, notas: document.getElementById('estado-notas').value,
+      });
+      UI.cerrarModal('modal-estado');
+      Toast.success('Estado actualizado');
+      abrirDetalle(ocActual.id);
+    } catch (err) {
+      Toast.error(err.mensaje || 'Error al cambiar estado');
+    }
+  };
+}
+
+// ── Recepciones ───────────────────────────────────────────────
+async function cargarRecepciones(ocId) {
+  const contenedor = document.getElementById('lista-recepciones');
+  try {
+    const recs = await Api.get(`/ordenes-compra/${ocId}/recepciones`);
+    if (!recs.length) {
+      contenedor.innerHTML = '<p class="text-muted text-sm">Sin recepciones registradas</p>';
+      return;
+    }
+    contenedor.innerHTML = recs.map(r => `
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div class="d-flex align-center justify-between">
+          ${UI.badge(r.estado)}
+          <span class="text-sm text-muted">${UI.fecha(r.fecha_recepcion)}</span>
+        </div>
+        <div style="margin-top:6px;font-size:13px;color:#6b7280">
+          Recibido por: ${r.recibido_por_nombre}
+          ${r.datatextnow_id ? ' · DTN: ' + r.datatextnow_id : ''}
+        </div>
+        ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
+        ${r.estado !== 'entregado_solicitante' && Auth.puedeHacer(['contabilidad','admin'])
+          ? `<button class="btn btn-sm btn-outline mt-2"
+                     onclick="marcarEntregado(${r.id})">Marcar entregado al solicitante</button>`
+          : ''}
+      </div>`).join('');
+  } catch {
+    contenedor.innerHTML = '<p class="text-muted text-sm">Error al cargar recepciones</p>';
+  }
+}
+
+async function marcarEntregado(recId) {
+  try {
+    await Api.patch(`/ordenes-compra/${ocActual.id}/recepciones/${recId}/entregar`, {});
+    Toast.success('Marcado como entregado');
+    abrirDetalle(ocActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al actualizar');
+  }
+}
+
+document.getElementById('form-recepcion').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    await Api.post(`/ordenes-compra/${ocActual.id}/recepciones`, {
+      estado:        document.getElementById('rec-estado').value,
+      datatextnow_id:document.getElementById('rec-datatextnow').value || null,
+      notas:         document.getElementById('rec-notas').value || null,
+    });
+    UI.cerrarModal('modal-recepcion');
+    Toast.success('Recepción registrada');
+    abrirDetalle(ocActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al registrar recepción');
+  }
+});
+</script>
+</body>
+</html>

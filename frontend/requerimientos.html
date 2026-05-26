@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Requerimientos — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app-layout">
+  <aside id="sidebar"></aside>
+
+  <div style="flex:1">
+    <header id="topbar"></header>
+
+    <main id="main-content">
+
+      <!-- ── Lista ─────────────────────────────────────────── -->
+      <div id="vista-lista">
+        <div class="card">
+          <div class="d-flex align-center justify-between mb-0" style="margin-bottom:16px">
+            <h2 class="card-title mb-0">Requerimientos</h2>
+            <button class="btn btn-primary btn-sm" id="btn-nuevo"
+                    onclick="UI.abrirModal('modal-req')">+ Nuevo requerimiento</button>
+          </div>
+
+          <div class="filters-bar">
+            <input type="text" id="fil-busqueda" class="form-control search-input"
+                   placeholder="Buscar por consecutivo o descripción…">
+            <select id="fil-estado" class="form-control">
+              <option value="">Todos los estados</option>
+              <option value="borrador">Borrador</option>
+              <option value="en_revision">En revisión</option>
+              <option value="aprobado">Aprobado</option>
+              <option value="incompleto">Incompleto</option>
+              <option value="rechazado">Rechazado</option>
+              <option value="cerrado">Cerrado</option>
+            </select>
+            <select id="fil-tipo" class="form-control">
+              <option value="">Todos los tipos</option>
+              <option value="PARTES">Partes</option>
+              <option value="SERVICIOS">Servicios</option>
+              <option value="FLETES">Fletes</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="cargarRequerimientos(1)">Filtrar</button>
+          </div>
+
+          <div id="tabla-reqs"></div>
+          <div id="paginacion-reqs"></div>
+        </div>
+      </div>
+
+      <!-- ── Detalle (oculto por defecto) ───────────────────── -->
+      <div id="vista-detalle" style="display:none">
+        <div class="d-flex align-center gap-2" style="margin-bottom:16px">
+          <button class="btn btn-outline btn-sm" onclick="volverLista()">← Volver</button>
+          <h2 style="margin:0;font-size:16px" id="detalle-titulo">Requerimiento</h2>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 320px;gap:20px">
+          <!-- Panel izquierdo -->
+          <div>
+            <div class="card" id="detalle-info"></div>
+            <div class="card" id="detalle-cotizaciones" style="display:none">
+              <div class="d-flex align-center justify-between" style="margin-bottom:14px">
+                <div class="card-title mb-0">Cotizaciones</div>
+                <button class="btn btn-sm btn-outline" onclick="UI.abrirModal('modal-cotizacion')"
+                        id="btn-agregar-cot">+ Agregar</button>
+              </div>
+              <div id="lista-cotizaciones"></div>
+            </div>
+          </div>
+
+          <!-- Panel derecho: acciones + historial -->
+          <div>
+            <div class="card" id="panel-acciones"></div>
+            <div class="card">
+              <div class="card-title">Historial de estados</div>
+              <div class="timeline" id="historial-timeline"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ── Modal: Nuevo requerimiento ─────────────────────────────── -->
+<div class="modal-backdrop" id="modal-req">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title">Nuevo requerimiento</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-req')">×</button>
+    </div>
+    <form id="form-req">
+      <div class="form-group">
+        <label class="form-label">Titulo de la Orden de Compra *</label>
+        <textarea id="req-titulo" class="form-control" rows="1"
+                  placeholder="Titulo descriptivo de la Orden" required></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo *</label>
+        <select id="req-tipo" class="form-control" required>
+          <option value="">Selecciona…</option>
+          <option value="PARTES">Partes</option>
+          <option value="SERVICIOS">Servicios</option>
+          <option value="FLETES">Fletes</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Area *</label>
+        <select id="req-area" class="form-control" required>
+          <option value="">Selecciona…</option>
+          <option value="ADMINISTRACION">Administración</option>
+          <option value="PRODUCCION">Producción</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Departamento *</label>
+        <select id="req-departamento" class="form-control" required>
+          <option value="">Selecciona…</option>
+          <option value="RH">Recursos Humanos</option>
+          <option value="IT">IT</option>
+          <option value="VENTAS">Ventas</option>
+          <option value="MTTO">Mantenimiento</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descripción *</label>
+        <textarea id="req-descripcion" class="form-control" rows="3"
+                  placeholder="Describe el requerimiento con detalle…" required></textarea>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="req-cotizacion">
+          Requiere cotización
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-req')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-req">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal: Cambiar estado ──────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-estado">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-estado-titulo">Cambiar estado</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-estado')">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <textarea id="estado-notas" class="form-control" rows="3"
+                placeholder="Motivo del cambio…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="UI.cerrarModal('modal-estado')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-confirmar-estado">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Cotización ──────────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-cotizacion">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title">Registrar cotización</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-cotizacion')">×</button>
+    </div>
+    <form id="form-cotizacion">
+      <div class="form-group">
+        <label class="form-label">Proveedor *</label>
+        <select id="cot-proveedor" class="form-control" required></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Monto total *</label>
+          <input type="number" id="cot-monto" class="form-control" min="0" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Moneda</label>
+          <select id="cot-moneda" class="form-control">
+            <option value="MXN">MXN</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha de envío</label>
+        <input type="date" id="cot-fecha" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas</label>
+        <textarea id="cot-notas" class="form-control" rows="2"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-cotizacion')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar cotización</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/app.js"></script>
+<script>
+Auth.requiereAuth();
+renderSidebar();
+renderTopbar('Requerimientos');
+
+let paginaActual = 1;
+let requerimientoActual = null;
+let estadoPendiente = null;
+
+// ── Ocultar botón "nuevo" si no es solicitante/admin ──────────
+if (!Auth.puedeHacer(['solicitante','admin'])) {
+  document.getElementById('btn-nuevo').style.display = 'none';
+}
+
+// ── Si viene con ?id= mostrar detalle directo ─────────────────
+const params = new URLSearchParams(window.location.search);
+if (params.get('id')) {
+  abrirDetalle(params.get('id'));
+} else {
+  cargarRequerimientos(1);
+}
+
+// ── LISTA ─────────────────────────────────────────────────────
+async function cargarRequerimientos(pagina) {
+  paginaActual = pagina;
+  const contenedor = document.getElementById('tabla-reqs');
+  UI.spinner(contenedor);
+
+  const busqueda = document.getElementById('fil-busqueda').value;
+  const estado   = document.getElementById('fil-estado').value;
+  const tipo     = document.getElementById('fil-tipo').value;
+
+  let qs = `?pagina=${pagina}&limite=15`;
+  if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
+  if (estado)   qs += `&estado=${estado}`;
+  if (tipo)     qs += `&tipo=${tipo}`;
+
+  try {
+    const { datos, total, limite } = await Api.get('/requerimientos' + qs);
+
+    if (!datos.length) { UI.empty(contenedor, 'No se encontraron requerimientos'); return; }
+
+    contenedor.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Consecutivo</th><th>Tipo</th><th>Descripción</th>
+            <th>Solicitante</th><th>Cotización</th><th>Estado</th><th>Fecha</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${datos.map(r => `
+            <tr>
+              <td class="fw-600">${r.consecutivo}</td>
+              <td>${r.tipo}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${r.descripcion}">${r.descripcion}</td>
+              <td>${r.solicitante_nombre}</td>
+              <td>${r.requiere_cotizacion ? '✔' : '—'}</td>
+              <td>${UI.badge(r.estado)}</td>
+              <td class="text-muted text-sm">${UI.fecha(r.created_at)}</td>
+              <td>
+                <button class="btn btn-sm btn-outline"
+                        onclick="abrirDetalle(${r.id})">Ver</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    UI.paginacion(
+      document.getElementById('paginacion-reqs'),
+      total, pagina, limite,
+      (p) => cargarRequerimientos(p)
+    );
+  } catch (err) {
+    UI.empty(contenedor, 'Error al cargar requerimientos');
+    Toast.error(err.mensaje || 'Error al cargar');
+  }
+}
+
+// ── DETALLE ───────────────────────────────────────────────────
+async function abrirDetalle(id) {
+  document.getElementById('vista-lista').style.display   = 'none';
+  document.getElementById('vista-detalle').style.display = 'block';
+  document.getElementById('detalle-info').innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const req = await Api.get(`/requerimientos/${id}`);
+    requerimientoActual = req;
+    renderDetalle(req);
+  } catch (err) {
+    Toast.error('No se pudo cargar el requerimiento');
+  }
+}
+
+function volverLista() {
+  document.getElementById('vista-lista').style.display   = 'block';
+  document.getElementById('vista-detalle').style.display = 'none';
+  requerimientoActual = null;
+  cargarRequerimientos(paginaActual);
+  history.replaceState(null, '', window.location.pathname);
+}
+
+function renderDetalle(req) {
+  document.getElementById('detalle-titulo').textContent =
+    `${req.consecutivo} — ${req.tipo}`;
+
+  // ── Info principal ────────────────────────────────────────
+  document.getElementById('detalle-info').innerHTML = `
+    <div class="card-title">Información del requerimiento</div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><td style="padding:6px 0;color:#6b7280;width:140px">Consecutivo</td>
+          <td class="fw-600">${req.consecutivo}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
+          <td>${req.tipo}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
+          <td>${UI.badge(req.estado)}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Solicitante</td>
+          <td>${req.solicitante_nombre}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Requiere cotización</td>
+          <td>${req.requiere_cotizacion ? 'Sí' : 'No'}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">DataTextNow</td>
+          <td>${req.datatextnow_id || '—'}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Fecha creación</td>
+          <td>${UI.fecha(req.created_at)}</td></tr>
+    </table>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Descripción</div>
+      <p style="margin:0;line-height:1.6">${req.descripcion}</p>
+    </div>
+    ${req.notas_rechazo ? `
+    <div style="margin-top:12px;background:#FCEBEB;border-radius:7px;padding:12px">
+      <div style="font-size:12px;font-weight:600;color:#A32D2D;margin-bottom:4px">Nota de rechazo</div>
+      <p style="margin:0;font-size:13px;color:#791F1F">${req.notas_rechazo}</p>
+    </div>` : ''}`;
+
+  // ── Cotizaciones ──────────────────────────────────────────
+  const panelCot = document.getElementById('detalle-cotizaciones');
+  if (req.requiere_cotizacion) {
+    panelCot.style.display = 'block';
+    cargarCotizaciones(req.id);
+    // Mostrar botón agregar solo a contabilidad/admin
+    document.getElementById('btn-agregar-cot').style.display =
+      Auth.puedeHacer(['contabilidad','admin']) ? '' : 'none';
+  } else {
+    panelCot.style.display = 'none';
+  }
+
+  // ── Historial ─────────────────────────────────────────────
+  const timeline = document.getElementById('historial-timeline');
+  if (!req.historial?.length) {
+    timeline.innerHTML = '<p class="text-muted text-sm">Sin historial</p>';
+  } else {
+    timeline.innerHTML = req.historial.map(h => `
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-date">${UI.fecha(h.created_at)} · ${h.cambiado_por}</div>
+        <div class="timeline-text">
+          ${h.estado_anterior
+            ? `${UI.badge(h.estado_anterior)} → ${UI.badge(h.estado_nuevo)}`
+            : `Creado como ${UI.badge(h.estado_nuevo)}`}
+          ${h.notas ? `<div class="text-sm text-muted mt-2">${h.notas}</div>` : ''}
+        </div>
+      </div>`).join('');
+  }
+
+  // ── Panel de acciones por rol ─────────────────────────────
+  renderAcciones(req);
+}
+
+function renderAcciones(req) {
+  const panel  = document.getElementById('panel-acciones');
+  const u      = Auth.getUsuario();
+  const acciones = [];
+
+  acciones.push({ label:'🖨️ Imprimir',  accion:'imprimirRequerimiento',  clase:'btn-secundary'  });
+
+  if (['contabilidad','gerente','admin'].includes(u.rol)) {
+    if (req.estado === 'en_revision') {
+      acciones.push({ label:'Aprobar',   estado:'aprobado',   clase:'btn-success' });
+      acciones.push({ label:'Incompleto',estado:'incompleto', clase:'btn-outline' });
+      acciones.push({ label:'Rechazar',  estado:'rechazado',  clase:'btn-danger'  });
+    }
+    if (req.estado === 'aprobado' && ['contabilidad','admin'].includes(u.rol)) {
+      acciones.push({ label:'Generar OC', accion:'generarOC', clase:'btn-primary' });
+    }
+  }
+
+  if (!acciones.length) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="card-title">Acciones</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${acciones.map(a => `
+        <button class="btn ${a.clase}"
+                onclick="${a.accion ? a.accion + '()' : `prepararCambioEstado('${a.estado}','${a.label}')`}">
+          ${a.label}
+        </button>`).join('')}
+    </div>`;
+}
+
+// ── Cambio de estado ──────────────────────────────────────────
+function prepararCambioEstado(estado, label) {
+  estadoPendiente = estado;
+  document.getElementById('modal-estado-titulo').textContent = label;
+  document.getElementById('estado-notas').value = '';
+  UI.abrirModal('modal-estado');
+
+  document.getElementById('btn-confirmar-estado').onclick = async () => {
+    const notas = document.getElementById('estado-notas').value;
+    try {
+      await Api.patch(`/requerimientos/${requerimientoActual.id}/estado`,
+        { estado: estadoPendiente, notas });
+      UI.cerrarModal('modal-estado');
+      Toast.success('Estado actualizado');
+      abrirDetalle(requerimientoActual.id);
+    } catch (err) {
+      Toast.error(err.mensaje || 'Error al cambiar estado');
+    }
+  };
+}
+
+//Genear archivo del requerimiento
+function imprimirRequerimiento() {
+    // Obtenemos el elemento que contiene los datos del requerimiento
+    const detalleElement = document.getElementById('detalle-info');
+    
+    if (!detalleElement) {
+        console.error("No se encontró el contenedor de detalle");
+        return;
+    }
+
+    const ventana = window.open('', '_blank', 'width=800,height=600');
+    const contenido = `
+        <html>
+            <head>
+                <title>Requerimiento: ${requerimientoActual.consecutivo}</title>
+                <link rel="stylesheet" href="css/app.css">
+                <style>
+                    body { padding: 30px; background: white; color: black; }
+                    /* Ocultamos elementos innecesarios */
+                    .no-print, .btn, #sidebar, #topbar { display: none !important; }
+                    .card { border: 1px solid #000; box-shadow: none; padding: 20px; }
+                </style>
+            </head>
+            <body>
+                <h2>Detalle del Requerimiento: ${requerimientoActual.consecutivo}</h2>
+                <hr>
+                ${detalleElement.innerHTML}
+            </body>
+        </html>
+    `;
+    
+    ventana.document.write(contenido);
+    ventana.document.close();
+    
+    // Esperar a que carguen los estilos antes de imprimir
+    setTimeout(() => {
+        ventana.print();
+        ventana.close();
+    }, 500);
+}
+
+// ── Generar OC desde el requerimiento ────────────────────────
+async function generarOC() {
+  // Si tiene cotización, buscar la seleccionada
+  let cotizacion_id = null;
+  if (requerimientoActual.requiere_cotizacion) {
+    const cots = await Api.get(
+      `/requerimientos/${requerimientoActual.id}/cotizaciones`
+    );
+    const sel = cots.find(c => c.seleccionada);
+    if (!sel) {
+      Toast.error('Debes seleccionar una cotización antes de generar la OC');
+      return;
+    }
+    cotizacion_id = sel.id;
+  }
+
+  try {
+    const oc = await Api.post('/ordenes-compra', {
+      requerimiento_id: requerimientoActual.id,
+      cotizacion_id,
+    });
+    Toast.success(`OC generada: ${oc.numero_oc}`);
+    setTimeout(() => window.location.href = `ordenes.html?id=${oc.id}`, 1200);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al generar OC');
+  }
+}
+
+// ── Cotizaciones ──────────────────────────────────────────────
+async function cargarCotizaciones(reqId) {
+  const contenedor = document.getElementById('lista-cotizaciones');
+  try {
+    const cots = await Api.get(`/requerimientos/${reqId}/cotizaciones`);
+    if (!cots.length) {
+      contenedor.innerHTML = '<p class="text-muted text-sm">Sin cotizaciones registradas</p>';
+      return;
+    }
+    contenedor.innerHTML = cots.map(c => `
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;
+                  ${c.seleccionada ? 'border-color:#1D9E75;background:#f0fdf4' : ''}">
+        <div class="d-flex align-center justify-between">
+          <span class="fw-600">${c.proveedor_nombre}</span>
+          ${c.seleccionada
+            ? '<span class="badge badge-aprobado">Seleccionada</span>'
+            : Auth.puedeHacer(['gerente','admin'])
+              ? `<button class="btn btn-sm btn-outline"
+                         onclick="seleccionarCotizacion(${c.id})">Seleccionar</button>`
+              : ''}
+        </div>
+        <div style="margin-top:6px;font-size:13px;color:#6b7280">
+          $${Number(c.monto_total).toLocaleString('es-MX')} ${c.moneda}
+          ${c.fecha_envio ? ' · Enviado: ' + UI.fecha(c.fecha_envio) : ''}
+        </div>
+        ${c.notas ? `<div class="text-sm text-muted mt-2">${c.notas}</div>` : ''}
+      </div>`).join('');
+  } catch {
+    contenedor.innerHTML = '<p class="text-muted text-sm">Error al cargar cotizaciones</p>';
+  }
+}
+
+async function seleccionarCotizacion(cotId) {
+  try {
+    await Api.patch(
+      `/requerimientos/${requerimientoActual.id}/cotizaciones/${cotId}/seleccionar`, {}
+    );
+    Toast.success('Cotización seleccionada');
+    cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al seleccionar');
+  }
+}
+
+// Cargar proveedores en el select del modal de cotización
+document.getElementById('modal-cotizacion').addEventListener('show', async () => {
+  const sel = document.getElementById('cot-proveedor');
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  try {
+    const provs = await Api.get('/proveedores?activos=true');
+    sel.innerHTML = '<option value="">Selecciona proveedor…</option>' +
+      provs.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+  } catch { sel.innerHTML = '<option value="">Error al cargar</option>'; }
+});
+
+// Observar apertura del modal de cotización con MutationObserver
+new MutationObserver(muts => {
+  muts.forEach(m => {
+    if (m.target.id === 'modal-cotizacion' && m.target.classList.contains('show')) {
+      m.target.dispatchEvent(new Event('show'));
+    }
+  });
+}).observe(document.getElementById('modal-cotizacion'), { attributes: true });
+
+document.getElementById('form-cotizacion').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    await Api.post(
+      `/requerimientos/${requerimientoActual.id}/cotizaciones`, {
+        proveedor_id:    Number(document.getElementById('cot-proveedor').value),
+        monto_total:     Number(document.getElementById('cot-monto').value),
+        moneda:          document.getElementById('cot-moneda').value,
+        fecha_envio: document.getElementById('cot-fecha').value || null,
+        notas:           document.getElementById('cot-notas').value || null,
+      }
+    );
+    UI.cerrarModal('modal-cotizacion');
+    Toast.success('Cotización registrada');
+    cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar cotización');
+  }
+});
+
+// ── Formulario nuevo requerimiento ───────────────────────────
+document.getElementById('form-req').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-guardar-req');
+  btn.disabled = true;
+  try {
+    const nuevo = await Api.post('/requerimientos', {
+      titulo_solicitud:    document.getElementById('req-titulo').value,
+      tipo:                document.getElementById('req-tipo').value,
+      area:                document.getElementById('req-area').value,
+      departamento:        document.getElementById('req-departamento').value,
+      descripcion:         document.getElementById('req-descripcion').value,
+      requiere_cotizacion: document.getElementById('req-cotizacion').checked,
+    });
+    UI.cerrarModal('modal-req');
+    Toast.success(`Requerimiento ${nuevo.consecutivo} creado`);
+    abrirDetalle(nuevo.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al crear requerimiento');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Buscar al presionar Enter
+document.getElementById('fil-busqueda').addEventListener('keydown', e => {
+  if (e.key === 'Enter') cargarRequerimientos(1);
+});
+</script>
+</body>
+</html>

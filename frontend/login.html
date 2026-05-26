@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar Sesión — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="44" height="44" fill="none" stroke="#185FA5" stroke-width="1.8"
+           viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0
+           002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2
+           2 0 012 2m-6 9l2 2 4-4"/></svg>
+      <h1>Sistema OC</h1>
+      <p>Órdenes de Compra — Inicia sesión</p>
+    </div>
+
+    <form id="form-login">
+      <div class="form-group">
+        <label class="form-label">Correo electrónico</label>
+        <input type="email" id="email" class="form-control"
+               placeholder="usuario@empresa.com" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contraseña</label>
+        <input type="password" id="password" class="form-control"
+               placeholder="••••••••" required autocomplete="current-password">
+      </div>
+
+      <div id="login-error" style="display:none; color:#A32D2D; font-size:13px;
+           background:#FCEBEB; border-radius:7px; padding:10px 14px; margin-bottom:14px;">
+      </div>
+
+      <button type="submit" id="btn-login" class="btn btn-primary w-100"
+              style="justify-content:center; padding:10px;">
+        Iniciar sesión
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/app.js"></script>
+<script>
+  // Si ya tiene token, redirigir al dashboard
+  if (Auth.getToken()) window.location.href = 'dashboard.html';
+
+  document.getElementById('form-login').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-login');
+    const errDiv = document.getElementById('login-error');
+    errDiv.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Ingresando...';
+
+    try {
+      const { token, usuario } = await Api.post('/auth/login', {
+        email:    document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      });
+      Auth.guardar(token, usuario);
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      errDiv.textContent    = err.mensaje || 'Error al iniciar sesión';
+      errDiv.style.display  = 'block';
+      btn.disabled          = false;
+      btn.textContent       = 'Iniciar sesión';
+    }
+  });
+</script>
+</body>
+</html>
