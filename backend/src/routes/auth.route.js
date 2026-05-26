@@ -1,7 +1,9 @@
-import express from 'express';
-const router = express.Router();
-import { login, perfil, cambiarPassword, registro, listarUsuarios, cambiarEstadoUsuario } from '../controllers/authController.js';
+import { Router } from 'express';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
+
+const router = Router();
+
+import { login, perfil, cambiarPassword, registro, listarUsuarios, cambiarEstadoUsuario } from '../controllers/authController.js';
 
 // ─── Rutas públicas (sin token) ───────────────────────────────────────────────
 router.post('/login', login);
@@ -10,17 +12,22 @@ router.post('/login', login);
 router.get('/me',               autenticar, perfil);
 router.post('/cambiar-password', autenticar, cambiarPassword);
 
-// ─── Rutas solo admin ─────────────────────────────────────────────────────────
+// ─── Rutas solo admin (superusuario) ──────────────────────────────────────────
 router.post('/registro',
-  autenticar, autorizar('admin'),
+  autenticar,
+  autorizar('admin'),
   registro
 );
+
 router.get('/usuarios',
-  autenticar, autorizar('admin'),
+  autenticar,
+  autorizar('admin'),
   listarUsuarios
 );
+
 router.patch('/usuarios/:id/estado',
-  autenticar, autorizar('admin'),
+  autenticar,
+  autorizar('admin'),
   cambiarEstadoUsuario
 );
 
