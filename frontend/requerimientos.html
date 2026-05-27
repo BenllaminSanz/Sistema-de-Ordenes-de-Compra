@@ -64,7 +64,7 @@
             <div class="card" id="detalle-cotizaciones" style="display:none">
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
                 <div class="card-title mb-0">Cotizaciones</div>
-                <button class="btn btn-sm btn-outline" onclick="abrirModalCotizacion()"
+                  <button class="btn btn-sm btn-outline" onclick="abrirModalCotizacion()"
                         id="btn-agregar-cot">+ Agregar Cotización</button>
               </div>
               <div id="lista-cotizaciones" class="cotizaciones-container"></div>
@@ -165,7 +165,7 @@
 </div>
 
 <!-- ── Modal: Cotización ──────────────────────────────────────── -->
-<div class="modal" id="modal-cotizacion"style="display: none;">
+<div class="modal-backdrop" id="modal-cotizacion"style="display: none;">
   <div class="modal-content" style="max-width: 800px;">
     <div class="modal-header">
       <h3 class="modal-title">Nueva Cotización</h3>
@@ -786,35 +786,6 @@ function abrirModalCotizacion() {
   prepararModalCotizacion(requerimientoActual);
   UI.abrirModal('modal-cotizacion');
 }
-
-// Observar apertura del modal de cotización con MutationObserver
-new MutationObserver(muts => {
-  muts.forEach(m => {
-    if (m.target.id === 'modal-cotizacion' && m.target.classList.contains('show')) {
-      m.target.dispatchEvent(new Event('show'));
-    }
-  });
-}).observe(document.getElementById('modal-cotizacion'), { attributes: true });
-
-document.getElementById('form-cotizacion').addEventListener('submit', async e => {
-  e.preventDefault();
-  try {
-    await Api.post(
-      `/requerimientos/${requerimientoActual.id}/cotizaciones`, {
-        proveedor_id:    Number(document.getElementById('cot-proveedor').value),
-        monto_total:     Number(document.getElementById('cot-monto').value),
-        moneda:          document.getElementById('cot-moneda').value,
-        fecha_envio: document.getElementById('cot-fecha').value || null,
-        notas:           document.getElementById('cot-notas').value || null,
-      }
-    );
-    UI.cerrarModal('modal-cotizacion');
-    Toast.success('Cotización registrada');
-    cargarCotizaciones(requerimientoActual.id);
-  } catch (err) {
-    Toast.error(err.mensaje || 'Error al guardar cotización');
-  }
-});
 
 // ── Formulario nuevo requerimiento ───────────────────────────
 document.getElementById('form-req').addEventListener('submit', async e => {
