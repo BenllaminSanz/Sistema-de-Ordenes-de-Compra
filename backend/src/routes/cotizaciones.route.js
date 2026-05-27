@@ -1,22 +1,20 @@
-// backend/src/routes/cotizaciones.route.js
 import express from 'express';
-const router = express.Router({ mergeParams: true });
+import * as cotizacionesController from '../controllers/cotizacionesController.js';
 
-import { listar, crear, actualizar, seleccionar, eliminar, getCotizacionesByRequerimiento, marcarCotizacionSeleccionada } from '../controllers/cotizacionesController.js';
-import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
+const router = express.Router();
 
-router.use(autenticar);
+// Rutas principales
+router.get('/:requerimiento_id', cotizacionesController.listarCotizaciones);
 
-// Rutas existentes (mantenerlas)
-router.get('/', listar);
-router.post('/', autorizar(['contabilidad','admin']), crear);
-router.put('/:id', autorizar(['contabilidad','admin']), actualizar);
-router.patch('/:id/seleccionar', autorizar(['gerente','admin']), seleccionar);
-router.delete('/:id', autorizar(['contabilidad','admin']), eliminar);
+router.get('/detalle/:id', cotizacionesController.obtenerCotizacion);
 
-router.get('/requerimiento/:requerimientoId', getCotizacionesByRequerimiento);
+router.post('/', cotizacionesController.crearCotizacion);
 
-// ←←← CORRECCIÓN AQUÍ ←←←
-router.put('/:id/seleccionar', autorizar(['contabilidad', 'admin']), marcarCotizacionSeleccionada);
+router.put('/:id', cotizacionesController.actualizarCotizacion);
+
+router.delete('/:id', cotizacionesController.eliminarCotizacion);
+
+// Ruta específica para seleccionar una cotización
+router.post('/:id/seleccionar', cotizacionesController.seleccionarCotizacion);
 
 export default router;

@@ -65,9 +65,9 @@
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
                 <div class="card-title mb-0">Cotizaciones</div>
                 <button class="btn btn-sm btn-outline" onclick="UI.abrirModal('modal-cotizacion')"
-                        id="btn-agregar-cot">+ Agregar</button>
+                        id="btn-agregar-cot">+ Agregar Cotización</button>
               </div>
-              <div id="lista-cotizaciones"></div>
+              <div id="lista-cotizaciones" class="cotizaciones-container"></div>
             </div>
           </div>
 
@@ -502,74 +502,81 @@ async function generarOC() {
   }
 }
 
-// ── Cotizaciones ──────────────────────────────────────────────
-// Línea: al final del archivo
-
+// ── COTIZACIONES (MEJORADO) ─────────────────────────────────────
 async function cargarCotizaciones(reqId) {
-  try {
-    const res = await fetch(`/api/cotizaciones/requerimiento/${reqId}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const cotizaciones = await res.json();
-    
-    const tbody = document.querySelector('#tablaCotizaciones tbody');
-    tbody.innerHTML = cotizaciones.map(c => `
-      <tr>
-        <td>${c.proveedor_nombre}</td>
-        <td>$${c.monto_total}</td>
-        <td>${c.fecha_recepcion || 'Pendiente'}</td>
-        <td>${c.archivo_url ? `<a href="${c.archivo_url}" target="_blank">Ver PDF</a>` : 'Sin PDF'}</td>
-        <td>${c.seleccionada ? '✅ Seleccionada' : ''}</td>
-        <td>
-          <button class="btn btn-success btn-sm" onclick="seleccionarCotizacion(${c.id})">Seleccionar</button>
-        </td>
-      </tr>
-    `).join('');
-  } catch (error) {
-    console.error('Error al cargar cotizaciones:', error);
-  }
-}
+  const contenedor = document.getElementById('lista-cotizaciones');
+  UI.spinner(contenedor);
 
-async function seleccionarCotizacion(cotizacionId) {
-  if (!confirm('¿Marcar esta cotización como seleccionada?')) return;
-  
   try {
-    const res = await fetch(`/api/cotizaciones/${cotizacionId}/seleccionar`, {
-      method: 'PUT',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    if (res.ok) {
-      alert('Cotización seleccionada correctamente');
-      // Recargar la tabla
-      cargarCotizaciones(currentRequerimientoId); // usa la variable global o parámetro
+    const cotizaciones = await Api.get(`/cotizaciones/${reqId}`);
+
+    if (!cotizaciones.length) {
+      contenedor.innerHTML = `<p class="text-muted text-center py-4">Aún no hay cotizaciones registradas</p>`;
+      return;
     }
-  } catch (error) {
-    alert('Error al seleccionar cotización');
-  }
-}
 
-async function seleccionarCotizacion(cotId) {
-  try {
-    await Api.patch(
-      `/requerimientos/${requerimientoActual.id}/cotizaciones/${cotId}/seleccionar`, {}
-    );
-    Toast.success('Cotización seleccionada');
-    cargarCotizaciones(requerimientoActual.id);
+    let html = `
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th class="text-end">Monto</th>
+            <th>Estado</th>
+            <th>Fecha Recepción</th>
+            <th>PDF</th>
+            <th class="text-center">Acción</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    cotizaciones.forEach(c => {
+      const estadoBadge = c.estado 
+        ? `<span class="badge ${c.estado === 'seleccionada' ? 'bg-success' : c.estado === 'rechazada' ? 'bg-danger' : 'bg-secondary'}">${c.estado}</span>`
+        : (c.seleccionada ? `<span class="badge bg-success">Seleccionada</span>` : `<span class="badge bg-warning">Pendiente</span>`);
+
+      html += `
+        <tr>
+          <td><strong>${c.proveedor_nombre}</strong></td>
+          <td class="text-end fw-600">$${parseFloat(c.monto_total).toLocaleString('es-MX')} ${c.moneda}</td>
+          <td>${estadoBadge}</td>
+          <td class="text-muted">${c.fecha_recepcion ? UI.fecha(c.fecha_recepcion) : '—'}</td>
+          <td>
+            ${c.archivo_url 
+              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 PDF</a>` 
+              : `<span class="text-muted">Sin PDF</span>`}
+          </td>
+          <td class="text-center">
+            ${!c.seleccionada 
+              ? `<button class="btn btn-success btn-sm" onclick="seleccionarCotizacion(${c.id}, ${reqId})">Seleccionar</button>`
+              : `<span class="text-success">✓ Seleccionada</span>`}
+          </td>
+        </tr>`;
+    });
+
+    html += `</tbody></table>`;
+    contenedor.innerHTML = html;
+
   } catch (err) {
-    Toast.error(err.mensaje || 'Error al seleccionar');
+    console.error(err);
+    contenedor.innerHTML = `<p class="text-danger">Error al cargar cotizaciones</p>`;
+    Toast.error('No se pudieron cargar las cotizaciones');
   }
 }
 
-// Cargar proveedores en el select del modal de cotización
-document.getElementById('modal-cotizacion').addEventListener('show', async () => {
-  const sel = document.getElementById('cot-proveedor');
-  sel.innerHTML = '<option value="">Cargando…</option>';
+async function seleccionarCotizacion(cotizacionId, requerimientoId) {
+  if (!confirm('¿Marcar esta cotización como la seleccionada?\nLas demás se marcarán como rechazadas.')) return;
+
   try {
-    const provs = await Api.get('/proveedores?activos=true');
-    sel.innerHTML = '<option value="">Selecciona proveedor…</option>' +
-      provs.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
-  } catch { sel.innerHTML = '<option value="">Error al cargar</option>'; }
-});
+    await Api.post(`/cotizaciones/${cotizacionId}/seleccionar`, {
+      requerimiento_id: requerimientoId
+    });
+
+    Toast.success('Cotización seleccionada correctamente');
+    cargarCotizaciones(requerimientoActual.id); // recarga la lista
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al seleccionar la cotización');
+  }
+}
 
 // Observar apertura del modal de cotización con MutationObserver
 new MutationObserver(muts => {

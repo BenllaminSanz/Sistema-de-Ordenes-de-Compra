@@ -1,106 +1,185 @@
-import transporter, { enviarCorreoCotizacion } from '../config/mailer.js';
-import { listarPorRequerimiento, crear as _crear, obtenerPorId, actualizar as _actualizar, seleccionar as _seleccionar, eliminar as _eliminar } from '../models/cotizaciones.js';
+import * as Cotizacion from '../models/cotizaciones.js';
+import { registrarHistorial } from '../models/historialEstados.js';
 
-async function listar(req, res) {
+// Listar cotizaciones de un requerimiento
+export const listarCotizaciones = async (req, res) => {
   try {
-    res.json(await listarPorRequerimiento(req.params.requerimiento_id));
-  } catch (err) {
-    console.error('[listar cotizaciones]', err);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
-  }
-}
-
-async function crear(req, res) {
-  try {
-    const { proveedor_id, monto_total, moneda, archivo_url,
-            fecha_envio, fecha_recepcion, notas } = req.body;
-
-    if (!proveedor_id || monto_total === undefined) {
-      return res.status(400).json({ mensaje: 'proveedor_id y monto_total son requeridos' });
-    }
-    if (isNaN(monto_total) || Number(monto_total) < 0) {
-      return res.status(400).json({ mensaje: 'monto_total debe ser un número positivo' });
-    }
+    const { requerimiento_id } = req.params;
+    const cotizaciones = await Cotizacion.listarPorRequerimiento(requerimiento_id);
     
-    const id = await _crear({
-      requerimiento_id: req.params.requerimiento_id,
-      proveedor_id, monto_total, moneda,
-      archivo_url, fecha_envio, fecha_recepcion, notas,
+    res.json({
+      success: true,
+      data: cotizaciones
     });
-
-    const envio = await enviarCorreoCotizacion(req.body.correo, req.body.id);
-
-    // ENVIAR UNA SOLA RESPUESTA Y USAR RETURN
-    if (envio.success) {
-        return res.status(201).json({ message: "Cotización creada y correo enviado" });
-    } else {
-        // Si falló el correo, igual devolvemos algo pero detenemos el flujo
-        return res.status(201).json({ message: "Cotización creada, pero falló el envío de correo" });
-    }
-
-  } catch (err) {
-    console.error('[crear cotizacion]', err);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
-  }
-}
-
-async function actualizar(req, res) {
-  try {
-    const afectados = await _actualizar(req.params.id, req.body);
-    if (!afectados) {
-      return res.status(404).json({ mensaje: 'Cotización no encontrada o ya fue seleccionada' });
-    }
-    res.json(await obtenerPorId(req.params.id));
-  } catch (err) {
-    console.error('[actualizar cotizacion]', err);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
-  }
-}
-
-async function seleccionar(req, res) {
-  try {
-    await _seleccionar(
-      req.params.id,
-      req.params.requerimiento_id
-    );
-    res.json({ mensaje: 'Cotización seleccionada correctamente' });
-  } catch (err) {
-    console.error('[seleccionar cotizacion]', err);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
-  }
-}
-
-async function eliminar(req, res) {
-  try {
-    const afectados = await _eliminar(req.params.id);
-    if (!afectados) {
-      return res.status(404).json({ mensaje: 'Cotización no encontrada o ya fue seleccionada' });
-    }
-    res.status(204).send();
-  } catch (err) {
-    console.error('[eliminar cotizacion]', err);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
-  }
-}
-
-export const getCotizacionesByRequerimiento = async (req, res) => {
-  try {
-    const { requerimientoId } = req.params;
-    const cotizaciones = await Cotizacion.getByRequerimiento(requerimientoId);
-    res.json(cotizaciones);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error al listar cotizaciones:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener las cotizaciones'
+    });
   }
 };
 
-export const marcarCotizacionSeleccionada = async (req, res) => {
+// Obtener una cotización por ID
+export const obtenerCotizacion = async (req, res) => {
   try {
     const { id } = req.params;
-    await Cotizacion.marcarComoSeleccionada(id);
-    res.json({ message: 'Cotización seleccionada correctamente' });
+    const cotizacion = await Cotizacion.obtenerPorId(id);
+    
+    if (!cotizacion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cotización no encontrada'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: cotizacion
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error al obtener cotización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener la cotización'
+    });
   }
 };
 
-export { listar, crear, actualizar, seleccionar, eliminar};
+// Crear nueva cotización
+export const crearCotizacion = async (req, res) => {
+  try {
+    const datos = req.body;
+    
+    // Validaciones básicas
+    if (!datos.requerimiento_id || !datos.proveedor_id || !datos.monto_total) {
+      return res.status(400).json({
+        success: false,
+        message: 'Faltan datos obligatorios (requerimiento_id, proveedor_id, monto_total)'
+      });
+    }
+
+    const id = await Cotizacion.crear(datos);
+
+    // Registrar en historial
+    await registrarHistorial({
+      entidad_tipo: 'cotizacion',
+      entidad_id: id,
+      estado_anterior: null,
+      estado_nuevo: 'enviada',
+      cambiado_por: req.usuario?.id || 1, // Ajustar según tu middleware de auth
+      notas: 'Cotización creada'
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Cotización creada exitosamente',
+      id
+    });
+  } catch (error) {
+    console.error('Error al crear cotización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al crear la cotización'
+    });
+  }
+};
+
+// Actualizar cotización
+export const actualizarCotizacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const datos = req.body;
+
+    const affected = await Cotizacion.actualizar(id, datos);
+
+    if (affected === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudo actualizar. La cotización ya está seleccionada o no existe.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cotización actualizada correctamente'
+    });
+  } catch (error) {
+    console.error('Error al actualizar cotización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar la cotización'
+    });
+  }
+};
+
+// Seleccionar una cotización (Lógica clave mejorada)
+export const seleccionarCotizacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { requerimiento_id } = req.body;
+
+    if (!requerimiento_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere el requerimiento_id'
+      });
+    }
+
+    const exito = await Cotizacion.seleccionar(id, requerimiento_id);
+
+    if (exito) {
+      // Registrar en historial
+      await registrarHistorial({
+        entidad_tipo: 'cotizacion',
+        entidad_id: id,
+        estado_anterior: 'en_revision',
+        estado_nuevo: 'seleccionada',
+        cambiado_por: req.usuario?.id || 1,
+        notas: 'Cotización seleccionada para generar Orden de Compra'
+      });
+
+      res.json({
+        success: true,
+        message: 'Cotización seleccionada correctamente. Las demás han sido rechazadas.'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'No se pudo seleccionar la cotización'
+      });
+    }
+  } catch (error) {
+    console.error('Error al seleccionar cotización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al seleccionar la cotización'
+    });
+  }
+};
+
+// Eliminar cotización
+export const eliminarCotizacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const affected = await Cotizacion.eliminar(id);
+
+    if (affected === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede eliminar una cotización ya seleccionada'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cotización eliminada correctamente'
+    });
+  } catch (error) {
+    console.error('Error al eliminar cotización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al eliminar la cotización'
+    });
+  }
+};
