@@ -64,7 +64,7 @@
             <div class="card" id="detalle-cotizaciones" style="display:none">
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
                 <div class="card-title mb-0">Cotizaciones</div>
-                <button class="btn btn-sm btn-outline" //onclick="UI.abrirModal('modal-cotizacion')" onclick="abrirModalCotizacion()"
+                <button class="btn btn-sm btn-outline" onclick="abrirModalCotizacion()"
                         id="btn-agregar-cot">+ Agregar Cotización</button>
               </div>
               <div id="lista-cotizaciones" class="cotizaciones-container"></div>
@@ -165,7 +165,7 @@
 </div>
 
 <!-- ── Modal: Cotización ──────────────────────────────────────── -->
-<div class="modal" id="modal-cotizacion">
+<div class="modal" id="modal-cotizacion"style="display: none;">
   <div class="modal-content" style="max-width: 800px;">
     <div class="modal-header">
       <h3 class="modal-title">Nueva Cotización</h3>
