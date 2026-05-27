@@ -504,14 +504,23 @@ async function generarOC() {
 
 // ── COTIZACIONES (MEJORADO) ─────────────────────────────────────
 async function cargarCotizaciones(reqId) {
+  
   const contenedor = document.getElementById('lista-cotizaciones');
+
   UI.spinner(contenedor);
 
   try {
-    const cotizaciones = await Api.get(`/cotizaciones/${reqId}`);
+    const response = await Api.get(`/cotizaciones/${reqId}`);
+    
+    // Asegurarnos de que sea un array
+    const cotizaciones = Array.isArray(response) ? response : 
+                        (response.data && Array.isArray(response.data) ? response.data : []);
 
-    if (!cotizaciones.length) {
-      contenedor.innerHTML = `<p class="text-muted text-center py-4">Aún no hay cotizaciones registradas</p>`;
+    if (cotizaciones.length === 0) {
+      contenedor.innerHTML = `
+        <p class="text-muted text-center py-4">
+          Aún no hay cotizaciones registradas para este requerimiento.
+        </p>`;
       return;
     }
 
@@ -520,7 +529,7 @@ async function cargarCotizaciones(reqId) {
         <thead>
           <tr>
             <th>Proveedor</th>
-            <th class="text-end">Monto</th>
+            <th class="text-end">Monto Total</th>
             <th>Estado</th>
             <th>Fecha Recepción</th>
             <th>PDF</th>
@@ -530,25 +539,28 @@ async function cargarCotizaciones(reqId) {
         <tbody>`;
 
     cotizaciones.forEach(c => {
-      const estadoBadge = c.estado 
-        ? `<span class="badge ${c.estado === 'seleccionada' ? 'bg-success' : c.estado === 'rechazada' ? 'bg-danger' : 'bg-secondary'}">${c.estado}</span>`
-        : (c.seleccionada ? `<span class="badge bg-success">Seleccionada</span>` : `<span class="badge bg-warning">Pendiente</span>`);
+      const monto = parseFloat(c.monto_total || 0).toLocaleString('es-MX');
+      const estado = c.seleccionada === 1 || c.estado === 'seleccionada' 
+        ? `<span class="badge bg-success">Seleccionada</span>` 
+        : (c.estado 
+            ? `<span class="badge bg-secondary">${c.estado}</span>` 
+            : `<span class="badge bg-warning">Pendiente</span>`);
 
       html += `
         <tr>
-          <td><strong>${c.proveedor_nombre}</strong></td>
-          <td class="text-end fw-600">$${parseFloat(c.monto_total).toLocaleString('es-MX')} ${c.moneda}</td>
-          <td>${estadoBadge}</td>
+          <td><strong>${c.proveedor_nombre || 'Sin proveedor'}</strong></td>
+          <td class="text-end fw-600">$${monto} ${c.moneda || 'MXN'}</td>
+          <td>${estado}</td>
           <td class="text-muted">${c.fecha_recepcion ? UI.fecha(c.fecha_recepcion) : '—'}</td>
           <td>
             ${c.archivo_url 
-              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 PDF</a>` 
-              : `<span class="text-muted">Sin PDF</span>`}
+              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 Ver PDF</a>` 
+              : `<span class="text-muted small">Sin PDF</span>`}
           </td>
           <td class="text-center">
-            ${!c.seleccionada 
+            ${c.seleccionada !== 1 
               ? `<button class="btn btn-success btn-sm" onclick="seleccionarCotizacion(${c.id}, ${reqId})">Seleccionar</button>`
-              : `<span class="text-success">✓ Seleccionada</span>`}
+              : `<span class="text-success fw-600">✓ Seleccionada</span>`}
           </td>
         </tr>`;
     });
@@ -557,8 +569,8 @@ async function cargarCotizaciones(reqId) {
     contenedor.innerHTML = html;
 
   } catch (err) {
-    console.error(err);
-    contenedor.innerHTML = `<p class="text-danger">Error al cargar cotizaciones</p>`;
+    console.error('❌ Error cargando cotizaciones:', err);
+    contenedor.innerHTML = `<p class="text-danger text-center py-4">Error al cargar cotizaciones</p>`;
     Toast.error('No se pudieron cargar las cotizaciones');
   }
 }

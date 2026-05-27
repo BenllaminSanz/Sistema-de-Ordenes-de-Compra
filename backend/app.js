@@ -42,7 +42,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/requerimientos", requerimientosRoutes);
 app.use("/api/proveedores", proveedoresRoutes);
 app.use("/api/ordenes-compra", ordenesRoutes);
-app.use("/api/requerimientos/:requerimiento_id/cotizaciones", cotizacionesRoutes);
+app.use('/api/cotizaciones', cotizacionesRoutes);
 app.use("/api/ordenes-compra/:orden_id/recepciones", recepcionesRoutes);
 
 // ─── Health check ──────────────────────────────────────────
