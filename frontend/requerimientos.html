@@ -169,7 +169,7 @@
   <div class="modal-box" style="max-width: 600px;">
     <div class="modal-header">
       <h3 class="modal-title">Nueva Cotización</h3>
-      <button class="modal-close" onclick="UI.cerrarModal('modal-cotizacion')">×</button>
+      <button class="modal-close" onclick="cerrarModalCotizacion()">×</button>
     </div>
     <div class="modal-body">
       <form id="form-cotizacion">
@@ -230,7 +230,7 @@
       </form>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-cotizacion')">Cancelar</button>
+      <button type="button" class="btn btn-outline" onclick="cerrarModalCotizacion()">Cancelar</button>
       <button type="button" class="btn btn-primary" onclick="guardarCotizacion()">Guardar Cotización</button>
     </div>
   </div>
@@ -621,267 +621,6 @@ async function seleccionarCotizacion(cotizacionId, requerimientoId) {
   }
 }
 
-// ── MODAL Y LÓGICA DE NUEVA COTIZACIÓN (MEJORADO) ─────────────────────────────
-
-let itemsCotizacionActual = [];
-
-// Cargar proveedores en el modal
-async function cargarProveedoresEnModal() {
-  try {
-    const proveedores = await Api.get('/proveedores');
-    const select = document.getElementById('cot_proveedor_id');
-    select.innerHTML = '<option value="">Selecciona proveedor...</option>';
-    
-    proveedores.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.nombre;
-      select.appendChild(opt);
-    });
-  } catch (e) {
-    console.error('Error cargando proveedores:', e);
-  }
-}
-
-// Mostrar/Ocultar modo según tipo de requerimiento
-function configurarModalSegunTipo(requerimiento) {
-  const tipo = requerimiento.tipo || 'PARTES';
-  const simpleDiv = document.getElementById('cotizacion-tipo-simple');
-  const itemsDiv = document.getElementById('cotizacion-tipo-items');
-
-  // Por defecto mostrar modo simple
-  simpleDiv.style.display = 'block';
-  itemsDiv.style.display = 'none';
-
-  // Si es PARTES o SERVICIOS → permitir modo items
-  if (tipo === 'PARTES' || tipo === 'SERVICIOS') {
-    itemsDiv.style.display = 'block';
-    simpleDiv.style.display = 'none';
-  }
-}
-
-// Agregar nuevo item a la tabla
-function agregarItemCotizacion() {
-  const tbody = document.querySelector('#tabla-items-cot tbody');
-  const row = document.createElement('tr');
-  
-  row.innerHTML = `
-    <td><input type="text" class="form-control item-desc" placeholder="Descripción del concepto"></td>
-    <td><input type="number" class="form-control item-cant" value="1" min="1" style="width:80px"></td>
-    <td>
-      <select class="form-control item-unidad" style="width:100px">
-        <option value="pieza">pieza</option>
-        <option value="kg">kg</option>
-        <option value="hora">hora</option>
-        <option value="servicio">servicio</option>
-        <option value="lote">lote</option>
-      </select>
-    </td>
-    <td><input type="number" class="form-control item-precio" step="0.01" placeholder="0.00"></td>
-    <td class="item-subtotal text-end fw-600">0.00</td>
-    <td><button class="btn btn-sm btn-danger" onclick="this.closest('tr').remove(); calcularTotalItems()">Eliminar</button></td>
-  `;
-
-  tbody.appendChild(row);
-
-  // Agregar listeners para recalcular subtotal
-  const inputs = row.querySelectorAll('input');
-  inputs.forEach(input => {
-    input.addEventListener('input', calcularTotalItems);
-  });
-}
-
-// Calcular subtotales y total general
-function calcularTotalItems() {
-  let total = 0;
-  document.querySelectorAll('#tabla-items-cot tbody tr').forEach(row => {
-    const cant = parseFloat(row.querySelector('.item-cant').value) || 0;
-    const precio = parseFloat(row.querySelector('.item-precio').value) || 0;
-    const subtotal = cant * precio;
-    
-    row.querySelector('.item-subtotal').textContent = subtotal.toFixed(2);
-    total += subtotal;
-  });
-  
-  // Aquí podrías actualizar un campo de total general si lo agregas
-  return total;
-}
-
-// Guardar cotización
-async function guardarCotizacion() {
-  console.log('Intentando guardar cotización...');
-
-  const reqId = document.getElementById('cot_req_id').value;
-  console.log('reqId obtenido:', reqId);
-
-  if (!reqId) {
-    return Toast.error('Error: No se encontró el ID del requerimiento');
-  }
-
-  const proveedor_id = document.getElementById('cot_proveedor_id').value;
-  const fecha_envio = document.getElementById('cot_fecha_envio').value;
-  const moneda = document.getElementById('cot_moneda').value;
-  const notas = document.getElementById('cot_notas').value || null;
-
-  if (!proveedor_id || !fecha_envio) {
-    return Toast.error('Proveedor y Fecha de Envío son obligatorios');
-  }
-
-  try {
-    let datos = {
-      requerimiento_id: parseInt(reqId),
-      proveedor_id: parseInt(proveedor_id),
-      moneda,
-      fecha_envio,
-      notas
-    };
-
-    // Recolectar items si están en modo items
-    const tbody = document.querySelector('#tabla-items-cot tbody');
-    const items = [];
-
-    if (tbody) {
-      tbody.querySelectorAll('tr').forEach(row => {
-        const desc = row.querySelector('.item-desc')?.value?.trim();
-        if (desc) {
-          items.push({
-            descripcion: desc,
-            cantidad: parseFloat(row.querySelector('.item-cant')?.value) || 1,
-            unidad: row.querySelector('.item-unidad')?.value || 'pieza',
-            precio_unitario: parseFloat(row.querySelector('.item-precio')?.value) || 0
-          });
-        }
-      });
-    }
-
-    if (items.length > 0) {
-      datos.items = items;
-      datos.monto_subtotal = items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
-      datos.monto_total = datos.monto_subtotal;
-    } else {
-      datos.monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
-      datos.monto_subtotal = datos.monto_total;
-    }
-
-    if (datos.monto_total <= 0) {
-      return Toast.error('Debe ingresar un monto válido');
-    }
-
-    console.log('Datos a enviar:', datos);
-
-    const response = await Api.post('/cotizaciones', datos);
-    
-    if (response.success) {
-      Toast.success('Cotización creada correctamente');
-      UI.cerrarModal('modal-cotizacion');
-      if (requerimientoActual) {
-        cargarCotizaciones(requerimientoActual.id);
-      }
-    } else {
-      Toast.error(response.message || 'Error al guardar');
-    }
-  } catch (err) {
-    console.error('Error completo:', err);
-    Toast.error('Error al guardar la cotización');
-  }
-}
-
-async function guardarCotizacion() {
-  const reqId = document.getElementById('cot_req_id').value;
-  if (!reqId) return Toast.error('No se encontró el requerimiento');
-
-  const proveedor_id = document.getElementById('cot_proveedor_id').value;
-  const fecha_envio = document.getElementById('cot_fecha_envio').value;
-  const moneda = document.getElementById('cot_moneda').value;
-  const notas = document.getElementById('cot_notas').value;
-
-  if (!proveedor_id || !fecha_envio) {
-    return Toast.error('Proveedor y Fecha de Envío son obligatorios');
-  }
-
-  try {
-    let datos = {
-      requerimiento_id: parseInt(reqId),
-      proveedor_id: parseInt(proveedor_id),
-      moneda,
-      fecha_envio,
-      notas
-    };
-
-    // Recolectar items si están visibles
-    const items = [];
-    const rows = document.querySelectorAll('#tabla-items-cot tbody tr');
-    
-    if (rows.length > 0) {
-      rows.forEach(row => {
-        const descripcion = row.querySelector('.item-desc').value.trim();
-        if (!descripcion) return;
-        
-        items.push({
-          descripcion,
-          cantidad: parseFloat(row.querySelector('.item-cant').value) || 1,
-          unidad: row.querySelector('.item-unidad').value,
-          precio_unitario: parseFloat(row.querySelector('.item-precio').value) || 0
-        });
-      });
-
-      // Calcular total desde items
-      datos.monto_subtotal = items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
-      datos.monto_total = datos.monto_subtotal; // Puedes agregar IVA después
-    } else {
-      // Modo simple
-      datos.monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
-      datos.monto_subtotal = datos.monto_total;
-    }
-
-    if (datos.monto_total <= 0) {
-      return Toast.error('Debe ingresar al menos un monto válido');
-    }
-
-    const response = await Api.post('/cotizaciones', datos);
-
-    if (response.success) {
-      Toast.success('Cotización guardada correctamente');
-      UI.cerrarModal('modal-cotizacion');
-      cargarCotizaciones(requerimientoActual.id); // Recargar lista
-    }
-  } catch (err) {
-    console.error(err);
-    Toast.error('Error al guardar la cotización');
-  }
-}
-
-// Inicializar modal cuando se abre
-function prepararModalCotizacion(req) {
-  document.getElementById('cot_req_id').value = req.id;
-  document.getElementById('form-cotizacion').reset();
-  document.querySelector('#tabla-items-cot tbody').innerHTML = '';
-  itemsCotizacionActual = [];
-
-  cargarProveedoresEnModal();
-  configurarModalSegunTipo(req);
-}
-
-// Abrir modal (llamar desde el botón + Agregar)
-function abrirModalCotizacion() {
-  console.log('✅ Botón + Agregar Cotización clickeado');
-  
-  if (!requerimientoActual) {
-    console.error('❌ No hay requerimientoActual');
-    return Toast.error('No se pudo abrir el modal');
-  }
-
-  prepararModalCotizacion(requerimientoActual);
-
-  const modal = document.getElementById('modal-cotizacion');
-  if (modal) {
-    modal.style.display = 'flex';           // ← Más directo
-    console.log('Modal mostrado con display: flex');
-  } else {
-    console.error('❌ No se encontró el modal en el DOM');
-  }
-}
-
 // ── Formulario nuevo requerimiento ───────────────────────────
 document.getElementById('form-req').addEventListener('submit', async e => {
   e.preventDefault();
@@ -910,6 +649,129 @@ document.getElementById('form-req').addEventListener('submit', async e => {
 document.getElementById('fil-busqueda').addEventListener('keydown', e => {
   if (e.key === 'Enter') cargarRequerimientos(1);
 });
+
+// ── FUNCIONES DEL MODAL DE COTIZACIÓN (CORREGIDO) ─────────────────────────────
+
+function abrirModalCotizacion() {
+  if (!requerimientoActual) {
+    return Toast.error('No se encontró el requerimiento');
+  }
+  prepararModalCotizacion(requerimientoActual);
+  const modal = document.getElementById('modal-cotizacion');
+  if (modal) modal.style.display = 'flex';
+}
+
+function prepararModalCotizacion(req) {
+  document.getElementById('cot_req_id').value = req.id;   // ← Esto es clave
+  document.getElementById('form-cotizacion').reset();
+  document.querySelector('#tabla-items-cot tbody').innerHTML = '';
+  
+  cargarProveedoresEnModal();
+  configurarModalSegunTipo(req);
+}
+
+async function guardarCotizacion() {
+  const reqId = document.getElementById('cot_req_id').value;
+  console.log('reqId obtenido al guardar:', reqId);   // ← Debug
+
+  if (!reqId) {
+    return Toast.error('Error interno: No se encontró el ID del requerimiento');
+  }
+
+  const proveedor_id = document.getElementById('cot_proveedor_id').value;
+  const fecha_envio = document.getElementById('cot_fecha_envio').value;
+  const moneda = document.getElementById('cot_moneda').value;
+  const notas = document.getElementById('cot_notas').value || null;
+
+  if (!proveedor_id || !fecha_envio) {
+    return Toast.error('Proveedor y Fecha de Envío son obligatorios');
+  }
+
+  try {
+    let datos = {
+      requerimiento_id: parseInt(reqId),
+      proveedor_id: parseInt(proveedor_id),
+      moneda,
+      fecha_envio,
+      notas
+    };
+
+    // Recolectar items si están en modo items
+    const rows = document.querySelectorAll('#tabla-items-cot tbody tr');
+    const items = [];
+    if (rows.length > 0) {
+      rows.forEach(row => {
+        const desc = row.querySelector('.item-desc').value.trim();
+        if (desc) {
+          items.push({
+            descripcion: desc,
+            cantidad: parseFloat(row.querySelector('.item-cant').value) || 1,
+            unidad: row.querySelector('.item-unidad').value,
+            precio_unitario: parseFloat(row.querySelector('.item-precio').value) || 0
+          });
+        }
+      });
+      datos.items = items;
+    } else {
+      datos.monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
+    }
+
+    const response = await Api.post('/cotizaciones', datos);
+
+    if (response.success) {
+      Toast.success('Cotización guardada correctamente');
+      cerrarModalCotizacion();
+      cargarCotizaciones(requerimientoActual.id);
+    }
+  } catch (err) {
+    console.error(err);
+    Toast.error(err.message || 'Error al guardar la cotización');
+  }
+}
+
+function cerrarModalCotizacion() {
+  const modal = document.getElementById('modal-cotizacion');
+  if (modal) modal.style.display = 'none';
+  // Opcional: limpiar formulario
+  document.getElementById('form-cotizacion').reset();
+}
+
+// Cargar proveedores en el modal
+async function cargarProveedoresEnModal() {
+  try {
+    const proveedores = await Api.get('/proveedores');
+    const select = document.getElementById('cot_proveedor_id');
+    select.innerHTML = '<option value="">Selecciona proveedor...</option>';
+    
+    proveedores.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nombre;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('Error cargando proveedores:', e);
+  }
+}
+
+
+
+// Mostrar/Ocultar modo según tipo de requerimiento
+function configurarModalSegunTipo(requerimiento) {
+  const tipo = requerimiento.tipo || 'PARTES';
+  const simpleDiv = document.getElementById('cotizacion-tipo-simple');
+  const itemsDiv = document.getElementById('cotizacion-tipo-items');
+
+  // Por defecto mostrar modo simple
+  simpleDiv.style.display = 'block';
+  itemsDiv.style.display = 'none';
+
+  // Si es PARTES o SERVICIOS → permitir modo items
+  if (tipo === 'PARTES' || tipo === 'SERVICIOS') {
+    itemsDiv.style.display = 'block';
+    simpleDiv.style.display = 'none';
+  }
+}
 </script>
 </body>
 </html>
