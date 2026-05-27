@@ -709,6 +709,84 @@ function calcularTotalItems() {
 
 // Guardar cotización
 async function guardarCotizacion() {
+  console.log('Intentando guardar cotización...');
+
+  const reqId = document.getElementById('cot_req_id').value;
+  console.log('reqId obtenido:', reqId);
+
+  if (!reqId) {
+    return Toast.error('Error: No se encontró el ID del requerimiento');
+  }
+
+  const proveedor_id = document.getElementById('cot_proveedor_id').value;
+  const fecha_envio = document.getElementById('cot_fecha_envio').value;
+  const moneda = document.getElementById('cot_moneda').value;
+  const notas = document.getElementById('cot_notas').value || null;
+
+  if (!proveedor_id || !fecha_envio) {
+    return Toast.error('Proveedor y Fecha de Envío son obligatorios');
+  }
+
+  try {
+    let datos = {
+      requerimiento_id: parseInt(reqId),
+      proveedor_id: parseInt(proveedor_id),
+      moneda,
+      fecha_envio,
+      notas
+    };
+
+    // Recolectar items si están en modo items
+    const tbody = document.querySelector('#tabla-items-cot tbody');
+    const items = [];
+
+    if (tbody) {
+      tbody.querySelectorAll('tr').forEach(row => {
+        const desc = row.querySelector('.item-desc')?.value?.trim();
+        if (desc) {
+          items.push({
+            descripcion: desc,
+            cantidad: parseFloat(row.querySelector('.item-cant')?.value) || 1,
+            unidad: row.querySelector('.item-unidad')?.value || 'pieza',
+            precio_unitario: parseFloat(row.querySelector('.item-precio')?.value) || 0
+          });
+        }
+      });
+    }
+
+    if (items.length > 0) {
+      datos.items = items;
+      datos.monto_subtotal = items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
+      datos.monto_total = datos.monto_subtotal;
+    } else {
+      datos.monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
+      datos.monto_subtotal = datos.monto_total;
+    }
+
+    if (datos.monto_total <= 0) {
+      return Toast.error('Debe ingresar un monto válido');
+    }
+
+    console.log('Datos a enviar:', datos);
+
+    const response = await Api.post('/cotizaciones', datos);
+    
+    if (response.success) {
+      Toast.success('Cotización creada correctamente');
+      UI.cerrarModal('modal-cotizacion');
+      if (requerimientoActual) {
+        cargarCotizaciones(requerimientoActual.id);
+      }
+    } else {
+      Toast.error(response.message || 'Error al guardar');
+    }
+  } catch (err) {
+    console.error('Error completo:', err);
+    Toast.error('Error al guardar la cotización');
+  }
+}
+
+async function guardarCotizacion() {
   const reqId = document.getElementById('cot_req_id').value;
   if (!reqId) return Toast.error('No se encontró el requerimiento');
 
