@@ -166,10 +166,10 @@
 
 <!-- ── Modal: Nueva Cotización (Mejorado) ──────────────────────────────────────── -->
 <div class="modal-backdrop" id="modal-cotizacion" style="display: none;">
-  <div class="modal-box" style="max-width: 850px;">
+  <div class="modal-box" style="max-width: 600px;">
     <div class="modal-header">
       <h3 class="modal-title">Nueva Cotización</h3>
-      <button class="btn btn-sm btn-outline" onclick="abrirModalCotizacion()">×</button>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-cotizacion')">×</button>
     </div>
     <div class="modal-body">
       <form id="form-cotizacion">
@@ -786,9 +786,22 @@ function prepararModalCotizacion(req) {
 
 // Abrir modal (llamar desde el botón + Agregar)
 function abrirModalCotizacion() {
-  if (!requerimientoActual) return;
+  console.log('✅ Botón + Agregar Cotización clickeado');
+  
+  if (!requerimientoActual) {
+    console.error('❌ No hay requerimientoActual');
+    return Toast.error('No se pudo abrir el modal');
+  }
+
   prepararModalCotizacion(requerimientoActual);
-  UI.abrirModal('modal-cotizacion');
+
+  const modal = document.getElementById('modal-cotizacion');
+  if (modal) {
+    modal.style.display = 'flex';           // ← Más directo
+    console.log('Modal mostrado con display: flex');
+  } else {
+    console.error('❌ No se encontró el modal en el DOM');
+  }
 }
 
 // ── Formulario nuevo requerimiento ───────────────────────────
