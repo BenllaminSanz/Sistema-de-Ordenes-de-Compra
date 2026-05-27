@@ -20,23 +20,57 @@ async function obtenerPorId(id) {
   return cot || null;
 }
 
-async function crear(datos) {
-  const [result] = await pool.query(`
-    INSERT INTO cotizaciones 
-      (requerimiento_id, proveedor_id, monto_total, moneda, archivo_url, 
-       fecha_envio, fecha_recepcion, notas, estado)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'enviada')`,
-    [
-      datos.requerimiento_id,
-      datos.proveedor_id,
-      datos.monto_total,
-      datos.moneda || 'MXN',
-      datos.archivo_url || null,
-      datos.fecha_envio || null,
-      datos.fecha_recepcion || null,
-      datos.notas || null,
-    ]);
-  return result.insertId;
+async function crear(datos, items = []) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Crear cotización principal
+    const [result] = await conn.query(`
+      INSERT INTO cotizaciones 
+        (requerimiento_id, proveedor_id, monto_total, monto_subtotal, iva, moneda,
+         archivo_url, fecha_envio, notas, estado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'enviada')`,
+      [
+        datos.requerimiento_id,
+        datos.proveedor_id,
+        datos.monto_total || 0,
+        datos.monto_subtotal || 0,
+        datos.iva || 0,
+        datos.moneda || 'MXN',
+        datos.archivo_url || null,
+        datos.fecha_envio || null,
+        datos.notas || null
+      ]);
+
+    const cotizacionId = result.insertId;
+
+    // Insertar items si existen
+    if (items && items.length > 0) {
+      for (const item of items) {
+        await conn.query(`
+          INSERT INTO cotizacion_items 
+            (cotizacion_id, descripcion, cantidad, unidad, precio_unitario, notas_item)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            cotizacionId,
+            item.descripcion,
+            item.cantidad || 1,
+            item.unidad || 'pieza',
+            item.precio_unitario,
+            item.notas_item || null
+          ]);
+      }
+    }
+
+    await conn.commit();
+    return cotizacionId;
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
 }
 
 // Actualizar manteniendo restricción de no modificar si ya está seleccionada

@@ -64,7 +64,7 @@
             <div class="card" id="detalle-cotizaciones" style="display:none">
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
                 <div class="card-title mb-0">Cotizaciones</div>
-                <button class="btn btn-sm btn-outline" onclick="UI.abrirModal('modal-cotizacion')"
+                <button class="btn btn-sm btn-outline" //onclick="UI.abrirModal('modal-cotizacion')" onclick="abrirModalCotizacion()"
                         id="btn-agregar-cot">+ Agregar Cotización</button>
               </div>
               <div id="lista-cotizaciones" class="cotizaciones-container"></div>
@@ -165,43 +165,70 @@
 </div>
 
 <!-- ── Modal: Cotización ──────────────────────────────────────── -->
-<div class="modal-backdrop" id="modal-cotizacion">
-  <div class="modal-box">
+<div class="modal" id="modal-cotizacion">
+  <div class="modal-content" style="max-width: 800px;">
     <div class="modal-header">
-      <h3 class="modal-title">Registrar cotización</h3>
-      <button class="modal-close" onclick="UI.cerrarModal('modal-cotizacion')">×</button>
+      <h3 class="modal-title">Nueva Cotización</h3>
+      <button class="btn btn-icon" onclick="UI.cerrarModal('modal-cotizacion')">&times;</button>
     </div>
-    <form id="form-cotizacion">
-      <div class="form-group">
-        <label class="form-label">Proveedor *</label>
-        <select id="cot-proveedor" class="form-control" required></select>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-group">
-          <label class="form-label">Monto total *</label>
-          <input type="number" id="cot-monto" class="form-control" min="0" step="0.01" required>
+    <div class="modal-body">
+      <form id="form-cotizacion">
+        <input type="hidden" id="cot_req_id" value="">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Proveedor</label>
+            <select id="cot_proveedor_id" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label>Fecha de Envío al Proveedor</label>
+            <input type="date" id="cot_fecha_envio" class="form-control" required>
+          </div>
         </div>
+
         <div class="form-group">
-          <label class="form-label">Moneda</label>
-          <select id="cot-moneda" class="form-control">
-            <option value="MXN">MXN</option>
-            <option value="USD">USD</option>
+          <label>Moneda</label>
+          <select id="cot_moneda" class="form-control">
+            <option value="MXN">MXN - Peso Mexicano</option>
+            <option value="USD">USD - Dólar Americano</option>
           </select>
         </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Fecha de envío</label>
-        <input type="date" id="cot-fecha" class="form-control">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Notas</label>
-        <textarea id="cot-notas" class="form-control" rows="2"></textarea>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-cotizacion')">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Guardar cotización</button>
-      </div>
-    </form>
+
+        <div id="cotizacion-tipo-simple" class="tipo-cotizacion">
+          <div class="form-group">
+            <label>Monto Total</label>
+            <input type="number" id="cot_monto_total" class="form-control" step="0.01" required>
+          </div>
+        </div>
+
+        <div id="cotizacion-tipo-items" class="tipo-cotizacion" style="display:none;">
+          <label>Conceptos / Items</label>
+          <button type="button" class="btn btn-sm btn-outline mb-2" onclick="agregarItemCotizacion()">+ Agregar Concepto</button>
+          <table class="table table-sm" id="tabla-items-cot">
+            <thead>
+              <tr>
+                <th>Descripción</th>
+                <th>Cantidad</th>
+                <th>Unidad</th>
+                <th>Precio Unit.</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea id="cot_notas" class="form-control" rows="3"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UI.cerrarModal('modal-cotizacion')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarCotizacion()">Guardar Cotización</button>
+    </div>
   </div>
 </div>
 
@@ -588,6 +615,176 @@ async function seleccionarCotizacion(cotizacionId, requerimientoId) {
   } catch (err) {
     Toast.error(err.mensaje || 'Error al seleccionar la cotización');
   }
+}
+
+// ── MODAL Y LÓGICA DE NUEVA COTIZACIÓN (MEJORADO) ─────────────────────────────
+
+let itemsCotizacionActual = [];
+
+// Cargar proveedores en el modal
+async function cargarProveedoresEnModal() {
+  try {
+    const proveedores = await Api.get('/proveedores');
+    const select = document.getElementById('cot_proveedor_id');
+    select.innerHTML = '<option value="">Selecciona proveedor...</option>';
+    
+    proveedores.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nombre;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('Error cargando proveedores:', e);
+  }
+}
+
+// Mostrar/Ocultar modo según tipo de requerimiento
+function configurarModalSegunTipo(requerimiento) {
+  const tipo = requerimiento.tipo || 'PARTES';
+  const simpleDiv = document.getElementById('cotizacion-tipo-simple');
+  const itemsDiv = document.getElementById('cotizacion-tipo-items');
+
+  // Por defecto mostrar modo simple
+  simpleDiv.style.display = 'block';
+  itemsDiv.style.display = 'none';
+
+  // Si es PARTES o SERVICIOS → permitir modo items
+  if (tipo === 'PARTES' || tipo === 'SERVICIOS') {
+    itemsDiv.style.display = 'block';
+    simpleDiv.style.display = 'none';
+  }
+}
+
+// Agregar nuevo item a la tabla
+function agregarItemCotizacion() {
+  const tbody = document.querySelector('#tabla-items-cot tbody');
+  const row = document.createElement('tr');
+  
+  row.innerHTML = `
+    <td><input type="text" class="form-control item-desc" placeholder="Descripción del concepto"></td>
+    <td><input type="number" class="form-control item-cant" value="1" min="1" style="width:80px"></td>
+    <td>
+      <select class="form-control item-unidad" style="width:100px">
+        <option value="pieza">pieza</option>
+        <option value="kg">kg</option>
+        <option value="hora">hora</option>
+        <option value="servicio">servicio</option>
+        <option value="lote">lote</option>
+      </select>
+    </td>
+    <td><input type="number" class="form-control item-precio" step="0.01" placeholder="0.00"></td>
+    <td class="item-subtotal text-end fw-600">0.00</td>
+    <td><button class="btn btn-sm btn-danger" onclick="this.closest('tr').remove(); calcularTotalItems()">Eliminar</button></td>
+  `;
+
+  tbody.appendChild(row);
+
+  // Agregar listeners para recalcular subtotal
+  const inputs = row.querySelectorAll('input');
+  inputs.forEach(input => {
+    input.addEventListener('input', calcularTotalItems);
+  });
+}
+
+// Calcular subtotales y total general
+function calcularTotalItems() {
+  let total = 0;
+  document.querySelectorAll('#tabla-items-cot tbody tr').forEach(row => {
+    const cant = parseFloat(row.querySelector('.item-cant').value) || 0;
+    const precio = parseFloat(row.querySelector('.item-precio').value) || 0;
+    const subtotal = cant * precio;
+    
+    row.querySelector('.item-subtotal').textContent = subtotal.toFixed(2);
+    total += subtotal;
+  });
+  
+  // Aquí podrías actualizar un campo de total general si lo agregas
+  return total;
+}
+
+// Guardar cotización
+async function guardarCotizacion() {
+  const reqId = document.getElementById('cot_req_id').value;
+  if (!reqId) return Toast.error('No se encontró el requerimiento');
+
+  const proveedor_id = document.getElementById('cot_proveedor_id').value;
+  const fecha_envio = document.getElementById('cot_fecha_envio').value;
+  const moneda = document.getElementById('cot_moneda').value;
+  const notas = document.getElementById('cot_notas').value;
+
+  if (!proveedor_id || !fecha_envio) {
+    return Toast.error('Proveedor y Fecha de Envío son obligatorios');
+  }
+
+  try {
+    let datos = {
+      requerimiento_id: parseInt(reqId),
+      proveedor_id: parseInt(proveedor_id),
+      moneda,
+      fecha_envio,
+      notas
+    };
+
+    // Recolectar items si están visibles
+    const items = [];
+    const rows = document.querySelectorAll('#tabla-items-cot tbody tr');
+    
+    if (rows.length > 0) {
+      rows.forEach(row => {
+        const descripcion = row.querySelector('.item-desc').value.trim();
+        if (!descripcion) return;
+        
+        items.push({
+          descripcion,
+          cantidad: parseFloat(row.querySelector('.item-cant').value) || 1,
+          unidad: row.querySelector('.item-unidad').value,
+          precio_unitario: parseFloat(row.querySelector('.item-precio').value) || 0
+        });
+      });
+
+      // Calcular total desde items
+      datos.monto_subtotal = items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
+      datos.monto_total = datos.monto_subtotal; // Puedes agregar IVA después
+    } else {
+      // Modo simple
+      datos.monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
+      datos.monto_subtotal = datos.monto_total;
+    }
+
+    if (datos.monto_total <= 0) {
+      return Toast.error('Debe ingresar al menos un monto válido');
+    }
+
+    const response = await Api.post('/cotizaciones', datos);
+
+    if (response.success) {
+      Toast.success('Cotización guardada correctamente');
+      UI.cerrarModal('modal-cotizacion');
+      cargarCotizaciones(requerimientoActual.id); // Recargar lista
+    }
+  } catch (err) {
+    console.error(err);
+    Toast.error('Error al guardar la cotización');
+  }
+}
+
+// Inicializar modal cuando se abre
+function prepararModalCotizacion(req) {
+  document.getElementById('cot_req_id').value = req.id;
+  document.getElementById('form-cotizacion').reset();
+  document.querySelector('#tabla-items-cot tbody').innerHTML = '';
+  itemsCotizacionActual = [];
+
+  cargarProveedoresEnModal();
+  configurarModalSegunTipo(req);
+}
+
+// Abrir modal (llamar desde el botón + Agregar)
+function abrirModalCotizacion() {
+  if (!requerimientoActual) return;
+  prepararModalCotizacion(requerimientoActual);
+  UI.abrirModal('modal-cotizacion');
 }
 
 // Observar apertura del modal de cotización con MutationObserver

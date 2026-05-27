@@ -59,7 +59,17 @@ export const crearCotizacion = async (req, res) => {
       });
     }
 
-    const id = await Cotizacion.crear(datos);
+    const id = await Cotizacion.crear({
+      requerimiento_id,
+      proveedor_id,
+      monto_total: monto_total || monto_subtotal || 0,
+      monto_subtotal: monto_subtotal || 0,
+      iva: iva || 0,
+      moneda: moneda || 'MXN',
+      archivo_url,
+      fecha_envio,
+      notas
+    }, items || []);
 
     // Registrar en historial
     await registrarHistorial({
