@@ -66,11 +66,13 @@ async function obtenerPorId(id) {
     `SELECT oc.*,
        r.consecutivo, r.tipo, r.descripcion, r.requiere_cotizacion, r.solicitante_id,
        u.nombre  AS autorizado_por_nombre,
+       s.nombre  AS solicitante_nombre,
        p.nombre  AS proveedor_nombre,
        c.monto_total, c.moneda, c.archivo_url
      FROM ordenes_compra oc
      JOIN requerimientos r ON r.id = oc.requerimiento_id
      JOIN usuarios u       ON u.id = oc.autorizado_por
+     LEFT JOIN usuarios s  ON s.id = r.solicitante_id
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
      LEFT JOIN proveedores  p ON p.id = c.proveedor_id
      WHERE oc.id = ?`,

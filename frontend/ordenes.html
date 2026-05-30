@@ -249,6 +249,8 @@ function renderDetalle(oc) {
             <a href="requerimientos.html?id=${oc.requerimiento_id}"
                style="color:var(--primary)">${oc.consecutivo}</a>
           </td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Solicitante</td>
+          <td><strong>${oc.solicitante_nombre || '—'}</strong></td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${oc.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
@@ -444,7 +446,8 @@ function renderResumenAvance(recepciones) {
     </div>
 
     <div style="margin-top:6px; font-size:11px; color:#64748b;">
-      Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong>
+      Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong><br>
+      Responsable de confirmar: <strong>${ocActual.solicitante_nombre || '—'}</strong>
     </div>
   `;
 }
