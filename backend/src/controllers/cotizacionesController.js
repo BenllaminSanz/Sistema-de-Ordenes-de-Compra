@@ -49,36 +49,33 @@ export const obtenerCotizacion = async (req, res) => {
 // Crear nueva cotización
 export const crearCotizacion = async (req, res) => {
   try {
-    const datos = req.body;
-    
-    // Validaciones básicas
-    if (!datos.requerimiento_id || !datos.proveedor_id || !datos.monto_total) {
-      return res.status(400).json({
-        success: false,
-        message: 'Faltan datos obligatorios (requerimiento_id, proveedor_id, monto_total)'
-      });
+    const { requerimiento_id, proveedor_id, monto_total, monto_subtotal, iva, moneda, 
+            archivo_url, fecha_envio, notas, items } = req.body;
+
+    if (!requerimiento_id || !proveedor_id) {
+      return res.status(400).json({ mensaje: 'requerimiento_id y proveedor_id son obligatorios' });
     }
 
     const id = await Cotizacion.crear({
-      requerimiento_id,
-      proveedor_id,
-      monto_total: monto_total || monto_subtotal || 0,
+      requerimiento_id: parseInt(requerimiento_id),
+      proveedor_id: parseInt(proveedor_id),
+      monto_total: monto_total || 0,
       monto_subtotal: monto_subtotal || 0,
       iva: iva || 0,
       moneda: moneda || 'MXN',
-      archivo_url,
-      fecha_envio,
-      notas
+      archivo_url: archivo_url || null,
+      fecha_envio: fecha_envio || null,
+      notas: notas || null
     }, items || []);
 
-    // Registrar en historial
+    // Registrar historial (opcional)
     await registrarHistorial({
       entidad_tipo: 'cotizacion',
       entidad_id: id,
       estado_anterior: null,
       estado_nuevo: 'enviada',
-      cambiado_por: req.usuario?.id || 1, // Ajustar según tu middleware de auth
-      notas: 'Cotización creada'
+      cambiado_por: req.usuario?.id || 1,
+      notas: 'Cotización creada desde el sistema'
     });
 
     res.status(201).json({
@@ -86,11 +83,12 @@ export const crearCotizacion = async (req, res) => {
       message: 'Cotización creada exitosamente',
       id
     });
+
   } catch (error) {
-    console.error('Error al crear cotización:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al crear la cotización'
+    console.error('[crearCotizacion] Error:', error);
+    res.status(500).json({ 
+      mensaje: 'Error al crear la cotización',
+      error: error.message 
     });
   }
 };
