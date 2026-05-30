@@ -1,11 +1,32 @@
 import * as Cotizacion from '../models/cotizaciones.js';
 import { registrarHistorial } from '../models/historialEstados.js';
+import { enviarSolicitudDeCotizacion } from '../utils/emailService.js';
+
+// Valida que la fecha de envío no sea mayor al día actual
+function validarFechaEnvioNoFutura(fechaEnvio) {
+  if (!fechaEnvio) return { valido: true };
+  
+  const fecha = new Date(fechaEnvio);
+  // Normalizar a medianoche local para comparar solo fechas
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  fecha.setHours(0, 0, 0, 0);
+
+  if (fecha > hoy) {
+    return { 
+      valido: false, 
+      mensaje: 'La fecha de envío no puede ser mayor al día actual' 
+    };
+  }
+  return { valido: true };
+}
 
 // Listar cotizaciones de un requerimiento
 export const listarCotizaciones = async (req, res) => {
   try {
     const { requerimiento_id } = req.params;
-    const cotizaciones = await Cotizacion.listarPorRequerimiento(requerimiento_id);
+    // Incluimos items para poder mostrar desglose en la interfaz
+    const cotizaciones = await Cotizacion.listarPorRequerimiento(requerimiento_id, true);
     
     res.json({
       success: true,
@@ -56,6 +77,15 @@ export const crearCotizacion = async (req, res) => {
       return res.status(400).json({ mensaje: 'requerimiento_id y proveedor_id son obligatorios' });
     }
 
+    // Validación: fecha de envío no puede ser futura
+    const validacionFecha = validarFechaEnvioNoFutura(fecha_envio);
+    if (!validacionFecha.valido) {
+      return res.status(400).json({ 
+        success: false, 
+        mensaje: validacionFecha.mensaje 
+      });
+    }
+
     const id = await Cotizacion.crear({
       requerimiento_id: parseInt(requerimiento_id),
       proveedor_id: parseInt(proveedor_id),
@@ -76,6 +106,15 @@ export const crearCotizacion = async (req, res) => {
       estado_nuevo: 'enviada',
       cambiado_por: req.usuario?.id || 1,
       notas: 'Cotización creada desde el sistema'
+    });
+
+    // Enviar correo automático al proveedor solicitando la cotización (no bloquea la respuesta)
+    enviarSolicitudDeCotizacion(id).then(result => {
+      if (result.success) {
+        console.log(`[Email] Solicitud de cotización enviada al proveedor (cotización #${id})`);
+      }
+    }).catch(err => {
+      console.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
     });
 
     res.status(201).json({
@@ -99,7 +138,18 @@ export const actualizarCotizacion = async (req, res) => {
     const { id } = req.params;
     const datos = req.body;
 
-    const affected = await Cotizacion.actualizar(id, datos);
+    // Validación: fecha de envío no puede ser futura
+    if (datos.fecha_envio !== undefined) {
+      const validacionFecha = validarFechaEnvioNoFutura(datos.fecha_envio);
+      if (!validacionFecha.valido) {
+        return res.status(400).json({ 
+          success: false, 
+          mensaje: validacionFecha.mensaje 
+        });
+      }
+    }
+
+    const affected = await Cotizacion.actualizar(id, datos, datos.items || null);
 
     if (affected === 0) {
       return res.status(400).json({

@@ -7,54 +7,76 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Esto sube dos niveles desde src/config hasta la raíz del backend para buscar el .env
+// Sube dos niveles desde src/config hasta la raíz del backend
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
-// DEBUG: Mira tu consola del servidor (la terminal de Node)
-console.log("--- Verificación de Credenciales ---");
-console.log("Correo:", process.env.EMAIL_USER || "NO ENCONTRADO");
-console.log("Password:", process.env.EMAIL_PASS ? "Configurado (***)" : "NO ENCONTRADO");
-console.log("------------------------------------");
+// DEBUG en consola del servidor
+console.log("--- Configuración SMTP ---");
+console.log("EMAIL_HOST:", process.env.EMAIL_HOST || "smtp.office365.com (default)");
+console.log("EMAIL_USER:", process.env.EMAIL_USER || "NO ENCONTRADO");
+console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "******** (configurado)" : "NO ENCONTRADO");
+console.log("--------------------------");
 
+// Configuración flexible del transporter (soporta cualquier SMTP)
 const transporter = nodemailer.createTransport({
-    host: "smtp.office365.com",
-    port: 587,
-    secure: false,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    },
-    tls: {
-        ciphers: 'SSLv3',
-        rejectUnauthorized: false
-    }
+  host: process.env.EMAIL_HOST || "smtp.office365.com",
+  port: parseInt(process.env.EMAIL_PORT || "587", 10),
+  secure: process.env.EMAIL_SECURE === 'true',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  },
+  tls: {
+    ciphers: process.env.EMAIL_TLS_CIPHERS || 'SSLv3',
+    rejectUnauthorized: process.env.EMAIL_REJECT_UNAUTHORIZED !== 'false'
+  }
+});
+
+// Verificar conexión al iniciar (muy útil para diagnosticar)
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ Error de configuración SMTP:", error.message);
+  } else {
+    console.log("✅ Servidor SMTP listo para enviar correos.");
+  }
 });
 
 /**
- * Envía el correo de la cotización
+ * Función genérica para enviar cualquier correo
+ */
+export const enviarCorreo = async ({ to, subject, html, text }) => {
+  try {
+    const mailOptions = {
+      from: `"Sistema de Órdenes de Compra" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html,
+      text: text || undefined
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`📧 Correo enviado a ${to} | MessageId: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`❌ Error enviando correo a ${to}:`, error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Mantener compatibilidad con función anterior
  */
 export const enviarCorreoCotizacion = async (correoDestino, idCotizacion) => {
-    try {
-        const mailOptions = {
-            from: `"Sistema de Órdenes de Compra" <${process.env.EMAIL_USER}>`,
-            to: correoDestino,
-            subject: `Nueva Cotización Registrada - Folio #${idCotizacion}`,
-            html: `
-                <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
-                    <h2 style="color: #0078d4;">Notificación de Cotización</h2>
-                    <p>Se ha registrado la cotización <strong>#${idCotizacion}</strong>.</p>
-                    <p>Por favor, ingrese al sistema para su revisión.</p>
-                </div>
-            `
-        };
-
-        const info = await transporter.sendMail(mailOptions);
-        console.log('Correo enviado:', info.messageId);
-        return { success: true };
-    } catch (error) {
-        console.error("Error en el envío de correo:", error);
-        return { success: false, error };
-    }
+  return enviarCorreo({
+    to: correoDestino,
+    subject: `Nueva Cotización Registrada - Folio #${idCotizacion}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
+        <h2 style="color: #0078d4;">Notificación de Cotización</h2>
+        <p>Se ha registrado la cotización <strong>#${idCotizacion}</strong>.</p>
+      </div>
+    `
+  });
 };
 
 export default transporter;

@@ -1,7 +1,11 @@
 import express from 'express';
 import * as cotizacionesController from '../controllers/cotizacionesController.js';
+import { autenticar } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
+
+// Todas las rutas de cotizaciones requieren autenticación
+router.use(autenticar);
 
 // Rutas principales
 router.get('/:requerimiento_id', cotizacionesController.listarCotizaciones);

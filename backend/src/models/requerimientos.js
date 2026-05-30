@@ -114,7 +114,7 @@ async function crear(datos, solicitante_id) {
     const [result] = await conn.query(
       `INSERT INTO requerimientos
          (consecutivo, solicitante_id, titulo_solicitud,  area, departamento, tipo, descripcion, requiere_cotizacion, estado)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_revision')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'borrador')`,
       [
         consecutivo,
         solicitante_id,
@@ -133,7 +133,7 @@ async function crear(datos, solicitante_id) {
     await conn.query(
       `INSERT INTO historial_estados
          (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
-       VALUES ('requerimiento', ?, NULL, 'en_revision', ?, 'Requerimiento creado')`,
+       VALUES ('requerimiento', ?, NULL, 'borrador', ?, 'Requerimiento creado como borrador')`,
       [requerimientoId, solicitante_id]
     );
 

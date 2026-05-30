@@ -80,6 +80,17 @@ async function actualizar(req, res) {
   try {
     const { titulo_solicitud, area, departamento, tipo, descripcion, requiere_cotizacion, datatextnow_id } = req.body;
 
+    // Los solicitantes solo pueden editar sus propios requerimientos
+    if (req.usuario.rol === 'solicitante') {
+      const reqActual = await obtenerPorId(req.params.id);
+      if (!reqActual) {
+        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+      }
+      if (reqActual.solicitante_id !== req.usuario.id) {
+        return res.status(403).json({ mensaje: 'No puedes editar requerimientos de otros usuarios' });
+      }
+    }
+
     const afectados = await _actualizar(req.params.id, {
       titulo_solicitud: titulo_solicitud?.trim(),
       area,
@@ -111,6 +122,17 @@ async function cambiarEstado(req, res) {
 
     if (!estado) {
       return res.status(400).json({ mensaje: "El campo 'estado' es requerido" });
+    }
+
+    // Verificar ownership para solicitantes
+    if (req.usuario.rol === 'solicitante') {
+      const reqActual = await obtenerPorId(req.params.id);
+      if (!reqActual) {
+        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+      }
+      if (reqActual.solicitante_id !== req.usuario.id) {
+        return res.status(403).json({ mensaje: 'No puedes cambiar el estado de requerimientos de otros usuarios' });
+      }
     }
 
     await _cambiarEstado(
