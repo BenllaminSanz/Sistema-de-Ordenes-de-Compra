@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crear Cuenta — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card" style="max-width:420px;">
+    <div class="login-logo">
+      <svg width="44" height="44" fill="none" stroke="#185FA5" stroke-width="1.8"
+           viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+      <h1>Crear Cuenta</h1>
+      <p style="font-size:14px;">Regístrate como solicitante</p>
+    </div>
+
+    <!-- Formulario de registro -->
+    <form id="form-registro">
+      <div class="form-group">
+        <label class="form-label">Nombre completo *</label>
+        <input type="text" id="nombre" class="form-control" placeholder="Juan Pérez" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Correo electrónico *</label>
+        <input type="email" id="email" class="form-control" placeholder="tu@empresa.com" required autocomplete="email">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Contraseña *</label>
+        <input type="password" id="password" class="form-control" placeholder="Mínimo 8 caracteres" minlength="8" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Confirmar contraseña *</label>
+        <input type="password" id="password2" class="form-control" placeholder="Repite tu contraseña" minlength="8" required>
+      </div>
+
+      <div id="registro-error" style="display:none; color:#A32D2D; font-size:13px; background:#FCEBEB; border-radius:7px; padding:10px 14px; margin-bottom:14px;"></div>
+
+      <button type="submit" id="btn-registrar" class="btn btn-primary w-100" style="justify-content:center; padding:11px;">
+        Crear mi cuenta
+      </button>
+    </form>
+
+    <div style="text-align:center; margin-top:18px; font-size:13px;">
+      ¿Ya tienes cuenta? <a href="login.html" style="color:#185FA5; font-weight:500;">Inicia sesión</a>
+    </div>
+
+    <!-- Mensaje de éxito -->
+    <div id="registro-exito" style="display:none; text-align:center; padding:20px 10px;">
+      <div style="font-size:42px; margin-bottom:8px;">📧</div>
+      <h3 style="margin:0 0 8px; color:#166534;">¡Registro exitoso!</h3>
+      <p style="color:#475569; font-size:14px; line-height:1.5;">
+        Hemos enviado un correo de confirmación a <strong id="email-enviado"></strong>.<br>
+        Por favor revisa tu bandeja de entrada (y spam) y haz clic en el enlace para activar tu cuenta.
+      </p>
+      <a href="login.html" class="btn btn-outline btn-sm" style="margin-top:12px;">Volver al inicio de sesión</a>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/app.js"></script>
+<script>
+  // Si ya está logueado, redirigir
+  if (Auth.getToken()) window.location.href = 'dashboard.html';
+
+  const form = document.getElementById('form-registro');
+  const errorDiv = document.getElementById('registro-error');
+  const exitoDiv = document.getElementById('registro-exito');
+  const btn = document.getElementById('btn-registrar');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorDiv.style.display = 'none';
+
+    const password = document.getElementById('password').value;
+    const password2 = document.getElementById('password2').value;
+
+    if (password !== password2) {
+      errorDiv.textContent = 'Las contraseñas no coinciden';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    if (password.length < 8) {
+      errorDiv.textContent = 'La contraseña debe tener al menos 8 caracteres';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Creando cuenta...';
+
+    try {
+      const resp = await Api.post('/auth/registro-solicitante', {
+        nombre:  document.getElementById('nombre').value.trim(),
+        email:   document.getElementById('email').value.trim(),
+        password
+      });
+
+      // Mostrar pantalla de éxito
+      form.style.display = 'none';
+      document.getElementById('email-enviado').textContent = resp.email || document.getElementById('email').value;
+      exitoDiv.style.display = 'block';
+
+    } catch (err) {
+      errorDiv.textContent = err.mensaje || 'Error al crear la cuenta. Intenta nuevamente.';
+      errorDiv.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Crear mi cuenta';
+    }
+  });
+</script>
+</body>
+</html>

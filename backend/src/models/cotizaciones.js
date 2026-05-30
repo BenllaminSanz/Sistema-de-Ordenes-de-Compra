@@ -41,7 +41,9 @@ async function listarPorRequerimiento(requerimiento_id, incluirItems = true) {
 
 async function obtenerPorId(id) {
   const [[cot]] = await pool.query(`
-    SELECT c.*, p.nombre AS proveedor_nombre
+    SELECT c.*, 
+           p.nombre AS proveedor_nombre,
+           p.email  AS proveedor_email
     FROM cotizaciones c
     JOIN proveedores p ON p.id = c.proveedor_id
     WHERE c.id = ?`, [id]);
@@ -123,7 +125,7 @@ async function actualizar(id, datos, items = null) {
   try {
     await conn.beginTransaction();
 
-    // 1. Verificar que no esté seleccionada
+    // 1. Verificar si está seleccionada
     const [[verificacion]] = await conn.query(
       'SELECT seleccionada FROM cotizaciones WHERE id = ?',
       [id]
@@ -133,9 +135,21 @@ async function actualizar(id, datos, items = null) {
       await conn.rollback();
       return 0; // No existe
     }
-    if (verificacion.seleccionada === 1) {
+
+    // Campos que sí se pueden modificar aunque esté seleccionada
+    const camposPermitidosSeleccionada = ['archivo_url', 'notas'];
+
+    const estaSeleccionada = verificacion.seleccionada === 1;
+
+    // Determinar qué campos quiere actualizar el usuario
+    const camposSolicitados = Object.keys(datos || {});
+    const intentaActualizarCamposRestringidos = camposSolicitados.some(
+      c => !camposPermitidosSeleccionada.includes(c)
+    );
+
+    if (estaSeleccionada && intentaActualizarCamposRestringidos && !items) {
       await conn.rollback();
-      return 0; // No se puede editar si ya está seleccionada
+      return 0; // No se puede modificar montos/items una vez seleccionada
     }
 
     // 2. Actualizar campos del encabezado
@@ -220,6 +234,39 @@ async function seleccionar(id, requerimiento_id) {
   }
 }
 
+/**
+ * Deseleccionar una cotización previamente seleccionada.
+ * Permite revertir la selección (con confirmación en frontend).
+ */
+async function deseleccionar(id, requerimiento_id) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Desmarcar esta cotización específica
+    const [result] = await conn.query(`
+      UPDATE cotizaciones 
+      SET seleccionada = 0, 
+          estado = 'enviada',
+          fecha_seleccion = NULL
+      WHERE id = ? AND requerimiento_id = ? AND seleccionada = 1
+    `, [id, requerimiento_id]);
+
+    if (result.affectedRows === 0) {
+      await conn.rollback();
+      return false; // No estaba seleccionada o no existe
+    }
+
+    await conn.commit();
+    return true;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 async function eliminar(id) {
   const [r] = await pool.query(
     'DELETE FROM cotizaciones WHERE id = ? AND seleccionada = 0',
@@ -234,5 +281,6 @@ export {
   crear, 
   actualizar, 
   seleccionar, 
+  deseleccionar,
   eliminar 
 };

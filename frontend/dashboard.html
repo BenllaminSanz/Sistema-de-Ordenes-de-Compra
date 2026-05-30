@@ -17,7 +17,7 @@
       <div class="metrics-grid" id="metrics"></div>
 
       <div class="card">
-        <div class="card-title">
+        <div class="card-title" id="titulo-oc">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
                viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
           Órdenes de compra recientes
@@ -26,7 +26,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">
+        <div class="card-title" id="titulo-req">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
                viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0
                002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
@@ -74,10 +74,20 @@ async function cargarMetricas() {
 
 async function cargarOCRecientes() {
   const contenedor = document.getElementById('tabla-oc');
+  const tituloOC = document.getElementById('titulo-oc');
+  const tituloReq = document.getElementById('titulo-req');
+
+  // Personalizar títulos para solicitantes
+  const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
+  if (esSolicitante) {
+    if (tituloOC) tituloOC.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg> Mis órdenes de compra recientes`;
+    if (tituloReq) tituloReq.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg> Mis requerimientos`;
+  }
+
   UI.spinner(contenedor);
   try {
     const { datos } = await Api.get('/ordenes-compra?limite=8');
-    if (!datos.length) { UI.empty(contenedor, 'Sin órdenes de compra aún'); return; }
+    if (!datos.length) { UI.empty(contenedor, esSolicitante ? 'Aún no tienes órdenes de compra' : 'Sin órdenes de compra aún'); return; }
     contenedor.innerHTML = `
       <div class="table-wrap">
         <table>
@@ -103,10 +113,15 @@ async function cargarOCRecientes() {
 
 async function cargarReqPendientes() {
   const contenedor = document.getElementById('tabla-req');
+  const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
+
   UI.spinner(contenedor);
   try {
     const { datos } = await Api.get('/requerimientos?estado=en_revision&limite=8');
-    if (!datos.length) { UI.empty(contenedor, 'Sin requerimientos pendientes'); return; }
+    if (!datos.length) { 
+      UI.empty(contenedor, esSolicitante ? 'No tienes requerimientos pendientes' : 'Sin requerimientos pendientes'); 
+      return; 
+    }
     contenedor.innerHTML = `
       <div class="table-wrap">
         <table>

@@ -7,7 +7,7 @@ router.use(autenticar);
 
 router.get('/',                                                       listar);
 router.get('/:id',                                                    obtener);
-router.post('/',   autorizar('gerente','admin'),                      crear);
+router.post('/',   autorizar('contabilidad','gerente','admin'),       crear);
 router.patch('/:id/estado', autorizar('contabilidad','gerente','admin'), cambiarEstado);
 router.patch('/:id/datatextnow', autorizar('contabilidad','admin'),   actualizarDatatextnow);
 

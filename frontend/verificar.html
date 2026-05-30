@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificar Cuenta — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card" style="max-width:420px; text-align:center;">
+    <div id="verifying">
+      <div style="font-size:48px; margin-bottom:12px;">⏳</div>
+      <h2 style="margin:0 0 8px;">Verificando tu cuenta...</h2>
+      <p style="color:#64748b;">Por favor espera un momento.</p>
+    </div>
+
+    <div id="success" style="display:none;">
+      <div style="font-size:52px; margin-bottom:8px;">✅</div>
+      <h2 style="color:#166534; margin:0 0 12px;">¡Cuenta verificada!</h2>
+      <p style="color:#475569; margin-bottom:24px;">
+        Tu correo ha sido confirmado exitosamente.<br>
+        Ahora puedes iniciar sesión.
+      </p>
+      <a href="login.html" class="btn btn-primary w-100" style="justify-content:center;">
+        Ir a Iniciar Sesión
+      </a>
+    </div>
+
+    <div id="error" style="display:none;">
+      <div style="font-size:52px; margin-bottom:8px;">❌</div>
+      <h2 style="color:#A32D2D; margin:0 0 12px;">Error de verificación</h2>
+      <p id="error-msg" style="color:#475569; margin-bottom:24px;"></p>
+      <a href="register.html" class="btn btn-outline">Volver a registrarme</a>
+      <br><br>
+      <a href="login.html" style="color:#185FA5; font-size:13px;">Ir al inicio de sesión</a>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  async function verificar() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+
+    const verifying = document.getElementById('verifying');
+    const success = document.getElementById('success');
+    const error = document.getElementById('error');
+    const errorMsg = document.getElementById('error-msg');
+
+    if (!token) {
+      verifying.style.display = 'none';
+      error.style.display = 'block';
+      errorMsg.textContent = 'No se proporcionó un token de verificación.';
+      return;
+    }
+
+    try {
+      const resp = await Api.get(`/auth/verificar-email?token=${encodeURIComponent(token)}`);
+      
+      verifying.style.display = 'none';
+      success.style.display = 'block';
+    } catch (err) {
+      verifying.style.display = 'none';
+      error.style.display = 'block';
+      errorMsg.textContent = err.mensaje || 'El enlace es inválido o ha expirado.';
+    }
+  }
+
+  verificar();
+</script>
+</body>
+</html>

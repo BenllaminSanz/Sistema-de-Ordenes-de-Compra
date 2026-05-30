@@ -54,6 +54,10 @@
                 <button class="btn btn-sm btn-outline" id="btn-nueva-recepcion"
                         onclick="UI.abrirModal('modal-recepcion')">+ Registrar recepción</button>
               </div>
+
+              <!-- Nuevo: Resumen de Avance para Cierre -->
+              <div id="resumen-avance-oc" style="margin-bottom:16px; padding:12px 14px; background:#f1f5f9; border-radius:6px; font-size:13px; border-left:4px solid #185FA5;"></div>
+
               <div id="lista-recepciones"></div>
             </div>
           </div>
@@ -214,6 +218,22 @@ function volverLista() {
   history.replaceState(null, '', window.location.pathname);
 }
 
+// Editar DataTextNow de la OC principal
+async function editarDataTextNowOC(ocId, valorActual) {
+  const nuevo = prompt('Ingresa el nuevo ID de DataTextNow:', valorActual || '');
+  if (nuevo === null) return;
+
+  try {
+    await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, {
+      datatextnow_id: nuevo.trim() || null
+    });
+    Toast.success('DataTextNow actualizado');
+    abrirDetalle(ocId); // recargar detalle
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al actualizar DataTextNow');
+  }
+}
+
 function renderDetalle(oc) {
   document.getElementById('detalle-titulo').textContent = oc.numero_oc;
 
@@ -242,7 +262,19 @@ function renderDetalle(oc) {
       <tr><td style="padding:6px 0;color:#6b7280">Fecha autorización</td>
           <td>${UI.fecha(oc.fecha_autorizacion)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">DataTextNow</td>
-          <td>${oc.datatextnow_id || '—'}</td></tr>
+          <td>
+            ${oc.datatextnow_id || '—'}
+            ${Auth.puedeHacer(['contabilidad','admin']) 
+              ? `<button onclick="editarDataTextNowOC(${oc.id}, '${oc.datatextnow_id || ''}')" 
+                         class="btn btn-sm btn-outline" style="margin-left:8px;padding:2px 6px;font-size:11px">✏️ Editar</button>` 
+              : ''}
+          </td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">PDF de Cotización</td>
+          <td>
+            ${oc.archivo_url 
+              ? `<a href="${oc.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 Ver PDF</a>` 
+              : '<span class="text-muted">—</span>'}
+          </td></tr>
     </table>
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
       <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Descripción del requerimiento</div>
@@ -332,31 +364,89 @@ function prepararCambioEstado(estado, label) {
 // ── Recepciones ───────────────────────────────────────────────
 async function cargarRecepciones(ocId) {
   const contenedor = document.getElementById('lista-recepciones');
+  let recs = [];
+
   try {
-    const recs = await Api.get(`/ordenes-compra/${ocId}/recepciones`);
+    recs = await Api.get(`/ordenes-compra/${ocId}/recepciones`);
+
     if (!recs.length) {
       contenedor.innerHTML = '<p class="text-muted text-sm">Sin recepciones registradas</p>';
-      return;
+    } else {
+      contenedor.innerHTML = recs.map(r => `
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px">
+          <div class="d-flex align-center justify-between">
+            ${UI.badge(r.estado)}
+            <span class="text-sm text-muted">${UI.fecha(r.fecha_recepcion)}</span>
+          </div>
+          <div style="margin-top:6px;font-size:13px;color:#6b7280">
+            Recibido por: ${r.recibido_por_nombre}
+            ${r.datatextnow_id ? ' · DTN: ' + r.datatextnow_id : ''}
+          </div>
+          ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
+          ${r.estado !== 'entregado_solicitante' && 
+            (Auth.puedeHacer(['contabilidad','admin','gerente']) || 
+             (Auth.getUsuario()?.id === ocActual?.solicitante_id))
+            ? `<button class="btn btn-sm btn-outline mt-2"
+                       onclick="marcarEntregado(${r.id})">
+                ${Auth.getUsuario()?.rol === 'solicitante' ? 'Confirmar que recibí' : 'Marcar entregado al solicitante'}
+              </button>`
+            : ''}
+        </div>`).join('');
     }
-    contenedor.innerHTML = recs.map(r => `
-      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px">
-        <div class="d-flex align-center justify-between">
-          ${UI.badge(r.estado)}
-          <span class="text-sm text-muted">${UI.fecha(r.fecha_recepcion)}</span>
-        </div>
-        <div style="margin-top:6px;font-size:13px;color:#6b7280">
-          Recibido por: ${r.recibido_por_nombre}
-          ${r.datatextnow_id ? ' · DTN: ' + r.datatextnow_id : ''}
-        </div>
-        ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
-        ${r.estado !== 'entregado_solicitante' && Auth.puedeHacer(['contabilidad','admin'])
-          ? `<button class="btn btn-sm btn-outline mt-2"
-                     onclick="marcarEntregado(${r.id})">Marcar entregado al solicitante</button>`
-          : ''}
-      </div>`).join('');
   } catch {
     contenedor.innerHTML = '<p class="text-muted text-sm">Error al cargar recepciones</p>';
   }
+
+  // Siempre renderizar el resumen (incluso si no hay recepciones)
+  renderResumenAvance(recs);
+}
+
+// ── Resumen de Avance para Cierre de OC ───────────────────────
+function renderResumenAvance(recepciones) {
+  const contenedor = document.getElementById('resumen-avance-oc');
+  if (!contenedor || !ocActual) return;
+
+  const total = recepciones.length;
+  if (total === 0) {
+    contenedor.innerHTML = `
+      <div style="font-weight:600; margin-bottom:4px;">Avance para cierre</div>
+      <div style="color:#64748b;">Aún no hay recepciones registradas.</div>
+    `;
+    return;
+  }
+
+  const confirmadas = recepciones.filter(r => r.estado === 'entregado_solicitante').length;
+  const porcentaje = Math.round((confirmadas / total) * 100);
+
+  let mensaje = '';
+  let color = '#166534';
+
+  if (confirmadas === total) {
+    mensaje = '✅ Todas las recepciones han sido confirmadas por el solicitante. La OC puede cerrarse.';
+    color = '#166534';
+  } else {
+    mensaje = `Faltan <strong>${total - confirmadas}</strong> confirmación(es) del solicitante para poder cerrar la OC.`;
+    color = '#854d0e';
+  }
+
+  contenedor.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <div style="font-weight:600;">Avance de confirmación por el solicitante</div>
+      <div style="font-weight:700; color:#185FA5;">${confirmadas} / ${total}</div>
+    </div>
+
+    <div style="background:#e2e8f0; height:10px; border-radius:5px; overflow:hidden; margin-bottom:8px;">
+      <div style="width:${porcentaje}%; height:100%; background:${color}; transition: width 0.4s ease;"></div>
+    </div>
+
+    <div style="font-size:12.5px; color:#475569;">
+      ${mensaje}
+    </div>
+
+    <div style="margin-top:6px; font-size:11px; color:#64748b;">
+      Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong>
+    </div>
+  `;
 }
 
 async function marcarEntregado(recId) {

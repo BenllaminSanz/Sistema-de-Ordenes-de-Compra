@@ -2,7 +2,16 @@ import { listar as _listar, obtenerPorId, crear as _crear, cambiarEstado as _cam
 
 async function listar(req, res) {
   try {
-    res.json(await _listar(req.query));
+    const filtros = { ...req.query };
+
+    // Los solicitantes solo pueden ver sus propias órdenes de compra
+    if (req.usuario.rol === 'solicitante') {
+      filtros.solicitante_id = req.usuario.id;
+      // Evitar que intenten filtrar por otro solicitante
+      delete filtros.solicitante_id_from_query; // por si acaso
+    }
+
+    res.json(await _listar(filtros));
   } catch (err) {
     console.error('[listar OC]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -13,6 +22,12 @@ async function obtener(req, res) {
   try {
     const oc = await obtenerPorId(req.params.id);
     if (!oc) return res.status(404).json({ mensaje: 'Orden de compra no encontrada' });
+
+    // Los solicitantes solo pueden ver sus propias OCs
+    if (req.usuario.rol === 'solicitante' && oc.solicitante_id !== req.usuario.id) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para ver esta orden de compra' });
+    }
+
     res.json(oc);
   } catch (err) {
     console.error('[obtener OC]', err);

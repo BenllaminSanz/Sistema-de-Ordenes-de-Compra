@@ -14,9 +14,22 @@ async function generarNumeroOC(conn) {
 }
 
 async function listar(filtros = {}) {
-  const { estado, pagina = 1, limite = 20 } = filtros;
-  const where  = estado ? 'WHERE oc.estado = ?' : '';
-  const params = estado ? [estado] : [];
+  const { estado, solicitante_id, pagina = 1, limite = 20 } = filtros;
+
+  let where = [];
+  let params = [];
+
+  if (estado) {
+    where.push('oc.estado = ?');
+    params.push(estado);
+  }
+
+  if (solicitante_id) {
+    where.push('r.solicitante_id = ?');
+    params.push(solicitante_id);
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const offset = (pagina - 1) * limite;
 
   const [rows] = await pool.query(
@@ -24,7 +37,7 @@ async function listar(filtros = {}) {
        oc.id, oc.numero_oc, oc.estado,
        oc.fecha_autorizacion, oc.datatextnow_id,
        oc.created_at,
-       r.consecutivo, r.tipo, r.descripcion,
+       r.consecutivo, r.tipo, r.descripcion, r.solicitante_id,
        u.nombre AS autorizado_por_nombre,
        p.nombre AS proveedor_nombre
      FROM ordenes_compra oc
@@ -32,14 +45,17 @@ async function listar(filtros = {}) {
      JOIN usuarios u       ON u.id = oc.autorizado_por
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
      LEFT JOIN proveedores  p ON p.id = c.proveedor_id
-     ${where}
+     ${whereClause}
      ORDER BY oc.created_at DESC
      LIMIT ? OFFSET ?`,
     [...params, Number(limite), Number(offset)]
   );
 
   const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total FROM ordenes_compra oc ${where}`, params
+    `SELECT COUNT(*) AS total 
+     FROM ordenes_compra oc
+     JOIN requerimientos r ON r.id = oc.requerimiento_id
+     ${whereClause}`, params
   );
 
   return { datos: rows, total, pagina: Number(pagina), limite: Number(limite) };
@@ -48,7 +64,7 @@ async function listar(filtros = {}) {
 async function obtenerPorId(id) {
   const [[oc]] = await pool.query(
     `SELECT oc.*,
-       r.consecutivo, r.tipo, r.descripcion, r.requiere_cotizacion,
+       r.consecutivo, r.tipo, r.descripcion, r.requiere_cotizacion, r.solicitante_id,
        u.nombre  AS autorizado_por_nombre,
        p.nombre  AS proveedor_nombre,
        c.monto_total, c.moneda, c.archivo_url

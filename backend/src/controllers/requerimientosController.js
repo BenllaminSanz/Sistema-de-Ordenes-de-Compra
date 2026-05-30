@@ -1,4 +1,5 @@
 import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar } from '../models/requerimientos.js';
+import * as CotizacionModel from '../models/cotizaciones.js';
 
 // ─── GET /requerimientos ──────────────────────────────────────────────────────
 async function listar(req, res) {
@@ -132,6 +133,33 @@ async function cambiarEstado(req, res) {
       }
       if (reqActual.solicitante_id !== req.usuario.id) {
         return res.status(403).json({ mensaje: 'No puedes cambiar el estado de requerimientos de otros usuarios' });
+      }
+    }
+
+    // === VALIDACIÓN PARA APROBAR REQUERIMIENTOS QUE NECESITAN COTIZACIÓN ===
+    if (estado === 'aprobado') {
+      const reqActual = await obtenerPorId(req.params.id);
+      if (!reqActual) {
+        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+      }
+
+      if (reqActual.requiere_cotizacion) {
+        const cotizaciones = await CotizacionModel.listarPorRequerimiento(req.params.id);
+        const seleccionada = cotizaciones.find(c => 
+          c.seleccionada === 1 || c.estado === 'seleccionada'
+        );
+
+        if (!seleccionada) {
+          return res.status(400).json({ 
+            mensaje: 'Este requerimiento requiere cotización. Debes seleccionar una cotización ganadora antes de aprobar.' 
+          });
+        }
+
+        if (!seleccionada.archivo_url || !seleccionada.archivo_url.trim()) {
+          return res.status(400).json({ 
+            mensaje: 'Debes adjuntar el PDF de la cotización seleccionada antes de aprobar el requerimiento.' 
+          });
+        }
       }
     }
 

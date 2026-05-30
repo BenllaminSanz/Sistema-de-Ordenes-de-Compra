@@ -256,6 +256,64 @@
   </div>
 </div>
 
+<!-- ── Modal: Adjuntar PDF a Cotización ───────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-adjuntar-pdf" style="display: none;">
+  <div class="modal-box" style="max-width: 480px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Adjuntar PDF a la Cotización</h3>
+      <button class="modal-close" onclick="cerrarModalAdjuntarPdf()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Tabs -->
+      <div style="display:flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 16px;">
+        <button id="tab-subir" onclick="cambiarTabPdf('subir')" 
+                class="pdf-tab active" style="flex:1; padding:10px; border:none; background:none; font-weight:600; cursor:pointer; border-bottom: 3px solid #185FA5;">
+          📤 Subir Archivo
+        </button>
+        <button id="tab-url" onclick="cambiarTabPdf('url')" 
+                class="pdf-tab" style="flex:1; padding:10px; border:none; background:none; font-weight:600; cursor:pointer;">
+          🔗 Pegar URL
+        </button>
+      </div>
+
+      <!-- Sección Subir Archivo -->
+      <div id="seccion-subir">
+        <div class="form-group">
+          <label class="form-label">Selecciona el archivo PDF</label>
+          <input type="file" id="pdf-file-input" accept=".pdf" class="form-control">
+          <small class="text-muted">Máximo 10 MB. Solo archivos .pdf</small>
+        </div>
+        <div id="pdf-upload-progress" style="display:none; margin-top:8px;">
+          <div style="background:#e5e7eb; height:6px; border-radius:3px; overflow:hidden;">
+            <div id="pdf-progress-bar" style="width:0%; height:100%; background:#185FA5; transition: width 0.3s;"></div>
+          </div>
+          <small id="pdf-progress-text" class="text-muted">Subiendo...</small>
+        </div>
+      </div>
+
+      <!-- Sección Pegar URL -->
+      <div id="seccion-url" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">URL del PDF</label>
+          <input type="text" id="pdf-url-input" class="form-control" 
+                 placeholder="https://drive.google.com/file/d/... o enlace directo">
+          <small class="text-muted">Pega el enlace público del PDF</small>
+        </div>
+      </div>
+
+      <div id="pdf-error" style="display:none; color:#A32D2D; font-size:13px; background:#FCEBEB; padding:8px 12px; border-radius:6px; margin-top:8px;"></div>
+
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="cerrarModalAdjuntarPdf()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-guardar-pdf" onclick="guardarPdfCotizacion()">
+        Guardar PDF
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="js/app.js"></script>
 <script>
@@ -268,6 +326,7 @@ let requerimientoActual = null;
 let estadoPendiente = null;
 let editandoId = null;  // ID del requerimiento que se está editando (null = nuevo)
 let cotizacionEditandoId = null; // ID de la cotización que se está editando (null = nueva)
+let cotizacionParaPdfId = null; // ID de la cotización a la que se le adjuntará PDF
 
 // ── Ocultar botón "nuevo" si no es solicitante/admin ──────────
 if (!Auth.puedeHacer(['solicitante','admin'])) {
@@ -543,14 +602,71 @@ function prepararCambioEstado(estado, label) {
   };
 }
 
-//Genear archivo del requerimiento
-function imprimirRequerimiento() {
-    // Obtenemos el elemento que contiene los datos del requerimiento
+// Generar archivo del requerimiento (incluye la cotización seleccionada si existe)
+async function imprimirRequerimiento() {
     const detalleElement = document.getElementById('detalle-info');
     
     if (!detalleElement) {
         console.error("No se encontró el contenedor de detalle");
         return;
+    }
+
+    let cotizacionHtml = '';
+
+    // Intentar cargar la cotización seleccionada
+    if (requerimientoActual && requerimientoActual.requiere_cotizacion) {
+        try {
+            const response = await Api.get(`/cotizaciones/${requerimientoActual.id}`);
+            const cotizaciones = Array.isArray(response) ? response : (response.data || []);
+            const seleccionada = cotizaciones.find(c => c.seleccionada === 1 || c.estado === 'seleccionada');
+
+            if (seleccionada) {
+                const monto = parseFloat(seleccionada.monto_total || 0).toLocaleString('es-MX');
+                let itemsHtml = '';
+
+                if (seleccionada.items && seleccionada.items.length > 0) {
+                    itemsHtml = `
+                        <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:12px;">
+                            <thead>
+                                <tr style="background:#f1f5f9;">
+                                    <th style="text-align:left; padding:6px; border:1px solid #ccc;">Descripción</th>
+                                    <th style="text-align:center; padding:6px; border:1px solid #ccc;">Cant.</th>
+                                    <th style="text-align:center; padding:6px; border:1px solid #ccc;">Unidad</th>
+                                    <th style="text-align:right; padding:6px; border:1px solid #ccc;">Precio Unit.</th>
+                                    <th style="text-align:right; padding:6px; border:1px solid #ccc;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${seleccionada.items.map(item => {
+                                    const sub = ((item.cantidad || 1) * (item.precio_unitario || 0)).toLocaleString('es-MX');
+                                    return `
+                                        <tr>
+                                            <td style="padding:4px; border:1px solid #ccc;">${item.descripcion || ''}</td>
+                                            <td style="text-align:center; padding:4px; border:1px solid #ccc;">${item.cantidad || 1}</td>
+                                            <td style="text-align:center; padding:4px; border:1px solid #ccc;">${item.unidad || 'pieza'}</td>
+                                            <td style="text-align:right; padding:4px; border:1px solid #ccc;">$${(item.precio_unitario || 0).toLocaleString('es-MX')}</td>
+                                            <td style="text-align:right; padding:4px; border:1px solid #ccc; font-weight:600;">$${sub}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+
+                cotizacionHtml = `
+                    <div style="margin-top:30px; border:2px solid #166534; padding:15px; border-radius:6px;">
+                        <h3 style="color:#166534; margin:0 0 10px;">✓ Cotización Seleccionada</h3>
+                        <p style="margin:4px 0;"><strong>Proveedor:</strong> ${seleccionada.proveedor_nombre || '—'}</p>
+                        <p style="margin:4px 0;"><strong>Monto Total:</strong> <span style="font-size:18px; font-weight:700; color:#166534;">$${monto} ${seleccionada.moneda || 'MXN'}</span></p>
+                        ${itemsHtml}
+                        ${seleccionada.notas ? `<p style="margin-top:10px;"><strong>Notas:</strong> ${seleccionada.notas}</p>` : ''}
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.warn('No se pudo cargar la cotización seleccionada para impresión', e);
+        }
     }
 
     const ventana = window.open('', '_blank', 'width=800,height=600');
@@ -560,8 +676,7 @@ function imprimirRequerimiento() {
                 <title>Requerimiento: ${requerimientoActual.consecutivo}</title>
                 <link rel="stylesheet" href="css/app.css">
                 <style>
-                    body { padding: 30px; background: white; color: black; }
-                    /* Ocultamos elementos innecesarios */
+                    body { padding: 30px; background: white; color: black; font-family: Arial, sans-serif; }
                     .no-print, .btn, #sidebar, #topbar { display: none !important; }
                     .card { border: 1px solid #000; box-shadow: none; padding: 20px; }
                 </style>
@@ -570,6 +685,7 @@ function imprimirRequerimiento() {
                 <h2>Detalle del Requerimiento: ${requerimientoActual.consecutivo}</h2>
                 <hr>
                 ${detalleElement.innerHTML}
+                ${cotizacionHtml}
             </body>
         </html>
     `;
@@ -577,11 +693,10 @@ function imprimirRequerimiento() {
     ventana.document.write(contenido);
     ventana.document.close();
     
-    // Esperar a que carguen los estilos antes de imprimir
     setTimeout(() => {
         ventana.print();
         ventana.close();
-    }, 500);
+    }, 600);
 }
 
 function editarRequerimientoActual() {
@@ -594,10 +709,9 @@ async function generarOC() {
   // Si tiene cotización, buscar la seleccionada
   let cotizacion_id = null;
   if (requerimientoActual.requiere_cotizacion) {
-    const cots = await Api.get(
-      `/requerimientos/${requerimientoActual.id}/cotizaciones`
-    );
-    const sel = cots.find(c => c.seleccionada);
+    const response = await Api.get(`/cotizaciones/${requerimientoActual.id}`);
+    const cots = Array.isArray(response) ? response : (response.data || []);
+    const sel = cots.find(c => c.seleccionada === 1 || c.estado === 'seleccionada');
     if (!sel) {
       Toast.error('Debes seleccionar una cotización antes de generar la OC');
       return;
@@ -613,7 +727,11 @@ async function generarOC() {
     Toast.success(`OC generada: ${oc.numero_oc}`);
     setTimeout(() => window.location.href = `ordenes.html?id=${oc.id}`, 1200);
   } catch (err) {
-    Toast.error(err.mensaje || 'Error al generar OC');
+    if (err.status === 403 || (err.mensaje && err.mensaje.toLowerCase().includes('permiso'))) {
+      Toast.error('No tienes permiso para generar Órdenes de Compra. Contacta a un Gerente o Administrador.');
+    } else {
+      Toast.error(err.mensaje || 'Error al generar OC');
+    }
   }
 }
 
@@ -678,7 +796,9 @@ async function cargarCotizaciones(reqId) {
           <td>
             ${c.archivo_url 
               ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 Ver PDF</a>` 
-              : `<span class="text-muted small">Sin PDF</span>`}
+              : (c.seleccionada === 1 
+                  ? `<button class="btn btn-warning btn-sm" onclick="adjuntarPdfACotizacion(${c.id})">📎 Adjuntar PDF</button>`
+                  : `<span class="text-muted small">Sin PDF</span>`)}
           </td>
           <td class="text-center">
             ${c.seleccionada !== 1 
@@ -688,7 +808,15 @@ async function cargarCotizaciones(reqId) {
                   <button class="btn btn-outline btn-sm" onclick="editarCotizacion(${c.id})" title="Editar">✎</button>
                   <button class="btn btn-danger btn-sm" onclick="eliminarCotizacion(${c.id})" title="Eliminar">×</button>
                 </div>`
-              : `<span class="text-success fw-600">✓ Seleccionada</span>`}
+              : `
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px">
+                  <span class="text-success fw-600">✓ Seleccionada</span>
+                  <button class="btn btn-danger btn-sm" 
+                          onclick="deseleccionarCotizacion(${c.id}, ${reqId})"
+                          title="Quitar esta cotización como seleccionada">
+                    Deseleccionar
+                  </button>
+                </div>`}
           </td>
         </tr>`;
     });
@@ -802,6 +930,157 @@ async function seleccionarCotizacion(cotizacionId, requerimientoId) {
     cargarCotizaciones(requerimientoActual.id); // recarga la lista
   } catch (err) {
     Toast.error(err.mensaje || 'Error al seleccionar la cotización');
+  }
+}
+
+async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
+  if (!confirm(
+    '⚠️ ¿Estás seguro de deseleccionar esta cotización?\n\n' +
+    'Esto quitará la selección actual y permitirá elegir otra cotización.'
+  )) return;
+
+  try {
+    await Api.post(`/cotizaciones/${cotizacionId}/deseleccionar`, {
+      requerimiento_id: requerimientoId
+    });
+
+    Toast.success('Cotización deseleccionada correctamente');
+    cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al deseleccionar la cotización');
+  }
+}
+
+// Permite adjuntar / actualizar el PDF de una cotización (especialmente la seleccionada)
+async function adjuntarPdfACotizacion(cotizacionId) {
+  cotizacionParaPdfId = cotizacionId;
+
+  // Resetear modal
+  document.getElementById('pdf-file-input').value = '';
+  document.getElementById('pdf-url-input').value = '';
+  document.getElementById('pdf-error').style.display = 'none';
+  document.getElementById('pdf-upload-progress').style.display = 'none';
+
+  // Mostrar por defecto la pestaña de subir archivo
+  cambiarTabPdf('subir');
+
+  const modal = document.getElementById('modal-adjuntar-pdf');
+  modal.style.display = 'flex';
+}
+
+function cambiarTabPdf(tab) {
+  const seccionSubir = document.getElementById('seccion-subir');
+  const seccionUrl = document.getElementById('seccion-url');
+  const tabSubir = document.getElementById('tab-subir');
+  const tabUrl = document.getElementById('tab-url');
+
+  if (tab === 'subir') {
+    seccionSubir.style.display = 'block';
+    seccionUrl.style.display = 'none';
+    tabSubir.style.borderBottom = '3px solid #185FA5';
+    tabUrl.style.borderBottom = 'none';
+  } else {
+    seccionSubir.style.display = 'none';
+    seccionUrl.style.display = 'block';
+    tabSubir.style.borderBottom = 'none';
+    tabUrl.style.borderBottom = '3px solid #185FA5';
+  }
+}
+
+function cerrarModalAdjuntarPdf() {
+  const modal = document.getElementById('modal-adjuntar-pdf');
+  modal.style.display = 'none';
+  cotizacionParaPdfId = null;
+}
+
+// Guardar PDF (ya sea por archivo o por URL)
+async function guardarPdfCotizacion() {
+  if (!cotizacionParaPdfId) return;
+
+  const errorDiv = document.getElementById('pdf-error');
+  errorDiv.style.display = 'none';
+
+  const seccionSubirVisible = document.getElementById('seccion-subir').style.display !== 'none';
+
+  try {
+    if (seccionSubirVisible) {
+      // === MODO SUBIR ARCHIVO ===
+      const fileInput = document.getElementById('pdf-file-input');
+      if (!fileInput.files.length) {
+        errorDiv.textContent = 'Por favor selecciona un archivo PDF';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      const file = fileInput.files[0];
+      if (file.type !== 'application/pdf') {
+        errorDiv.textContent = 'Solo se permiten archivos PDF';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('pdf', file);
+
+      const progressContainer = document.getElementById('pdf-upload-progress');
+      const progressBar = document.getElementById('pdf-progress-bar');
+      const progressText = document.getElementById('pdf-progress-text');
+
+      progressContainer.style.display = 'block';
+      progressBar.style.width = '0%';
+      progressText.textContent = 'Subiendo archivo...';
+
+      const token = Auth.getToken();
+      if (!token) {
+        progressContainer.style.display = 'none';
+        Toast.error('Tu sesión ha expirado. Por favor vuelve a iniciar sesión.');
+        Auth.cerrar();
+        return;
+      }
+
+      const response = await fetch(`${API_BASE}/cotizaciones/${cotizacionParaPdfId}/archivo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (e) {}
+
+      if (!response.ok) {
+        throw { mensaje: data.message || data.mensaje || 'Error al subir el archivo' };
+      }
+
+      Toast.success('PDF subido correctamente');
+      cerrarModalAdjuntarPdf();
+      cargarCotizaciones(requerimientoActual.id);
+
+    } else {
+      // === MODO PEGAR URL ===
+      const urlInput = document.getElementById('pdf-url-input').value.trim();
+      if (!urlInput) {
+        errorDiv.textContent = 'Por favor ingresa una URL válida';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      // Api.put ya incluye el token automáticamente
+      await Api.put(`/cotizaciones/${cotizacionParaPdfId}`, {
+        archivo_url: urlInput
+      });
+
+      Toast.success('URL del PDF guardada correctamente');
+      cerrarModalAdjuntarPdf();
+      cargarCotizaciones(requerimientoActual.id);
+    }
+
+  } catch (err) {
+    errorDiv.textContent = err.mensaje || err.message || 'Error al guardar el PDF';
+    errorDiv.style.display = 'block';
   }
 }
 

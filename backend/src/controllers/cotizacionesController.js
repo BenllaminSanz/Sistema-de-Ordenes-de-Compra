@@ -1,6 +1,7 @@
 import * as Cotizacion from '../models/cotizaciones.js';
 import { registrarHistorial } from '../models/historialEstados.js';
 import { enviarSolicitudDeCotizacion } from '../utils/emailService.js';
+import fs from 'fs';
 
 // Valida que la fecha de envío no sea mayor al día actual
 function validarFechaEnvioNoFutura(fechaEnvio) {
@@ -212,6 +213,97 @@ export const seleccionarCotizacion = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al seleccionar la cotización'
+    });
+  }
+};
+
+// Deseleccionar una cotización (nueva funcionalidad)
+export const deseleccionarCotizacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { requerimiento_id } = req.body;
+
+    if (!requerimiento_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere el requerimiento_id'
+      });
+    }
+
+    const exito = await Cotizacion.deseleccionar(id, requerimiento_id);
+
+    if (exito) {
+      await registrarHistorial({
+        entidad_tipo: 'cotizacion',
+        entidad_id: id,
+        estado_anterior: 'seleccionada',
+        estado_nuevo: 'enviada',
+        cambiado_por: req.usuario?.id || 1,
+        notas: 'Cotización deseleccionada por el usuario'
+      });
+
+      res.json({
+        success: true,
+        message: 'La cotización ha sido deseleccionada correctamente.'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'No se pudo deseleccionar la cotización (¿ya no estaba seleccionada?)'
+      });
+    }
+  } catch (error) {
+    console.error('Error al deseleccionar cotización:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al deseleccionar la cotización'
+    });
+  }
+};
+
+// Subir archivo PDF real a una cotización (handler puro)
+export const subirArchivoCotizacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se recibió ningún archivo PDF'
+      });
+    }
+
+    const archivoUrl = `/uploads/cotizaciones/${req.file.filename}`;
+
+    const affected = await Cotizacion.actualizar(id, { archivo_url: archivoUrl });
+
+    if (affected === 0) {
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudo guardar el PDF (la cotización podría no existir).'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'PDF subido correctamente',
+      archivo_url: archivoUrl
+    });
+  } catch (error) {
+    console.error('Error al subir archivo de cotización:', error);
+
+    if (req.file && req.file.path) {
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
+    }
+
+    if (error.message && error.message.includes('Solo se permiten')) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Error al subir el archivo PDF'
     });
   }
 };

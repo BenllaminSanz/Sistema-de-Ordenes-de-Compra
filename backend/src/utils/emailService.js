@@ -10,8 +10,13 @@ import * as Cotizacion from '../models/cotizaciones.js';
 export async function enviarSolicitudDeCotizacion(cotizacionId) {
   try {
     const cot = await Cotizacion.obtenerPorId(cotizacionId);
-    if (!cot || !cot.proveedor_email) {
-      console.warn('[Email] No se puede enviar solicitud: el proveedor no tiene email registrado');
+    if (!cot) {
+      console.warn(`[Email] No se puede enviar solicitud: no existe la cotización #${cotizacionId}`);
+      return { success: false, reason: 'cotizacion_no_existe' };
+    }
+
+    if (!cot.proveedor_email) {
+      console.warn(`[Email] No se puede enviar solicitud: el proveedor de la cotización #${cotizacionId} no tiene email registrado en la tabla de proveedores.`);
       return { success: false, reason: 'sin_email' };
     }
 
@@ -24,6 +29,23 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
     const fechaLimite = cot.fecha_envio 
       ? new Date(cot.fecha_envio).toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
       : null;
+
+    // Preparar información del monto y conceptos
+    const monto = parseFloat(cot.monto_total || 0).toLocaleString('es-MX');
+    const tieneItems = cot.items && cot.items.length > 0;
+    let conceptosHtml = '';
+
+    if (tieneItems) {
+      conceptosHtml = `
+        <p style="margin:12px 0 6px; font-weight:600; color:#1e293b;">Conceptos cotizados:</p>
+        <ul style="margin:0; padding-left:20px; color:#334155; font-size:14px;">
+          ${cot.items.map(item => {
+            const sub = ((item.cantidad || 1) * (item.precio_unitario || 0)).toLocaleString('es-MX');
+            return `<li>${item.descripcion} — ${item.cantidad || 1} ${item.unidad || 'pieza'} × $${(item.precio_unitario || 0).toLocaleString('es-MX')} = <strong>$${sub}</strong></li>`;
+          }).join('')}
+        </ul>
+      `;
+    }
 
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; background:#f8fafc; padding: 24px;">
@@ -67,6 +89,15 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
                 <td style="padding:4px 0; color:#b45309;"><strong>${fechaLimite}</strong></td>
               </tr>` : ''}
             </table>
+          </div>
+
+          <!-- Monto propuesto y conceptos -->
+          <div style="background:#ecfdf5; border-radius:6px; padding:14px 18px; margin:16px 0;">
+            <p style="margin:0 0 6px; font-size:14px; color:#166534;">
+              <strong>Monto propuesto por usted:</strong> 
+              <span style="font-size:18px; font-weight:700;">$${monto} ${cot.moneda || 'MXN'}</span>
+            </p>
+            ${conceptosHtml}
           </div>
 
           <p style="color: #334155; font-size: 15px; line-height: 1.55;">
@@ -119,4 +150,66 @@ Gracias.`;
     console.error('[Email] Error enviando solicitud de cotización:', err);
     return { success: false, error: err.message };
   }
+}
+
+/**
+ * Envía correo de verificación de cuenta al nuevo usuario solicitante.
+ */
+export async function enviarCorreoVerificacion(nombre, email, token) {
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const link = `${baseUrl}/verificar.html?token=${token}`;
+
+  const html = `
+    <div style="font-family: Arial, Helvetica, sans-serif; max-width: 620px; margin: 0 auto; background:#f8fafc; padding:24px;">
+      <div style="background:white; border-radius:8px; padding:32px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="color:#1e40af; margin:0 0 12px;">Confirma tu cuenta</h2>
+        
+        <p style="color:#334155; font-size:15px;">Hola <strong>${nombre}</strong>,</p>
+        
+        <p style="color:#334155; font-size:15px; line-height:1.55;">
+          Gracias por registrarte en el <strong>Sistema de Órdenes de Compra</strong>.<br>
+          Para activar tu cuenta como solicitante, por favor confirma tu correo electrónico haciendo clic en el siguiente botón:
+        </p>
+
+        <div style="text-align:center; margin:28px 0;">
+          <a href="${link}" 
+             style="background:#185FA5; color:white; padding:14px 32px; text-decoration:none; border-radius:6px; font-weight:600; display:inline-block;">
+            Confirmar mi correo electrónico
+          </a>
+        </div>
+
+        <p style="color:#64748b; font-size:13px;">
+          Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+          <a href="${link}" style="color:#185FA5; word-break:break-all;">${link}</a>
+        </p>
+
+        <p style="color:#64748b; font-size:13px; margin-top:24px;">
+          Este enlace expirará en <strong>24 horas</strong>. Si no solicitaste esta cuenta, puedes ignorar este correo.
+        </p>
+
+        <hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;">
+        <p style="color:#94a3b8; font-size:12px; text-align:center;">
+          Sistema de Órdenes de Compra
+        </p>
+      </div>
+    </div>
+  `;
+
+  const text = `Hola ${nombre},
+
+Gracias por registrarte en el Sistema de Órdenes de Compra.
+
+Para confirmar tu cuenta, visita el siguiente enlace:
+${link}
+
+Este enlace expira en 24 horas.
+
+Si no solicitaste esta cuenta, ignora este correo.`;
+
+  return enviarCorreo({
+    to: email,
+    subject: 'Confirma tu cuenta - Sistema de Órdenes de Compra',
+    html,
+    text
+  });
 }

@@ -1,6 +1,19 @@
 import { compare, hash as _hash } from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { buscarPorEmail, buscarPorId, actualizarPassword, crear, listar, cambiarEstado } from '../models/usuario.js';
+import crypto from 'crypto';
+import { 
+  buscarPorEmail, 
+  buscarPorId, 
+  actualizarPassword, 
+  crear, 
+  listar, 
+  cambiarEstado,
+  crearSolicitante,
+  guardarTokenVerificacion,
+  buscarPorTokenVerificacion,
+  marcarEmailVerificado
+} from '../models/usuario.js';
+import { enviarCorreoVerificacion } from '../utils/emailService.js';
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 async function login(req, res) {
@@ -24,6 +37,13 @@ async function login(req, res) {
     const passwordValida = await compare(password, usuario.password_hash);
     if (!passwordValida) {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
+    }
+
+    // Bloquear login si el correo no ha sido verificado
+    if (usuario.email_verificado !== 1) {
+      return res.status(403).json({ 
+        mensaje: 'Debes confirmar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.' 
+      });
     }
 
     const payload = {
@@ -159,4 +179,97 @@ async function cambiarEstadoUsuario(req, res) {
   }
 }
 
-export { login, perfil, cambiarPassword, registro, listarUsuarios, cambiarEstadoUsuario };
+// ─── POST /api/auth/registro-solicitante  (PÚBLICO - solo solicitantes) ─────────
+async function registroSolicitante(req, res) {
+  try {
+    const { nombre, email, password } = req.body;
+
+    if (!nombre || !email || !password) {
+      return res.status(400).json({ mensaje: 'Nombre, correo y contraseña son requeridos' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ mensaje: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    const emailLimpio = email.toLowerCase().trim();
+
+    const existe = await buscarPorEmail(emailLimpio);
+    if (existe) {
+      return res.status(409).json({ mensaje: 'Ya existe una cuenta con este correo electrónico' });
+    }
+
+    // Generar token de verificación seguro
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiracion = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+    const password_hash = await _hash(password, 12);
+
+    const id = await crearSolicitante({
+      nombre: nombre.trim(),
+      email: emailLimpio,
+      password_hash,
+      token_verificacion: token,
+      token_expiracion: expiracion
+    });
+
+    // Enviar correo de verificación (no bloqueante)
+    enviarCorreoVerificacion(nombre.trim(), emailLimpio, token).then(r => {
+      if (r.success) {
+        console.log(`[Auth] Correo de verificación enviado a ${emailLimpio}`);
+      }
+    }).catch(err => {
+      console.error('[Auth] Error enviando correo de verificación:', err.message);
+    });
+
+    res.status(201).json({
+      mensaje: 'Registro exitoso. Revisa tu correo electrónico para confirmar tu cuenta.',
+      email: emailLimpio
+    });
+  } catch (err) {
+    console.error('[registroSolicitante]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+// ─── GET /api/auth/verificar-email?token=xxx  (PÚBLICO) ────────────────────────
+async function verificarEmail(req, res) {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ mensaje: 'Token de verificación requerido' });
+    }
+
+    const usuario = await buscarPorTokenVerificacion(token);
+
+    if (!usuario) {
+      return res.status(400).json({ mensaje: 'Token inválido o ya utilizado' });
+    }
+
+    // Verificar expiración
+    if (usuario.token_expiracion && new Date() > new Date(usuario.token_expiracion)) {
+      return res.status(400).json({ mensaje: 'El enlace de verificación ha expirado. Regístrate nuevamente.' });
+    }
+
+    await marcarEmailVerificado(usuario.id);
+
+    res.json({
+      mensaje: '¡Correo verificado exitosamente! Ya puedes iniciar sesión.',
+      email: usuario.email
+    });
+  } catch (err) {
+    console.error('[verificarEmail]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+export { 
+  login, 
+  perfil, 
+  cambiarPassword, 
+  registro, 
+  listarUsuarios, 
+  cambiarEstadoUsuario,
+  registroSolicitante,
+  verificarEmail
+};

@@ -4,6 +4,7 @@ dotenv.config({ path: "./backend/.env" });
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 import authRoutes from "./src/routes/auth.route.js";
 import requerimientosRoutes from "./src/routes/requerimiento.route.js";
@@ -22,6 +23,13 @@ const __dirname = path.dirname(__filename);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Crear carpetas de uploads si no existen
+const uploadsDir = path.join(__dirname, 'uploads', 'cotizaciones');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('📁 Carpeta de uploads creada:', uploadsDir);
+}
+
 // ─── CORS ──────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
@@ -32,6 +40,9 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, "../frontend")));
+
+// Servir archivos subidos (PDFs de cotizaciones, etc.)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/login.html"));
