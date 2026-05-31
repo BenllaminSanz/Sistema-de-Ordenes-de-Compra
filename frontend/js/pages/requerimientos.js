@@ -18,6 +18,11 @@ let editandoId = null;  // ID del requerimiento que se está editando (null = nu
 let cotizacionEditandoId = null; // ID de la cotización que se está editando (null = nueva)
 let cotizacionParaPdfId = null; // ID de la cotización a la que se le adjuntará PDF
 
+// ── Permisos de Cotizaciones ──────────────────────────────────
+function puedeGestionarCotizaciones() {
+  return Auth.puedeHacer(['contabilidad', 'admin']);
+}
+
 // ── Ocultar botón "nuevo" si no es solicitante/admin ──────────
 if (!Auth.puedeHacer(['solicitante','admin'])) {
   const btnNuevo = document.getElementById('btn-nuevo');
@@ -30,15 +35,6 @@ if (params.get('id')) {
   abrirDetalle(params.get('id'));
 } else {
   cargarRequerimientos(1);
-}
-
-// ── Delegación de eventos en la tabla de requerimientos ──────
-const tablaReqs = document.getElementById('tabla-reqs');
-if (tablaReqs) {
-  window.delegate(tablaReqs, 'button[data-action="ver"]', 'click', (e, btn) => {
-    const id = btn.dataset.id;
-    if (id) abrirDetalle(id);
-  });
 }
 
 // ── LISTA ─────────────────────────────────────────────────────
@@ -92,6 +88,17 @@ async function cargarRequerimientos(pagina) {
       total, pagina, limite,
       (p) => cargarRequerimientos(p)
     );
+
+    // Attach delegation only once (after first render)
+    const tablaReqs = document.getElementById('tabla-reqs');
+    if (tablaReqs && !tablaReqs.dataset.verDelegateAttached) {
+      tablaReqs.dataset.verDelegateAttached = 'true';
+      window.delegate(tablaReqs, 'button[data-action="ver"]', 'click', (e, btn) => {
+        const id = btn.dataset.id;
+        if (id) abrirDetalle(id);
+      });
+    }
+
   } catch (err) {
     UI.empty(contenedor, 'Error al cargar requerimientos');
     Toast.error(err.mensaje || 'Error al cargar');
@@ -100,8 +107,13 @@ async function cargarRequerimientos(pagina) {
 
 // ── DETALLE ───────────────────────────────────────────────────
 async function abrirDetalle(id) {
-  document.getElementById('vista-lista').style.display   = 'none';
-  document.getElementById('vista-detalle').style.display = 'block';
+  const lista = document.getElementById('vista-lista');
+  const detalle = document.getElementById('vista-detalle');
+
+  lista.style.display = 'none';
+  detalle.style.display = 'block';
+  detalle.classList.remove('hidden');   // ensure it's visible
+
   document.getElementById('detalle-info').innerHTML = '<div class="spinner"></div>';
 
   try {
@@ -110,12 +122,23 @@ async function abrirDetalle(id) {
     renderDetalle(req);
   } catch (err) {
     Toast.error('No se pudo cargar el requerimiento');
+    document.getElementById('detalle-info').innerHTML = `
+      <div class="empty-state">
+        <p>No se pudo cargar el requerimiento.</p>
+        <button class="btn btn-outline btn-sm mt-2" onclick="volverLista()">Volver a la lista</button>
+      </div>
+    `;
   }
 }
 
 function volverLista() {
-  document.getElementById('vista-lista').style.display   = 'block';
-  document.getElementById('vista-detalle').style.display = 'none';
+  const lista = document.getElementById('vista-lista');
+  const detalle = document.getElementById('vista-detalle');
+
+  lista.style.display = 'block';
+  detalle.style.display = 'none';
+  detalle.classList.add('hidden');
+
   requerimientoActual = null;
   cargarRequerimientos(paginaActual);
   history.replaceState(null, '', window.location.pathname);
@@ -207,10 +230,11 @@ function renderDetalle(req) {
   if (req.requiere_cotizacion) {
     panelCot.style.display = 'block';
     cargarCotizaciones(req.id);
-    // Mostrar botón agregar solo a contabilidad/admin
+
+    // Solo contabilidad y admin pueden agregar cotizaciones
     const btnAgregar = document.getElementById('btn-agregar-cot');
     if (btnAgregar) {
-      btnAgregar.style.display = Auth.puedeHacer(['contabilidad','admin']) ? '' : 'none';
+      btnAgregar.style.display = puedeGestionarCotizaciones() ? '' : 'none';
     }
   } else {
     panelCot.style.display = 'none';
@@ -270,7 +294,7 @@ function renderAcciones(req) {
     acciones.push({ label:'📤 Enviar a revisión', estado:'en_revision', clase:'btn-primary' });
   }
 
-  if (['contabilidad','gerente','admin'].includes(u.rol)) {
+  if (['contabilidad','admin'].includes(u.rol)) {
     if (req.estado === 'en_revision') {
       acciones.push({ label:'Aprobar',   estado:'aprobado',   clase:'btn-success' });
       acciones.push({ label:'Incompleto',estado:'incompleto', clase:'btn-outline' });
@@ -503,6 +527,8 @@ async function cargarCotizaciones(reqId) {
         ? `<button class="btn btn-sm btn-link p-0 ms-2" data-cot-action="toggle-desglose" data-cot-id="${c.id}" title="Ver desglose de conceptos">▼ Desglose</button>`
         : '';
 
+      const esGestor = puedeGestionarCotizaciones();
+
       html += `
         <tr data-cot-id="${c.id}">
           <td><strong>${c.proveedor_nombre || 'Sin proveedor'}</strong></td>
@@ -515,27 +541,31 @@ async function cargarCotizaciones(reqId) {
           <td>
             ${c.archivo_url 
               ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 Ver PDF</a>` 
-              : (c.seleccionada === 1 
+              : (c.seleccionada === 1 && esGestor
                   ? `<button class="btn btn-warning btn-sm" data-cot-action="adjuntar-pdf" data-cot-id="${c.id}">📎 Adjuntar PDF</button>`
                   : `<span class="text-muted small">Sin PDF</span>`)}
           </td>
           <td class="text-center">
-            ${c.seleccionada !== 1 
+            ${c.seleccionada !== 1 && esGestor
               ? `
                 <div class="d-flex gap-1" style="justify-content:center">
                   <button class="btn btn-success btn-sm" data-cot-action="seleccionar" data-cot-id="${c.id}">Seleccionar</button>
                   <button class="btn btn-outline btn-sm" data-cot-action="editar" data-cot-id="${c.id}" title="Editar">✎</button>
                   <button class="btn btn-danger btn-sm" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar">×</button>
                 </div>`
-              : `
-                <div style="display:flex; flex-direction:column; align-items:center; gap:4px">
-                  <span class="text-success fw-600">✓ Seleccionada</span>
-                  <button class="btn btn-danger btn-sm" 
-                          data-cot-action="deseleccionar" data-cot-id="${c.id}"
-                          title="Quitar esta cotización como seleccionada">
-                    Deseleccionar
-                  </button>
-                </div>`}
+              : c.seleccionada === 1
+                ? `
+                  <div style="display:flex; flex-direction:column; align-items:center; gap:4px">
+                    <span class="text-success fw-600">✓ Seleccionada</span>
+                    ${esGestor ? `
+                      <button class="btn btn-danger btn-sm" 
+                              data-cot-action="deseleccionar" data-cot-id="${c.id}"
+                              title="Quitar esta cotización como seleccionada">
+                        Deseleccionar
+                      </button>
+                    ` : ''}
+                  </div>`
+                : `<span class="text-muted small">—</span>`}
           </td>
         </tr>`;
     });
@@ -659,6 +689,9 @@ function toggleDesgloseCotizacion(btn, cotizacionId) {
 }
 
 async function seleccionarCotizacion(cotizacionId, requerimientoId) {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para seleccionar cotizaciones');
+  }
   if (!confirm('¿Marcar esta cotización como la seleccionada?\nLas demás se marcarán como rechazadas.')) return;
 
   try {
@@ -674,6 +707,9 @@ async function seleccionarCotizacion(cotizacionId, requerimientoId) {
 }
 
 async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para deseleccionar cotizaciones');
+  }
   if (!confirm(
     '⚠️ ¿Estás seguro de deseleccionar esta cotización?\n\n' +
     'Esto quitará la selección actual y permitirá elegir otra cotización.'
@@ -693,6 +729,9 @@ async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
 
 // Permite adjuntar / actualizar el PDF de una cotización (especialmente la seleccionada)
 async function adjuntarPdfACotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para adjuntar PDFs a cotizaciones');
+  }
   cotizacionParaPdfId = cotizacionId;
 
   // Resetear modal
@@ -824,6 +863,10 @@ async function guardarPdfCotizacion() {
 }
 
 async function editarCotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para editar cotizaciones');
+  }
+
   try {
     const resp = await Api.get(`/cotizaciones/detalle/${cotizacionId}`);
     const c = resp.data || resp;
@@ -887,6 +930,9 @@ async function editarCotizacion(cotizacionId) {
 }
 
 async function eliminarCotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para eliminar cotizaciones');
+  }
   if (!confirm('¿Eliminar esta cotización?\nEsta acción no se puede deshacer.')) return;
 
   try {
@@ -949,6 +995,9 @@ if (busquedaInput) {
 // ── FUNCIONES DEL MODAL DE COTIZACIÓN ─────────────────────────────
 
 function abrirModalCotizacion() {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para crear cotizaciones');
+  }
   if (!requerimientoActual) {
     return Toast.error('No se encontró el requerimiento');
   }
@@ -971,10 +1020,19 @@ function prepararModalCotizacion(req) {
   if (!cotizacionEditandoId) {
     configurarToggleDesglose(req, null);
   }
+
+  // Sin restricción de fechas.
+  // El usuario puede elegir cualquier fecha (pasada, hoy o futura).
+  // El comportamiento (enviar o no enviar correo) se maneja en el modal de confirmación.
 }
 
 // ── GUARDAR COTIZACIÓN (MEJORADO CON ITEMS + EDICIÓN) ─────────────────────────────
-async function guardarCotizacion() {
+// Versión original (usada después de la confirmación)
+async function guardarCotizacionOriginal() {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para guardar cotizaciones');
+  }
+
   const reqId = document.getElementById('cot_req_id').value;
 
   if (!reqId) {
@@ -990,15 +1048,6 @@ async function guardarCotizacion() {
     return Toast.error('Proveedor y Fecha de Envío son obligatorios');
   }
 
-  // Validación cliente: fecha de envío no puede ser futura
-  const fechaSel = new Date(fecha_envio);
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  fechaSel.setHours(0, 0, 0, 0);
-  if (fechaSel > hoy) {
-    return Toast.error('La fecha de envío no puede ser mayor al día actual');
-  }
-
   try {
     let datos = {
       proveedor_id: parseInt(proveedor_id),
@@ -1007,6 +1056,11 @@ async function guardarCotizacion() {
       notas: notas || null,
       items: []
     };
+
+    // Si venimos del modal de confirmación con hora, la enviamos
+    if (datosCotizacionPendiente?.hora_envio) {
+      datos.hora_envio = datosCotizacionPendiente.hora_envio;
+    }
 
     const tbody = document.querySelector('#tabla-items-cot tbody');
     const itemsDivVisible = document.getElementById('cotizacion-tipo-items').style.display !== 'none';
@@ -1060,6 +1114,12 @@ async function guardarCotizacion() {
       response = await Api.put(`/cotizaciones/${cotizacionEditandoId}`, datos);
     } else {
       datos.requerimiento_id = parseInt(reqId);
+
+      // Si tenemos hora de envío desde el modal de confirmación, la enviamos
+      if (datosCotizacionPendiente?.hora_envio) {
+        datos.hora_envio = datosCotizacionPendiente.hora_envio;
+      }
+
       response = await Api.post('/cotizaciones', datos);
     }
 
@@ -1089,10 +1149,150 @@ function cerrarModalCotizacion() {
   if (modalTitle) modalTitle.textContent = 'Nueva Cotización';
 }
 
+// ── Confirmación de envío de cotización (Fase 1) ─────────────────
+let datosCotizacionPendiente = null;
+
+function prepararConfirmacionEnvioCotizacion() {
+  // Si estamos editando una cotización existente, guardamos directamente (sin confirmación de envío)
+  if (cotizacionEditandoId) {
+    guardarCotizacionOriginal();
+    return;
+  }
+
+  // Recolectar datos del formulario
+  const reqId = document.getElementById('cot_req_id').value;
+  const proveedor_id = document.getElementById('cot_proveedor_id').value;
+  const fecha_envio = document.getElementById('cot_fecha_envio').value;
+  const moneda = document.getElementById('cot_moneda').value;
+  const notas = document.getElementById('cot_notas').value.trim();
+
+  if (!proveedor_id || !fecha_envio) {
+    return Toast.error('Proveedor y Fecha de Envío son obligatorios');
+  }
+
+  // Guardamos los datos para usarlos después de confirmar
+  datosCotizacionPendiente = {
+    reqId,
+    proveedor_id: parseInt(proveedor_id),
+    fecha_envio,
+    moneda: moneda || 'MXN',
+    notas: notas || null,
+    hora_envio: null, // se llenará si es futuro
+  };
+
+  // Declaramos las variables de fecha aquí para que estén disponibles en toda la función
+  const fechaSeleccionada = new Date(fecha_envio + 'T00:00:00');
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const modal = document.getElementById('modal-confirmar-envio-cotizacion');
+  const body = document.getElementById('confirm-envio-body');
+  const footer = document.getElementById('confirm-envio-footer');
+  const titulo = document.getElementById('confirm-envio-titulo');
+
+  const esHoy = fechaSeleccionada.getTime() === hoy.getTime();
+  const esPasado = fechaSeleccionada < hoy;
+
+  body.innerHTML = '';
+  footer.innerHTML = '';
+
+  if (esPasado) {
+    // === CASO: FECHA PASADA ===
+    titulo.textContent = 'Fecha anterior a hoy';
+    body.innerHTML = `
+      <div class="alert alert-warning">
+        <strong>Atención:</strong> La fecha seleccionada ya pasó.<br><br>
+        Se guardará el registro de la cotización, <strong>pero no se enviará ningún correo</strong> al proveedor.
+      </div>
+      <p>¿Deseas continuar de todas formas?</p>
+    `;
+    footer.innerHTML = `
+      <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarGuardarSinEnvio()">Guardar sin enviar correo</button>
+    `;
+
+  } else if (esHoy) {
+    // === CASO: HOY ===
+    titulo.textContent = '¿Enviar cotización ahora?';
+    body.innerHTML = `
+      <p>La fecha de envío es <strong>hoy</strong>.</p>
+      <p>¿Deseas enviar esta solicitud de cotización al proveedor de inmediato?</p>
+    `;
+    footer.innerHTML = `
+      <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEnvioInmediato()">Enviar ahora</button>
+    `;
+
+  } else {
+    // === CASO: FECHA FUTURA ===
+    titulo.textContent = 'Programar envío de cotización';
+
+    const fechaFormateada = fechaSeleccionada.toLocaleDateString('es-MX', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    body.innerHTML = `
+      <p>Has seleccionado enviar la cotización el <strong>${fechaFormateada}</strong>.</p>
+      <div class="form-group">
+        <label class="form-label">¿A qué hora deseas que se envíe?</label>
+        <input type="time" id="hora-envio-programado" class="form-control" value="09:00">
+        <small class="text-muted">Se enviará automáticamente a la hora indicada (requiere que el sistema esté activo).</small>
+      </div>
+    `;
+    footer.innerHTML = `
+      <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarProgramarEnvioFuturo()">Programar envío</button>
+    `;
+  }
+
+  modal.style.display = 'flex';
+}
+
+function cerrarModalConfirmacionEnvio() {
+  const modal = document.getElementById('modal-confirmar-envio-cotizacion');
+  if (modal) modal.style.display = 'none';
+  datosCotizacionPendiente = null;
+}
+
+async function confirmarEnvioInmediato() {
+  cerrarModalConfirmacionEnvio();
+  await ejecutarGuardadoCotizacion();
+}
+
+// Guardar registro de cotización con fecha pasada (sin enviar correo)
+async function confirmarGuardarSinEnvio() {
+  cerrarModalConfirmacionEnvio();
+  // Guardamos normalmente. El backend decidirá no enviar correo.
+  await ejecutarGuardadoCotizacion();
+}
+
+// Programar envío futuro (envía fecha + hora al backend)
+async function confirmarProgramarEnvioFuturo() {
+  const horaInput = document.getElementById('hora-envio-programado');
+  if (horaInput && datosCotizacionPendiente) {
+    datosCotizacionPendiente.hora_envio = horaInput.value;
+  }
+  cerrarModalConfirmacionEnvio();
+  await ejecutarGuardadoCotizacion();
+}
+
+// Función que prepara y llama al guardado real, incluyendo hora si existe
+async function ejecutarGuardadoCotizacion() {
+  // Si tenemos hora programada, la dejamos en el objeto para que guardarCotizacionOriginal la use
+  await guardarCotizacionOriginal();
+}
+
+// Función antigua renombrada para compatibilidad con botones existentes (si los hay)
+async function guardarCotizacion() {
+  // Ahora redirigimos al nuevo flujo de confirmación
+  prepararConfirmacionEnvioCotizacion();
+}
+
 // Cargar proveedores en el modal
 async function cargarProveedoresEnModal() {
   try {
-    const proveedores = await Api.get('/proveedores');
+    // Solo proveedores activos en el selector de cotizaciones
+    const proveedores = await Api.get('/proveedores?activos=true');
     const select = document.getElementById('cot_proveedor_id');
     select.innerHTML = '<option value="">Selecciona proveedor...</option>';
     

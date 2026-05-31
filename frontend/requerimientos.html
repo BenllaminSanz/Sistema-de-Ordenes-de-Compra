@@ -251,7 +251,25 @@
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-outline" onclick="cerrarModalCotizacion()">Cancelar</button>
-      <button type="button" class="btn btn-primary" onclick="guardarCotizacion()">Guardar Cotización</button>
+      <button type="button" class="btn btn-primary" onclick="prepararConfirmacionEnvioCotizacion()">Guardar Cotización</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Confirmar Envío de Cotización ───────────────────────────────── -->
+<div class="modal-backdrop" id="modal-confirmar-envio-cotizacion">
+  <div class="modal-box" style="max-width: 460px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="confirm-envio-titulo">Confirmar envío</h3>
+      <button class="modal-close" onclick="cerrarModalConfirmacionEnvio()">×</button>
+    </div>
+
+    <div class="modal-body" id="confirm-envio-body">
+      <!-- Contenido dinámico generado por JS -->
+    </div>
+
+    <div class="modal-footer" id="confirm-envio-footer">
+      <!-- Botones dinámicos generados por JS -->
     </div>
   </div>
 </div>

@@ -3,20 +3,42 @@ import { registrarHistorial } from '../models/historialEstados.js';
 import { enviarSolicitudDeCotizacion } from '../utils/emailService.js';
 import fs from 'fs';
 
-// Valida que la fecha de envío no sea mayor al día actual
-function validarFechaEnvioNoFutura(fechaEnvio) {
-  if (!fechaEnvio) return { valido: true };
-  
-  const fecha = new Date(fechaEnvio);
-  // Normalizar a medianoche local para comparar solo fechas
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  fecha.setHours(0, 0, 0, 0);
+// Función para enviar cotizaciones pendientes de forma oportunista
+async function enviarCotizacionesPendientesOportunista() {
+  try {
+    const pendientes = await Cotizacion.listarPendientesDeEnvio();
 
-  if (fecha > hoy) {
+    if (pendientes.length === 0) return;
+
+    console.log(`[Email] Enviando ${pendientes.length} cotizaciones pendientes...`);
+
+    for (const cot of pendientes) {
+      try {
+        const result = await enviarSolicitudDeCotizacion(cot.id);
+        if (result.success) {
+          await Cotizacion.marcarComoEnviadaPorCorreo(cot.id);
+          console.log(`[Email] Cotización #${cot.id} enviada (programada)`);
+        }
+      } catch (err) {
+        console.error(`[Email] Error enviando cotización pendiente #${cot.id}:`, err.message);
+      }
+    }
+  } catch (error) {
+    console.error('[Email] Error en envío oportunista de cotizaciones:', error.message);
+  }
+}
+
+// Valida la fecha de envío (permite pasadas y futuras)
+function validarFechaEnvio(fechaEnvio) {
+  if (!fechaEnvio) {
+    return { valido: true };
+  }
+  // Solo validamos que sea una fecha válida
+  const fecha = new Date(fechaEnvio);
+  if (isNaN(fecha.getTime())) {
     return { 
       valido: false, 
-      mensaje: 'La fecha de envío no puede ser mayor al día actual' 
+      mensaje: 'La fecha de envío no es válida' 
     };
   }
   return { valido: true };
@@ -71,20 +93,69 @@ export const obtenerCotizacion = async (req, res) => {
 // Crear nueva cotización
 export const crearCotizacion = async (req, res) => {
   try {
-    const { requerimiento_id, proveedor_id, monto_total, monto_subtotal, iva, moneda, 
-            archivo_url, fecha_envio, notas, items } = req.body;
+    const { 
+      requerimiento_id, 
+      proveedor_id, 
+      monto_total, 
+      monto_subtotal, 
+      iva, 
+      moneda, 
+      archivo_url, 
+      fecha_envio, 
+      scheduled_at,   // Nueva forma recomendada (datetime completo)
+      hora_envio,     // Alternativa: fecha_envio + hora_envio
+      notas, 
+      items 
+    } = req.body;
 
     if (!requerimiento_id || !proveedor_id) {
       return res.status(400).json({ mensaje: 'requerimiento_id y proveedor_id son obligatorios' });
     }
 
-    // Validación: fecha de envío no puede ser futura
-    const validacionFecha = validarFechaEnvioNoFutura(fecha_envio);
+    // Validación básica de fecha
+    const validacionFecha = validarFechaEnvio(fecha_envio);
     if (!validacionFecha.valido) {
       return res.status(400).json({ 
         success: false, 
         mensaje: validacionFecha.mensaje 
       });
+    }
+
+    // Calcular scheduled_at
+    let finalScheduledAt = scheduled_at || null;
+
+    if (!finalScheduledAt && fecha_envio && hora_envio) {
+      finalScheduledAt = `${fecha_envio} ${hora_envio}:00`;
+    } else if (!finalScheduledAt && fecha_envio) {
+      finalScheduledAt = `${fecha_envio} 09:00:00`;
+    }
+
+    // Determinar si debemos enviar correo o no
+    const ahora = new Date();
+    const scheduledDate = finalScheduledAt ? new Date(finalScheduledAt) : null;
+
+    const esFechaPasada = scheduledDate && scheduledDate < ahora;
+
+    // Comparamos solo la fecha (sin hora) para decidir si es "hoy o antes"
+    let esHoyOMenor = true;
+    if (scheduledDate) {
+      const fechaProgramada = new Date(
+        scheduledDate.getFullYear(),
+        scheduledDate.getMonth(),
+        scheduledDate.getDate()
+      );
+      const hoySinHora = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+      esHoyOMenor = fechaProgramada <= hoySinHora;
+    }
+
+    // Preparar datos adicionales según el caso
+    let emailSentAtOnCreate = null;
+    let estadoInicial = 'pendiente_envio';
+
+    if (esFechaPasada) {
+      // Fecha pasada: guardamos el registro pero lo marcamos como "enviada" (sin enviar correo)
+      emailSentAtOnCreate = new Date();
+      estadoInicial = 'enviada';
     }
 
     const id = await Cotizacion.crear({
@@ -96,32 +167,49 @@ export const crearCotizacion = async (req, res) => {
       moneda: moneda || 'MXN',
       archivo_url: archivo_url || null,
       fecha_envio: fecha_envio || null,
-      notas: notas || null
+      scheduled_at: finalScheduledAt,
+      email_sent_at: emailSentAtOnCreate,
+      notas: notas || null,
+      estado: estadoInicial
     }, items || []);
 
-    // Registrar historial (opcional)
+    // Registrar historial
     await registrarHistorial({
       entidad_tipo: 'cotizacion',
       entidad_id: id,
       estado_anterior: null,
-      estado_nuevo: 'enviada',
+      estado_nuevo: estadoInicial,
       cambiado_por: req.usuario?.id || 1,
-      notas: 'Cotización creada desde el sistema'
+      notas: 'Cotización creada'
     });
 
-    // Enviar correo automático al proveedor solicitando la cotización (no bloquea la respuesta)
-    enviarSolicitudDeCotizacion(id).then(result => {
-      if (result.success) {
-        console.log(`[Email] Solicitud de cotización enviada al proveedor (cotización #${id})`);
-      }
-    }).catch(err => {
-      console.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
+    if (esFechaPasada) {
+      console.log(`[Cotizacion] Cotización #${id} con fecha pasada. Se guardó como enviada (sin enviar correo).`);
+    } else if (esHoyOMenor) {
+      // Hoy (o sin fecha programada) → enviar inmediatamente
+      enviarSolicitudDeCotizacion(id).then(result => {
+        if (result.success) {
+          console.log(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
+          Cotizacion.marcarComoEnviadaPorCorreo(id).catch(() => {});
+        }
+      }).catch(err => {
+        console.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
+      });
+    } else {
+      // Futura → solo programada
+      console.log(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt}`);
+    }
+
+    // Intentar enviar otras cotizaciones pendientes (envío oportunista)
+    enviarCotizacionesPendientesOportunista().catch(err => {
+      console.error('[Email] Error enviando cotizaciones pendientes:', err.message);
     });
 
     res.status(201).json({
       success: true,
       message: 'Cotización creada exitosamente',
-      id
+      id,
+      scheduled_at: finalScheduledAt
     });
 
   } catch (error) {
@@ -307,6 +395,9 @@ export const subirArchivoCotizacion = async (req, res) => {
     });
   }
 };
+
+// Exportamos la función para poder llamarla desde otros lugares (ej: login)
+export { enviarCotizacionesPendientesOportunista };
 
 // Eliminar cotización
 export const eliminarCotizacion = async (req, res) => {

@@ -74,8 +74,8 @@ async function crear(datos, items = []) {
     const [result] = await conn.query(`
       INSERT INTO cotizaciones 
         (requerimiento_id, proveedor_id, monto_total, monto_subtotal, iva, moneda,
-         archivo_url, fecha_envio, notas, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'enviada')`,
+         archivo_url, fecha_envio, scheduled_at, email_sent_at, notas, estado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datos.requerimiento_id,
         datos.proveedor_id,
@@ -85,7 +85,10 @@ async function crear(datos, items = []) {
         datos.moneda || 'MXN',
         datos.archivo_url || null,
         datos.fecha_envio || null,
-        datos.notas || null
+        datos.scheduled_at || null,
+        datos.email_sent_at || null,
+        datos.notas || null,
+        datos.estado || 'pendiente_envio'
       ]);
 
     const cotizacionId = result.insertId;
@@ -116,6 +119,34 @@ async function crear(datos, items = []) {
   } finally {
     conn.release();
   }
+}
+
+/**
+ * Obtiene todas las cotizaciones pendientes de envío cuya fecha ya llegó.
+ */
+export async function listarPendientesDeEnvio() {
+  const [rows] = await pool.query(`
+    SELECT c.*, p.nombre AS proveedor_nombre, p.email AS proveedor_email
+    FROM cotizaciones c
+    JOIN proveedores p ON p.id = c.proveedor_id
+    WHERE c.scheduled_at IS NOT NULL
+      AND c.scheduled_at <= NOW()
+      AND c.email_sent_at IS NULL
+    ORDER BY c.scheduled_at ASC
+  `);
+
+  return rows;
+}
+
+/**
+ * Marca una cotización como enviada por correo.
+ */
+export async function marcarComoEnviadaPorCorreo(cotizacionId) {
+  await pool.query(`
+    UPDATE cotizaciones 
+    SET email_sent_at = NOW(), estado = 'enviada'
+    WHERE id = ?
+  `, [cotizacionId]);
 }
 
 // Actualizar manteniendo restricción de no modificar si ya está seleccionada

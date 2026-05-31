@@ -15,6 +15,7 @@ import {
 } from '../models/usuario.js';
 import { enviarCorreoVerificacion } from '../utils/emailService.js';
 import logger from '../utils/logger.js';
+import { enviarCotizacionesPendientesOportunista } from './cotizacionesController.js';
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 async function login(req, res) {
@@ -63,6 +64,14 @@ async function login(req, res) {
       usuario: payload,
       expira_en: process.env.JWT_EXPIRES_IN || '8h',
     });
+
+    // Envío oportunista de cotizaciones pendientes (solo para roles con permisos)
+    if (['contabilidad', 'admin'].includes(usuario.rol)) {
+      enviarCotizacionesPendientesOportunista().catch(err => {
+        console.error('[Login] Error enviando cotizaciones pendientes:', err.message);
+      });
+    }
+
   } catch (err) {
     logger.error('Error en login', { error: err.message, stack: err.stack });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
