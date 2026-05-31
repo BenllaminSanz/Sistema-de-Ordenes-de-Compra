@@ -1,5 +1,6 @@
 import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar } from '../models/requerimientos.js';
 import * as CotizacionModel from '../models/cotizaciones.js';
+import logger from '../utils/logger.js';
 
 // ─── GET /requerimientos ──────────────────────────────────────────────────────
 async function listar(req, res) {
@@ -71,7 +72,11 @@ async function crear(req, res) {
     const nuevo = await obtenerPorId(id);
     res.status(201).json(nuevo);
   } catch (err) {
-    console.error('[crear requerimiento]', err);
+    logger.error('Error al crear requerimiento', { 
+      error: err.message, 
+      stack: err.stack,
+      userId: req.usuario?.id 
+    });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -119,11 +124,8 @@ async function actualizar(req, res) {
 // ─── PATCH /requerimientos/:id/estado ────────────────────────────────────────
 async function cambiarEstado(req, res) {
   try {
+    // Zod ya validó que 'estado' existe y es válido
     const { estado, notas } = req.body;
-
-    if (!estado) {
-      return res.status(400).json({ mensaje: "El campo 'estado' es requerido" });
-    }
 
     // Verificar ownership para solicitantes
     if (req.usuario.rol === 'solicitante') {
@@ -174,7 +176,13 @@ async function cambiarEstado(req, res) {
     res.json(actualizado);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
-    console.error('[cambiar estado requerimiento]', err);
+    
+    logger.error('Error al cambiar estado de requerimiento', { 
+      error: err.message, 
+      stack: err.stack,
+      requerimientoId: req.params.id,
+      userId: req.usuario?.id 
+    });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -192,7 +200,12 @@ async function eliminar(req, res) {
 
     res.status(204).send();
   } catch (err) {
-    console.error('[eliminar requerimiento]', err);
+    logger.error('Error al eliminar requerimiento', { 
+      error: err.message, 
+      stack: err.stack,
+      requerimientoId: req.params.id,
+      userId: req.usuario?.id 
+    });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }

@@ -14,6 +14,7 @@ import {
   marcarEmailVerificado
 } from '../models/usuario.js';
 import { enviarCorreoVerificacion } from '../utils/emailService.js';
+import logger from '../utils/logger.js';
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 async function login(req, res) {
@@ -63,7 +64,7 @@ async function login(req, res) {
       expira_en: process.env.JWT_EXPIRES_IN || '8h',
     });
   } catch (err) {
-    console.error('[login]', err);
+    logger.error('Error en login', { error: err.message, stack: err.stack });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }

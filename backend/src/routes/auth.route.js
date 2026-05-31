@@ -1,5 +1,11 @@
 import { Router } from 'express';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
+import { validate } from '../validations/validationMiddleware.js';
+import { 
+  loginSchema, 
+  cambiarPasswordSchema, 
+  registroSolicitanteSchema 
+} from '../validations/schemas.js';
 
 const router = Router();
 
@@ -15,17 +21,17 @@ import {
 } from '../controllers/authController.js';
 
 // ─── Rutas públicas (sin token) ───────────────────────────────────────────────
-router.post('/login', login);
+router.post('/login', validate(loginSchema), login);
 
 // Registro público para solicitantes (con verificación de correo)
-router.post('/registro-solicitante', registroSolicitante);
+router.post('/registro-solicitante', validate(registroSolicitanteSchema), registroSolicitante);
 
 // Verificación de correo electrónico
 router.get('/verificar-email', verificarEmail);
 
 // ─── Rutas autenticadas ───────────────────────────────────────────────────────
 router.get('/me',               autenticar, perfil);
-router.post('/cambiar-password', autenticar, cambiarPassword);
+router.post('/cambiar-password', autenticar, validate(cambiarPasswordSchema), cambiarPassword);
 
 // ─── Rutas solo admin (superusuario) ──────────────────────────────────────────
 router.post('/registro',

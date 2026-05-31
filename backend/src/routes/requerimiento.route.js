@@ -2,6 +2,12 @@ import express from 'express';
 const router = express.Router();
 import { listar, obtener, crear, actualizar, cambiarEstado, eliminar } from '../controllers/requerimientosController.js';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
+import { validate } from '../validations/validationMiddleware.js';
+import { 
+  crearRequerimientoSchema, 
+  actualizarRequerimientoSchema, 
+  cambiarEstadoRequerimientoSchema 
+} from '../validations/schemas.js';
 
 // Todas las rutas requieren estar autenticado
 router.use(autenticar);
@@ -25,6 +31,7 @@ router.get('/:id', obtener);
 router.post(
   '/',
   autorizar('solicitante', 'admin'),
+  validate(crearRequerimientoSchema),
   crear
 );
 
@@ -35,6 +42,7 @@ router.post(
 router.put(
   '/:id',
   autorizar('solicitante', 'contabilidad', 'admin'),
+  validate(actualizarRequerimientoSchema),
   actualizar
 );
 
@@ -46,6 +54,7 @@ router.put(
 router.patch(
   '/:id/estado',
   autorizar('solicitante', 'contabilidad', 'gerente', 'admin'),
+  validate(cambiarEstadoRequerimientoSchema),
   cambiarEstado
 );
 

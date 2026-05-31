@@ -2,9 +2,13 @@
 import "./src/config/env.js";
 
 import express from "express";
+import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+
+import logger from "./src/utils/logger.js";
+import { AppError } from "./src/utils/AppError.js";
 
 import authRoutes from "./src/routes/auth.route.js";
 import requerimientosRoutes from "./src/routes/requerimiento.route.js";
@@ -20,8 +24,38 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ─── Middlewares globales ──────────────────────────────────
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Scripts en línea (frontend vanilla)
+        scriptSrcAttr: ["'unsafe-inline'"],       // Event handlers inline (onclick, onchange, etc.)
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+      },
+    },
+  })
+); // Seguridad HTTP básica + CSP adaptado al frontend actual
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Logging básico de requests
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    logger.request(req.method, req.originalUrl, res.statusCode, duration);
+  });
+
+  next();
+});
 
 // Crear carpetas de uploads si no existen
 const uploadsDir = path.join(__dirname, 'uploads', 'cotizaciones');
@@ -66,10 +100,34 @@ app.use((req, res) => {
   res.status(404).json({ mensaje: `Ruta no encontrada: ${req.method} ${req.path}` });
 });
 
-// ─── Manejo de errores ─────────────────────────────────────
+// ─── Manejo de errores mejorado ────────────────────────────
 app.use((err, req, res, next) => {
-  console.error("[Error global]", err);
-  res.status(500).json({ mensaje: "Error interno del servidor" });
+  // Si es un AppError operativo, usamos su status y mensaje
+  if (err instanceof AppError) {
+    logger.warn(`Error operacional: ${err.message}`, {
+      statusCode: err.statusCode,
+      path: req.path,
+      method: req.method,
+    });
+
+    return res.status(err.statusCode).json({
+      mensaje: err.message,
+    });
+  }
+
+  // Errores no operacionales (bugs) → log completo + mensaje genérico
+  logger.error("Error no controlado", {
+    error: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+    body: req.body, // Cuidado: no loguear datos sensibles en producción
+  });
+
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({
+    mensaje: "Error interno del servidor",
+  });
 });
 
 // ─── Servidor ──────────────────────────────────────────────
