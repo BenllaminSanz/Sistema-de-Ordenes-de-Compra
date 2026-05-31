@@ -242,6 +242,57 @@ function renderSidebar() {
   marcarNavActivo();
 }
 
+// ─── UTILIDADES COMPARTIDAS (AÑADIDAS EN REFACTOR LIGERO) ─────────────────────
+/**
+ * Debounce para inputs (búsquedas, etc.)
+ */
+function debounce(fn, delay = 300) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), delay);
+  };
+}
+
+/**
+ * Maneja estado de carga en botones (deshabilita + cambia texto)
+ */
+function setButtonLoading(btn, isLoading, loadingText = 'Guardando...') {
+  if (!btn) return;
+  if (isLoading) {
+    if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = loadingText;
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.originalText) {
+      btn.textContent = btn.dataset.originalText;
+    }
+  }
+}
+
+/**
+ * Event delegation simple y reutilizable
+ */
+function delegate(container, selector, eventType, handler) {
+  if (!container) return;
+  container.addEventListener(eventType, (e) => {
+    const target = e.target.closest(selector);
+    if (target && container.contains(target)) {
+      handler(e, target);
+    }
+  });
+}
+
+/**
+ * Confirmación simple usando el nativo (fácil de reemplazar después)
+ */
+function confirmAction(message, onConfirm) {
+  if (window.confirm(message)) {
+    onConfirm();
+  }
+}
+
 // Exponer globalmente
 window.Auth   = Auth;
 window.Api    = Api;
@@ -249,3 +300,9 @@ window.Toast  = Toast;
 window.UI     = UI;
 window.renderSidebar = renderSidebar;
 window.renderTopbar  = renderTopbar;
+
+// Nuevas utilidades expuestas
+window.debounce = debounce;
+window.setButtonLoading = setButtonLoading;
+window.delegate = delegate;
+window.confirmAction = confirmAction;
