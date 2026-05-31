@@ -1,5 +1,8 @@
 import { createPool } from 'mysql2/promise';
 
+// Ensure environment variables are loaded
+import './env.js';
+
 const pool = createPool({
   host:     process.env.DB_HOST     || 'localhost',
   port:     process.env.DB_PORT     || 3306,

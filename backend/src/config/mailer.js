@@ -1,14 +1,7 @@
 import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-// Configuración para obtener la ruta del archivo .env correctamente
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Sube dos niveles desde src/config hasta la raíz del backend
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Load environment variables from the single centralized loader
+import "../config/env.js";
 
 // DEBUG en consola del servidor
 console.log("--- Configuración SMTP ---");

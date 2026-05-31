@@ -1,5 +1,8 @@
 import crypto from 'crypto';
 
+// Ensure environment variables are loaded
+import './env.js';
+
 const ALGORITHM = 'aes-256-cbc';
 const KEY = Buffer.from(process.env.SECRET_ENCRYPTION_KEY); // La llave de 32 chars
 const IV_LENGTH = 16; // Para AES, esto siempre es 16

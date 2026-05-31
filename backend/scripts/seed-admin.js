@@ -1,13 +1,8 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { hash } from 'bcryptjs';
 import pool from '../src/config/db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.join(__dirname, '../.env') });
+// Load environment variables from the single centralized loader
+import '../src/config/env.js';
 
 async function main() {
   const email    = process.env.ADMIN_EMAIL    || 'admin@empresa.com';

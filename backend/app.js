@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-dotenv.config({ path: "./backend/.env" });
+// Load environment variables (must be the very first thing)
+import "./src/config/env.js";
 
 import express from "express";
 import path from "path";
