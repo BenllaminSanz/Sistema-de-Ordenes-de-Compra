@@ -124,7 +124,7 @@ async function actualizar(req, res) {
 // ─── PATCH /requerimientos/:id/estado ────────────────────────────────────────
 async function cambiarEstado(req, res) {
   try {
-    // Zod ya validó que 'estado' existe y es válido
+    // Zod ya comprobo que 'estado' existe y es válido
     const { estado, notas } = req.body;
 
     // Verificar ownership para solicitantes

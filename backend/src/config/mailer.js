@@ -1,6 +1,4 @@
 import nodemailer from 'nodemailer';
-
-// Load environment variables from the single centralized loader
 import "../config/env.js";
 
 // DEBUG en consola del servidor

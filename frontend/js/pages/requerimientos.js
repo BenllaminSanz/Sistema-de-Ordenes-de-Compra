@@ -1,10 +1,7 @@
 /**
  * requerimientos.js
  * Lógica de la página de Requerimientos (extraída de requerimientos.html)
- * 
- * NOTA: Esta es la extracción inicial del refactor ligero.
- * El código interno complejo (cotizaciones, items, PDF) se mantiene casi idéntico
- * en esta primera fase para minimizar riesgo.
+ *
  */
 
 Auth.requiereAuth();

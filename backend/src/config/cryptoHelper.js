@@ -1,6 +1,5 @@
+//Cryptografia
 import crypto from 'crypto';
-
-// Ensure environment variables are loaded
 import './env.js';
 
 const ALGORITHM = 'aes-256-cbc';

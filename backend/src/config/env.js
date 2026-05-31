@@ -1,4 +1,3 @@
-// backend/src/config/env.js
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,11 +20,5 @@ dotenv.config({
   path: path.join(projectRoot, '.env'),
   override: false, // Do not override existing environment variables
 });
-
-// Optional: You can add validation for critical variables here in the future.
-// Example:
-// if (!process.env.JWT_SECRET) {
-//   throw new Error('JWT_SECRET is required in .env file');
-// }
 
 export default process.env;
