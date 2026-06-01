@@ -102,19 +102,19 @@ function volverLista() {
   history.replaceState(null, '', window.location.pathname);
 }
 
-// Editar DataTextNow de la OC principal
+// Editar DataTextNow de la OC principal (PO Number de los reportes Excel de DataTextNow)
 async function editarDataTextNowOC(ocId, valorActual) {
-  const nuevo = prompt('Ingresa el nuevo ID de DataTextNow:', valorActual || '');
+  const nuevo = prompt('Ingresa el Número de PO de DataTextNow (ej. 0310005905):', valorActual || '');
   if (nuevo === null) return;
 
   try {
     await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, {
       datatextnow_id: nuevo.trim() || null
     });
-    Toast.success('DataTextNow actualizado');
+    Toast.success('PO de DataTextNow actualizado');
     abrirDetalle(ocId);
   } catch (err) {
-    Toast.error(err.mensaje || 'Error al actualizar DataTextNow');
+    Toast.error(err.mensaje || 'Error al actualizar el PO de DataTextNow');
   }
 }
 
@@ -147,7 +147,7 @@ function renderDetalle(oc) {
           <td>${oc.autorizado_por_nombre}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Fecha autorización</td>
           <td>${UI.fecha(oc.fecha_autorizacion)}</td></tr>
-      <tr><td style="padding:6px 0;color:#6b7280">DataTextNow</td>
+      <tr><td style="padding:6px 0;color:#6b7280">PO en DataTextNow</td>
           <td>
             ${oc.datatextnow_id || '—'}
             ${Auth.puedeHacer(['contabilidad','admin']) 
@@ -225,7 +225,7 @@ function renderAcciones(oc) {
   };
 
   const opciones = TRANSICIONES[oc.estado];
-  const puedeActuar = ['contabilidad','gerente','admin'].includes(u.rol);
+  const puedeActuar = ['contabilidad','admin'].includes(u.rol);
 
   if (!opciones || !puedeActuar) { panel.style.display = 'none'; return; }
 
@@ -285,11 +285,11 @@ async function cargarRecepciones(ocId) {
           </div>
           <div style="margin-top:6px;font-size:13px;color:#6b7280">
             Recibido por: ${r.recibido_por_nombre}
-            ${r.datatextnow_id ? ' · DTN: ' + r.datatextnow_id : ''}
+            ${r.datatextnow_id ? ' · Trans. DataTextNow: ' + r.datatextnow_id : ''}
           </div>
           ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
           ${r.estado !== 'entregado_solicitante' && 
-            (Auth.puedeHacer(['contabilidad','admin','gerente']) || 
+            (Auth.puedeHacer(['contabilidad','admin']) || 
              (Auth.getUsuario()?.id === ocActual?.solicitante_id))
             ? `<button class="btn btn-sm btn-outline mt-2"
                        data-action="marcar-entregado" data-rec-id="${r.id}">

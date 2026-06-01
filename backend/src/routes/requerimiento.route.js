@@ -48,12 +48,12 @@ router.put(
 
 /**
  * PATCH /api/requerimientos/:id/estado
- * - contabilidad/gerente/admin: transiciones normales (aprobar, rechazar, etc.)
+ * - contabilidad/admin: transiciones normales (aprobar, rechazar, etc.)
  * - solicitante: solo puede enviar sus propios borradores a 'en_revision'
  */
 router.patch(
   '/:id/estado',
-  autorizar('solicitante', 'contabilidad', 'gerente', 'admin'),
+  autorizar('solicitante', 'contabilidad', 'admin'),
   validate(cambiarEstadoRequerimientoSchema),
   cambiarEstado
 );

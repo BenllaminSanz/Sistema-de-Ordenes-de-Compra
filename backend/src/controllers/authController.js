@@ -131,7 +131,7 @@ async function registro(req, res) {
       return res.status(400).json({ mensaje: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
-    const roles_validos = ['solicitante', 'contabilidad', 'gerente', 'admin'];
+    const roles_validos = ['solicitante', 'contabilidad', 'admin'];
     if (rol && !roles_validos.includes(rol)) {
       return res.status(400).json({ mensaje: `Rol inválido. Opciones: ${roles_validos.join(', ')}` });
     }

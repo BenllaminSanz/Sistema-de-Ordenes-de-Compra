@@ -14,7 +14,7 @@ async function generarNumeroOC(conn) {
 }
 
 async function listar(filtros = {}) {
-  const { estado, solicitante_id, pagina = 1, limite = 20 } = filtros;
+  const { estado, solicitante_id, fecha_desde, fecha_hasta, pagina = 1, limite = 20 } = filtros;
 
   let where = [];
   let params = [];
@@ -29,6 +29,16 @@ async function listar(filtros = {}) {
     params.push(solicitante_id);
   }
 
+  if (fecha_desde) {
+    where.push('(DATE(oc.fecha_autorizacion) >= ? OR DATE(oc.created_at) >= ?)');
+    params.push(fecha_desde, fecha_desde);
+  }
+
+  if (fecha_hasta) {
+    where.push('(DATE(oc.fecha_autorizacion) <= ? OR DATE(oc.created_at) <= ?)');
+    params.push(fecha_hasta, fecha_hasta);
+  }
+
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const offset = (pagina - 1) * limite;
 
@@ -39,12 +49,16 @@ async function listar(filtros = {}) {
        oc.created_at,
        r.consecutivo, r.tipo, r.descripcion, r.solicitante_id,
        u.nombre AS autorizado_por_nombre,
-       p.nombre AS proveedor_nombre
+       p.nombre AS proveedor_nombre,
+       c.monto_total,
+       rec.estado AS estado_recepcion,
+       rec.fecha_recepcion
      FROM ordenes_compra oc
      JOIN requerimientos r ON r.id = oc.requerimiento_id
      JOIN usuarios u       ON u.id = oc.autorizado_por
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
      LEFT JOIN proveedores  p ON p.id = c.proveedor_id
+     LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
      ${whereClause}
      ORDER BY oc.created_at DESC
      LIMIT ? OFFSET ?`,
@@ -176,6 +190,9 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
   }
 }
 
+/**
+ * Actualiza el número de PO / Order code proveniente de DataTextNow (de los reportes Excel).
+ */
 async function actualizarDatatextnow(id, datatextnow_id) {
   const [r] = await pool.query(
     'UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?',

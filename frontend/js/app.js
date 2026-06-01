@@ -182,7 +182,6 @@ function renderSidebar() {
 
   // Menús visibles por rol
   const esContabilidad = ['contabilidad','admin'].includes(u.rol);
-  const esGerente      = ['gerente','admin'].includes(u.rol);
 
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-brand">

@@ -10,6 +10,6 @@ router.get('/',    listar);
 // POST /api/ordenes-compra/:orden_id/recepciones
 router.post('/',   autorizar('contabilidad','admin'), crear);
 // PATCH /api/ordenes-compra/:orden_id/recepciones/:id/entregar
-router.patch('/:id/entregar', autorizar('contabilidad','gerente','admin','solicitante'), marcarEntregado);
+router.patch('/:id/entregar', autorizar('contabilidad','admin','solicitante'), marcarEntregado);
 
 export default router;

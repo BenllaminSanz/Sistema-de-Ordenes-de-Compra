@@ -65,7 +65,7 @@ async function cambiarEstado(req, res) {
 async function actualizarDatatextnow(req, res) {
   try {
     const { datatextnow_id } = req.body;
-    if (!datatextnow_id) return res.status(400).json({ mensaje: 'datatextnow_id es requerido' });
+    if (!datatextnow_id) return res.status(400).json({ mensaje: 'datatextnow_id (número de PO de DataTextNow) es requerido' });
     await _actualizarDatatextnow(req.params.id, datatextnow_id);
     res.json(await obtenerPorId(req.params.id));
   } catch (err) {

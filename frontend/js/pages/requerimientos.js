@@ -201,7 +201,7 @@ function renderDetalle(req) {
           <td>${req.solicitante_nombre}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Requiere cotización</td>
           <td>${req.requiere_cotizacion ? 'Sí' : 'No'}</td></tr>
-      <tr><td style="padding:6px 0;color:#6b7280">DataTextNow</td>
+      <tr><td style="padding:6px 0;color:#6b7280">PO en DataTextNow</td>
           <td>${req.datatextnow_id || '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Fecha creación</td>
           <td>${UI.fecha(req.created_at)}</td></tr>
@@ -468,7 +468,7 @@ async function generarOC() {
     setTimeout(() => window.location.href = `ordenes.html?id=${oc.id}`, 1200);
   } catch (err) {
     if (err.status === 403 || (err.mensaje && err.mensaje.toLowerCase().includes('permiso'))) {
-      Toast.error('No tienes permiso para generar Órdenes de Compra. Contacta a un Gerente o Administrador.');
+      Toast.error('No tienes permiso para generar Órdenes de Compra. Contacta a Contabilidad o Administrador.');
     } else {
       Toast.error(err.mensaje || 'Error al generar OC');
     }
@@ -513,6 +513,7 @@ async function cargarCotizaciones(reqId) {
 
     cotizaciones.forEach(c => {
       const monto = parseFloat(c.monto_total || 0).toLocaleString('es-MX');
+      const tieneIva = c.iva && parseFloat(c.iva) > 0;
       const estado = c.seleccionada === 1 || c.estado === 'seleccionada' 
         ? `<span class="badge bg-success">Seleccionada</span>` 
         : (c.estado 
@@ -531,6 +532,7 @@ async function cargarCotizaciones(reqId) {
           <td><strong>${c.proveedor_nombre || 'Sin proveedor'}</strong></td>
           <td class="text-end fw-600">
             $${monto} ${c.moneda || 'MXN'}
+            ${tieneIva ? '<span class="text-xs text-muted">(con IVA)</span>' : ''}
             ${desgloseBtn}
           </td>
           <td>${estado}</td>
@@ -907,6 +909,10 @@ async function editarCotizacion(cotizacionId) {
         tbody.appendChild(row);
       });
 
+      // Default a 16% de IVA al editar
+      const ivaSel = document.getElementById('cot-iva-porcentaje');
+      if (ivaSel) ivaSel.value = '16';
+
       calcularTotalItems();
     } else {
       simpleDiv.style.display = 'block';
@@ -1066,7 +1072,8 @@ async function guardarCotizacionOriginal() {
     const usarItems = (itemsDivVisible || filasConContenido > 0) && filasConContenido > 0;
 
     if (usarItems && tbody) {
-      let total = 0;
+      const calculo = calcularTotalItems(); // Ahora devuelve {subtotal, iva, total}
+
       const rows = tbody.querySelectorAll('tr');
 
       rows.forEach(row => {
@@ -1082,13 +1089,14 @@ async function guardarCotizacionOriginal() {
           unidad: row.querySelector('.item-unidad').value,
           precio_unitario
         });
-
-        total += cantidad * precio_unitario;
       });
 
-      datos.monto_subtotal = total;
-      datos.monto_total = total;
-      datos.iva = 0;
+      const ivaPorcentaje = parseFloat(document.getElementById('cot-iva-porcentaje')?.value) || 16;
+
+      datos.monto_subtotal = calculo.subtotal;
+      datos.iva = calculo.iva;
+      datos.monto_total = calculo.total;
+      datos.iva_porcentaje = ivaPorcentaje;   // útil para el backend si lo quiere guardar
 
       if (datos.items.length === 0) {
         return Toast.error('Debe agregar al menos un concepto en la lista de items');
@@ -1101,9 +1109,10 @@ async function guardarCotizacionOriginal() {
         return Toast.error('Debe ingresar un monto total válido');
       }
 
+      // En modo simple asumimos que el monto ya incluye IVA (o el usuario lo maneja manualmente)
       datos.monto_total = monto_total;
-      datos.monto_subtotal = monto_total;
-      datos.iva = 0;
+      datos.monto_subtotal = monto_total / 1.16; // estimado 16%
+      datos.iva = monto_total - datos.monto_subtotal;
     }
 
     let response;
@@ -1400,6 +1409,13 @@ function crearFilaItem(itemData = {}) {
     input.addEventListener('input', calcularTotalItems);
   });
 
+  // Escuchar cambios en el selector de IVA (si existe)
+  const ivaSelect = document.getElementById('cot-iva-porcentaje');
+  if (ivaSelect && !ivaSelect.dataset.listenerAttached) {
+    ivaSelect.dataset.listenerAttached = 'true';
+    ivaSelect.addEventListener('change', calcularTotalItems);
+  }
+
   // Delegación para eliminar item (se adjunta al tbody una sola vez)
   const itemsTbody = document.querySelector('#tabla-items-cot tbody');
   if (itemsTbody && !itemsTbody.dataset.delegateAttached) {
@@ -1433,19 +1449,31 @@ function eliminarItem(btn) {
 }
 
 function calcularTotalItems() {
-  let total = 0;
+  let subtotal = 0;
   const rows = document.querySelectorAll('#tabla-items-cot tbody tr');
 
   rows.forEach(row => {
     const cantidad = parseFloat(row.querySelector('.item-cant').value) || 0;
     const precio = parseFloat(row.querySelector('.item-precio').value) || 0;
-    const subtotal = cantidad * precio;
+    const sub = cantidad * precio;
 
-    row.querySelector('.item-subtotal').textContent = subtotal.toFixed(2);
-    total += subtotal;
+    row.querySelector('.item-subtotal').textContent = sub.toFixed(2);
+    subtotal += sub;
   });
 
-  const totalEl = document.getElementById('total-items');
-  if (totalEl) totalEl.textContent = total.toFixed(2);
-  return total;
+  // Calcular IVA
+  const ivaPorcentaje = parseFloat(document.getElementById('cot-iva-porcentaje')?.value) || 16;
+  const ivaMonto = subtotal * (ivaPorcentaje / 100);
+  const totalFinal = subtotal + ivaMonto;
+
+  // Actualizar UI
+  const subEl = document.getElementById('cot-subtotal');
+  const ivaEl = document.getElementById('cot-iva-monto');
+  const totalEl = document.getElementById('cot-total-final');
+
+  if (subEl) subEl.textContent = subtotal.toFixed(2);
+  if (ivaEl) ivaEl.textContent = ivaMonto.toFixed(2);
+  if (totalEl) totalEl.textContent = totalFinal.toFixed(2);
+
+  return { subtotal, iva: ivaMonto, total: totalFinal };
 }

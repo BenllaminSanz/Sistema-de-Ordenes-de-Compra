@@ -7,8 +7,9 @@ router.use(autenticar);
 
 router.get('/',                                                       listar);
 router.get('/:id',                                                    obtener);
-router.post('/',   autorizar('contabilidad','gerente','admin'),       crear);
-router.patch('/:id/estado', autorizar('contabilidad','gerente','admin'), cambiarEstado);
+router.post('/',   autorizar('contabilidad','admin'),       crear);
+router.patch('/:id/estado', autorizar('contabilidad','admin'), cambiarEstado);
+// Actualiza el número de PO / Order code de DataTextNow (se obtiene de los reportes Excel externos)
 router.patch('/:id/datatextnow', autorizar('contabilidad','admin'),   actualizarDatatextnow);
 
 export default router;

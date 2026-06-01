@@ -160,7 +160,7 @@ async function actualizar(id, datos) {
   if (datos.descripcion !== undefined) campos.descripcion = datos.descripcion;
   if (datos.requiere_cotizacion !== undefined)
     campos.requiere_cotizacion = datos.requiere_cotizacion ? 1 : 0;
-  if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id;
+  if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id; // PO de DataTextNow (de reportes Excel)
 
   if (Object.keys(campos).length === 0) return 0;
 
