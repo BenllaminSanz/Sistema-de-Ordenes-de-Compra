@@ -38,7 +38,7 @@ async function listar(filtros = {}) {
   if (departamento)   { where.push('r.departamento = ?');               params.push(departamento); }
   if (tipo)           { where.push('r.tipo = ?');                       params.push(tipo); }
   if (solicitante_id) { where.push('r.solicitante_id = ?');             params.push(solicitante_id); }
-  if (busqueda)       { where.push('(r.consecutivo LIKE ? OR r.descripcion LIKE ?)');
+  if (busqueda)       { where.push('(r.consecutivo LIKE ? OR r.notas LIKE ?)');
                         params.push(`%${busqueda}%`, `%${busqueda}%`); }
 
   const clausulaWhere = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -47,7 +47,7 @@ async function listar(filtros = {}) {
   const [rows] = await pool.query(
     `SELECT
        r.id, r.consecutivo, r.titulo_solicitud, r.area, r.departamento, r.tipo, r.estado,
-       r.requiere_cotizacion, r.descripcion,
+       r.requiere_cotizacion, r.notas,
        r.datatextnow_id, r.notas_rechazo,
        r.created_at, r.updated_at,
        u.nombre AS solicitante_nombre,
@@ -97,7 +97,24 @@ async function obtenerPorId(id) {
     [id]
   );
 
-  return { ...req, historial };
+  // Cargar ítems del catálogo asociados
+  const [items] = await pool.query(
+    `SELECT 
+       ri.id,
+       ri.catalogo_id,
+       ri.cantidad,
+       c.codigo,
+       c.descripcion,
+       c.tipo,
+       c.costo_referencia
+     FROM requerimiento_items ri
+     JOIN catalogo c ON c.id = ri.catalogo_id
+     WHERE ri.requerimiento_id = ?
+     ORDER BY ri.id ASC`,
+    [id]
+  );
+
+  return { ...req, historial, items };
 }
 
 /**
@@ -113,7 +130,7 @@ async function crear(datos, solicitante_id) {
   
     const [result] = await conn.query(
       `INSERT INTO requerimientos
-         (consecutivo, solicitante_id, titulo_solicitud,  area, departamento, tipo, descripcion, requiere_cotizacion, estado)
+         (consecutivo, solicitante_id, titulo_solicitud, area, departamento, tipo, notas, requiere_cotizacion, estado)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'borrador')`,
       [
         consecutivo,
@@ -122,7 +139,7 @@ async function crear(datos, solicitante_id) {
         datos.area,
         datos.departamento,
         datos.tipo,
-        datos.descripcion,
+        datos.notas || datos.descripcion || '', // retrocompatibilidad temporal
         datos.requiere_cotizacion ? 1 : 0,
       ]
     );
@@ -136,6 +153,19 @@ async function crear(datos, solicitante_id) {
        VALUES ('requerimiento', ?, NULL, 'borrador', ?, 'Requerimiento creado como borrador')`,
       [requerimientoId, solicitante_id]
     );
+
+    // Insertar ítems del catálogo si se enviaron
+    if (Array.isArray(datos.items) && datos.items.length > 0) {
+      for (const item of datos.items) {
+        if (item.catalogo_id && item.cantidad > 0) {
+          await conn.query(
+            `INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
+             VALUES (?, ?, ?)`,
+            [requerimientoId, item.catalogo_id, item.cantidad]
+          );
+        }
+      }
+    }
 
     await conn.commit();
     return requerimientoId;
@@ -157,7 +187,8 @@ async function actualizar(id, datos) {
   if (datos.area                    !== undefined) campos.area                    = datos.area;
   if (datos.departamento            !== undefined) campos.departamento            = datos.departamento;
   if (datos.tipo        !== undefined) campos.tipo        = datos.tipo;
-  if (datos.descripcion !== undefined) campos.descripcion = datos.descripcion;
+  if (datos.notas !== undefined) campos.notas = datos.notas;
+  if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // retrocompatibilidad temporal - eliminar en futuro
   if (datos.requiere_cotizacion !== undefined)
     campos.requiere_cotizacion = datos.requiere_cotizacion ? 1 : 0;
   if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id; // PO de DataTextNow (de reportes Excel)

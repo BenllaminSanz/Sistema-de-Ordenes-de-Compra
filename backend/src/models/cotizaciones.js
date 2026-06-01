@@ -88,7 +88,7 @@ async function crear(datos, items = []) {
         datos.scheduled_at || null,
         datos.email_sent_at || null,
         datos.notas || null,
-        datos.estado || 'pendiente_envio'
+        datos.estado || 'en_revision'
       ]);
 
     const cotizacionId = result.insertId;

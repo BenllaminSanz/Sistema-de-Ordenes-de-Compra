@@ -127,16 +127,24 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Descripción *</label>
-        <textarea id="req-descripcion" class="form-control" rows="3"
-                  placeholder="Describe el requerimiento con detalle…" required></textarea>
+        <label class="form-label">Notas / Detalles adicionales</label>
+        <textarea id="req-notas" class="form-control" rows="2"
+                  placeholder="Notas adicionales o justificación (opcional para requerimientos con ítems del catálogo)"></textarea>
       </div>
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="req-cotizacion">
-          Requiere cotización
-        </label>
+
+      <!-- Sección de ítems del Catálogo (Paso 5) -->
+      <div class="form-group" id="seccion-items-catalogo" style="display:none;">
+        <label class="form-label">Ítems del Catálogo *</label>
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" id="busqueda-catalogo" class="form-control" placeholder="Buscar en catálogo..." style="flex:1;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="buscarEnCatalogo()">Buscar</button>
+        </div>
+        <div id="resultados-catalogo" style="max-height:140px; overflow:auto; border:1px solid #ddd; border-radius:6px; padding:4px; margin-bottom:8px; font-size:13px;"></div>
+
+        <div style="font-size:12px; color:#666; margin-bottom:4px;">Ítems seleccionados:</div>
+        <div id="items-seleccionados-req" style="min-height:40px; border:1px dashed #ccc; border-radius:6px; padding:6px; font-size:13px;"></div>
       </div>
+      <!-- El solicitante ya no define si requiere cotización (lo decide Contabilidad) -->
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-req')">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="btn-guardar-req">Guardar</button>
@@ -166,7 +174,7 @@
 
 <!-- ── Modal: Nueva Cotización (Mejorado) ──────────────────────────────────────── -->
 <div class="modal-backdrop" id="modal-cotizacion" style="display: none;">
-  <div class="modal-box" style="max-width: 600px;">
+  <div class="modal-box" style="max-width: 780px;">
     <div class="modal-header">
       <h3 class="modal-title">Nueva Cotización</h3>
       <button class="modal-close" onclick="cerrarModalCotizacion()">×</button>
@@ -224,11 +232,11 @@
             <table class="table table-sm" id="tabla-items-cot">
               <thead class="table-light">
                 <tr>
-                  <th width="45%">Descripción</th>
-                  <th width="10%">Cantidad</th>
-                  <th width="12%">Unidad</th>
-                  <th width="15%">Precio Unitario</th>
-                  <th width="13%" class="text-end">Subtotal</th>
+                  <th width="52%">Descripción</th>
+                  <th width="8%">Cantidad</th>
+                  <th width="10%">Unidad</th>
+                  <th width="13%">Precio Unitario</th>
+                  <th width="12%" class="text-end">Subtotal</th>
                   <th width="5%"></th>
                 </tr>
               </thead>
@@ -246,7 +254,7 @@
             <div class="d-flex justify-between align-center mb-1">
               <div style="display:flex; align-items:center; gap:6px;">
                 <span class="text-muted">IVA</span>
-                <select id="cot-iva-porcentaje" class="form-control" style="width:70px; padding:2px 4px; font-size:12px;">
+                <select id="cot-iva-porcentaje" class="form-control" style="width: 86px; font-size: 13px;">
                   <option value="0">0%</option>
                   <option value="8">8%</option>
                   <option value="16" selected>16%</option>

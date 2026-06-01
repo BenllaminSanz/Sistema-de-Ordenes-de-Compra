@@ -66,6 +66,30 @@ CREATE TABLE `proveedores` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
+-- TABLA: catalogo (NUEVA - Fuente principal de artículos y servicios)
+-- ============================================================
+DROP TABLE IF EXISTS `catalogo`;
+
+CREATE TABLE `catalogo` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tipo` enum('PARTES','SERVICIOS','FLETES') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `codigo` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Código editable. Obligatorio para PARTES y SERVICIOS',
+  `descripcion` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `costo_referencia` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `proveedor_id` int unsigned DEFAULT NULL COMMENT 'Proveedor recomendado (opcional)',
+  `activo` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalogo_codigo` (`codigo`),
+  KEY `idx_catalogo_tipo` (`tipo`),
+  KEY `idx_catalogo_codigo` (`codigo`),
+  KEY `idx_catalogo_activo` (`activo`),
+  KEY `idx_catalogo_proveedor` (`proveedor_id`),
+  CONSTRAINT `fk_catalogo_proveedor` FOREIGN KEY (`proveedor_id`) REFERENCES `proveedores` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Catálogo maestro de partes, servicios y fletes. Administrado solo por Admin y Contabilidad. proveedor_id es opcional.';
+
+-- ============================================================
 -- TABLA: requerimientos
 -- ============================================================
 DROP TABLE IF EXISTS `requerimientos`;
@@ -78,7 +102,7 @@ CREATE TABLE `requerimientos` (
   `area` enum('ADMINISTRACION','PRODUCCION') COLLATE utf8mb4_unicode_ci NOT NULL,
   `departamento` enum('ALMACEN','RH','IT','VENTAS','MTTO') COLLATE utf8mb4_unicode_ci NOT NULL,
   `tipo` enum('PARTES','SERVICIOS','FLETES') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `descripcion` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `notas` text COLLATE utf8mb4_unicode_ci NOT NULL,
   `requiere_cotizacion` tinyint(1) NOT NULL DEFAULT '0',
   `estado` enum('borrador','en_revision','incompleto','aprobado','rechazado','cerrado') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'borrador',
   `notas_rechazo` text COLLATE utf8mb4_unicode_ci COMMENT 'Motivo cuando estado = incompleto o rechazado',
@@ -91,6 +115,25 @@ CREATE TABLE `requerimientos` (
   KEY `idx_req_solicitante` (`solicitante_id`),
   CONSTRAINT `fk_req_solicitante` FOREIGN KEY (`solicitante_id`) REFERENCES `usuarios` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- TABLA: requerimiento_items (NUEVA - Ítems seleccionados del catálogo)
+-- ============================================================
+DROP TABLE IF EXISTS `requerimiento_items`;
+
+CREATE TABLE `requerimiento_items` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `requerimiento_id` int unsigned NOT NULL,
+  `catalogo_id` int unsigned NOT NULL,
+  `cantidad` decimal(12,4) NOT NULL DEFAULT '1.0000',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_req_item_requerimiento` (`requerimiento_id`),
+  KEY `idx_req_item_catalogo` (`catalogo_id`),
+  CONSTRAINT `fk_req_item_requerimiento` FOREIGN KEY (`requerimiento_id`) REFERENCES `requerimientos` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_req_item_catalogo` FOREIGN KEY (`catalogo_id`) REFERENCES `catalogo` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Ítems del catálogo asociados a un requerimiento';
 
 -- ============================================================
 -- TABLA: historial_estados

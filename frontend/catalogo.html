@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catálogo — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app-layout">
+  <aside id="sidebar"></aside>
+
+  <div style="flex:1">
+    <header id="topbar"></header>
+
+    <main id="main-content">
+      <div class="card">
+        <div class="d-flex align-center justify-between" style="margin-bottom:16px">
+          <div class="card-title mb-0">Catálogo de Artículos y Servicios</div>
+          <div id="admin-actions" style="display:none;">
+            <button class="btn btn-primary btn-sm" onclick="abrirModalCatalogo()">
+              + Nuevo elemento
+            </button>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="d-flex gap-2 align-center mb-3" style="flex-wrap: wrap;">
+          <input type="text" id="busqueda" class="form-control" placeholder="Buscar por código o descripción..." 
+                 style="max-width: 320px;" oninput="cargarCatalogo()">
+
+          <select id="filtro-tipo" class="form-control" style="max-width: 160px;" onchange="cargarCatalogo()">
+            <option value="">Todos los tipos</option>
+            <option value="PARTES">Partes</option>
+            <option value="SERVICIOS">Servicios</option>
+            <option value="FLETES">Fletes</option>
+          </select>
+
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer; margin-left:8px;">
+            <input type="checkbox" id="chk-activos" checked onchange="cargarCatalogo()">
+            Solo activos
+          </label>
+        </div>
+
+        <div id="tabla-catalogo"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- Modal: Crear / Editar elemento del Catálogo -->
+<div class="modal-backdrop" id="modal-catalogo" style="display:none;">
+  <div class="modal-box" style="max-width: 520px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-catalogo-titulo">Nuevo elemento</h3>
+      <button class="modal-close" onclick="cerrarModalCatalogo()">×</button>
+    </div>
+    <form id="form-catalogo" onsubmit="guardarCatalogo(event)">
+      <input type="hidden" id="catalogo-id">
+
+      <div class="form-group">
+        <label class="form-label">Tipo *</label>
+        <select id="cat-tipo" class="form-control" required>
+          <option value="">Selecciona tipo...</option>
+          <option value="PARTES">Partes</option>
+          <option value="SERVICIOS">Servicios</option>
+          <option value="FLETES">Fletes</option>
+        </select>
+        <small class="text-danger" id="error-cat-tipo"></small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Código *</label>
+        <input type="text" id="cat-codigo" class="form-control" required placeholder="Ej: MOT-150HP">
+        <small class="text-danger" id="error-cat-codigo"></small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Descripción *</label>
+        <textarea id="cat-descripcion" class="form-control" rows="3" required placeholder="Descripción detallada del artículo o servicio"></textarea>
+        <small class="text-danger" id="error-cat-descripcion"></small>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">Costo de Referencia *</label>
+          <input type="number" id="cat-costo" class="form-control" step="0.01" min="0" required>
+          <small class="text-danger" id="error-cat-costo"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Proveedor (opcional)</label>
+          <select id="cat-proveedor" class="form-control">
+            <option value="">Sin proveedor asignado</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="cerrarModalCatalogo()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-catalogo">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/pages/catalogo.js"></script>
+</body>
+</html>

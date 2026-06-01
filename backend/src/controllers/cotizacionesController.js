@@ -150,7 +150,7 @@ export const crearCotizacion = async (req, res) => {
 
     // Preparar datos adicionales según el caso
     let emailSentAtOnCreate = null;
-    let estadoInicial = 'pendiente_envio';
+    let estadoInicial = 'en_revision';
 
     if (esFechaPasada) {
       // Fecha pasada: guardamos el registro pero lo marcamos como "enviada" (sin enviar correo)
@@ -227,9 +227,9 @@ export const actualizarCotizacion = async (req, res) => {
     const { id } = req.params;
     const datos = req.body;
 
-    // Validación: fecha de envío no puede ser futura
+    // Validación de fecha de envío (permite pasadas, hoy y futuras, consistente con creación)
     if (datos.fecha_envio !== undefined) {
-      const validacionFecha = validarFechaEnvioNoFutura(datos.fecha_envio);
+      const validacionFecha = validarFechaEnvio(datos.fecha_envio);
       if (!validacionFecha.valido) {
         return res.status(400).json({ 
           success: false, 

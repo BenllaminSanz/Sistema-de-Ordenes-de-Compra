@@ -208,6 +208,11 @@ function renderSidebar() {
              0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
         Requerimientos
       </a>
+      <a href="catalogo.html">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+             viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+        Catálogo
+      </a>
 
       ${esContabilidad ? `
       <a href="ordenes.html">

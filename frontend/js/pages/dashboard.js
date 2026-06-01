@@ -88,7 +88,7 @@ async function cargarReqPendientes() {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Consecutivo</th><th>Tipo</th><th>Descripción</th>
+            <th>Consecutivo</th><th>Tipo</th><th>Notas / Detalles</th>
             <th>Solicitante</th><th>Fecha</th><th></th>
           </tr></thead>
           <tbody>${datos.map(r => `
@@ -96,7 +96,7 @@ async function cargarReqPendientes() {
               <td class="fw-600">${r.consecutivo}</td>
               <td>${r.tipo}</td>
               <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
-                ${r.descripcion}</td>
+                ${r.notas || r.descripcion || '—'}</td>
               <td>${r.solicitante_nombre}</td>
               <td class="text-muted">${UI.fecha(r.created_at)}</td>
               <td><a href="requerimientos.html?id=${r.id}" class="btn btn-sm btn-outline">Ver</a></td>

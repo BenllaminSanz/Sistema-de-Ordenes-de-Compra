@@ -54,37 +54,62 @@ async function obtener(req, res) {
 // ─── POST /requerimientos ─────────────────────────────────────────────────────
 async function crear(req, res) {
   try {
-    const { titulo_solicitud, tipo, area, departamento, descripcion, requiere_cotizacion } = req.body;
+    const { 
+      titulo_solicitud, 
+      tipo, 
+      area, 
+      departamento, 
+      notas, 
+      descripcion,           // retrocompatibilidad temporal - eliminar cuando frontend esté 100% en 'notas'
+      requiere_cotizacion,
+      items                  // nuevos ítems del catálogo [{catalogo_id, cantidad}]
+    } = req.body;
+
+    const notasFinal = (notas || descripcion || '').trim(); // retrocompatibilidad temporal
 
     // Validaciones básicas
     if (!titulo_solicitud || titulo_solicitud.trim().length < 10) {
       return res.status(400).json({ mensaje: 'El titulo debe tener al menos 10 caracteres' });
     }
-    if (!descripcion || descripcion.trim().length < 10) {
-      return res.status(400).json({ mensaje: 'La descripción debe tener al menos 10 caracteres' });
+
+    // Para requerimientos normales ya no exigimos descripción larga (se usa el catálogo)
+    // La validación de notas solo aplica si no se envían items del catálogo
+    const tieneItems = Array.isArray(items) && items.length > 0;
+    if (!tieneItems && notasFinal.length < 5) {
+      return res.status(400).json({ mensaje: 'Las notas deben tener al menos 5 caracteres cuando no se seleccionan ítems del catálogo' });
     }
 
     const id = await _crear(
-      { titulo_solicitud, tipo, area, departamento, descripcion: descripcion.trim(), requiere_cotizacion },
+      { 
+        titulo_solicitud, 
+        tipo, 
+        area, 
+        departamento, 
+        notas: notasFinal, 
+        requiere_cotizacion,
+        items 
+      },
       req.usuario.id
     );
 
     const nuevo = await obtenerPorId(id);
     res.status(201).json(nuevo);
   } catch (err) {
+    console.error('=== ERROR CREAR REQUERIMIENTO ===');
+    console.error(err);
     logger.error('Error al crear requerimiento', { 
       error: err.message, 
       stack: err.stack,
       userId: req.usuario?.id 
     });
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
+    res.status(500).json({ mensaje: 'Error interno del servidor', detalle: err.message });
   }
 }
 
 // ─── PUT /requerimientos/:id ──────────────────────────────────────────────────
 async function actualizar(req, res) {
   try {
-    const { titulo_solicitud, area, departamento, tipo, descripcion, requiere_cotizacion, datatextnow_id } = req.body;
+    const { titulo_solicitud, area, departamento, tipo, notas, descripcion, requiere_cotizacion, datatextnow_id } = req.body;
 
     // Los solicitantes solo pueden editar sus propios requerimientos
     if (req.usuario.rol === 'solicitante') {
@@ -102,7 +127,7 @@ async function actualizar(req, res) {
       area,
       departamento,
       tipo,
-      descripcion: descripcion?.trim(),
+      notas: (notas || descripcion)?.trim(), // retrocompatibilidad temporal
       requiere_cotizacion,
       datatextnow_id,
     });

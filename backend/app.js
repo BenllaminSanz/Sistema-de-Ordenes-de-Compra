@@ -17,6 +17,7 @@ import ordenesRoutes from "./src/routes/ordenes.route.js";
 import cotizacionesRoutes from "./src/routes/cotizaciones.route.js";
 import recepcionesRoutes from "./src/routes/recepciones.route.js";
 import reportesRoutes from "./src/routes/reportes.route.js";
+import catalogoRoutes from "./src/routes/catalogo.route.js";
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use("/api/ordenes-compra", ordenesRoutes);
 app.use('/api/cotizaciones', cotizacionesRoutes);
 app.use("/api/ordenes-compra/:orden_id/recepciones", recepcionesRoutes);
 app.use("/api/reportes", reportesRoutes);
+app.use("/api/catalogo", catalogoRoutes);
 
 // ─── Health check ──────────────────────────────────────────
 app.get("/api/health", (req, res) => {

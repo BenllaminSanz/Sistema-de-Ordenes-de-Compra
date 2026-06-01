@@ -27,21 +27,33 @@ export const registroSolicitanteSchema = z.object({
 
 export const crearRequerimientoSchema = z.object({
   titulo_solicitud: z.string().min(5, 'El título debe tener al menos 5 caracteres').trim(),
-  descripcion: z.string().min(5, 'La descripción debe tener al menos 5 caracteres').trim(),
+  notas: z.string().trim().optional().default(''),
   area: z.enum(['ADMINISTRACION', 'PRODUCCION']).optional(),
   departamento: z.enum(['ALMACEN', 'RH', 'IT', 'VENTAS', 'MTTO']).optional(),
   tipo: z.enum(['PARTES', 'SERVICIOS', 'FLETES']).optional(),
   requiere_cotizacion: z.coerce.boolean().optional().default(false),
+  items: z.array(
+    z.object({
+      catalogo_id: z.number().int().positive(),
+      cantidad: z.number().positive(),
+    })
+  ).optional().default([]),
 });
 
 export const actualizarRequerimientoSchema = z.object({
   titulo_solicitud: z.string().min(5, 'El título debe tener al menos 5 caracteres').trim().optional(),
-  descripcion: z.string().min(5, 'La descripción debe tener al menos 5 caracteres').trim().optional(),
+  notas: z.string().trim().optional(),
   area: z.enum(['ADMINISTRACION', 'PRODUCCION']).optional(),
   departamento: z.enum(['ALMACEN', 'RH', 'IT', 'VENTAS', 'MTTO']).optional(),
   tipo: z.enum(['PARTES', 'SERVICIOS', 'FLETES']).optional(),
   requiere_cotizacion: z.coerce.boolean().optional(),
   datatextnow_id: z.string().trim().optional(),
+  items: z.array(
+    z.object({
+      catalogo_id: z.number().int().positive(),
+      cantidad: z.number().positive(),
+    })
+  ).optional(),
 });
 
 // ============================================================

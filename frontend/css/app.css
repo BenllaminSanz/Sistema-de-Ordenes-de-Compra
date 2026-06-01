@@ -508,6 +508,35 @@ tbody tr:last-child td { border-bottom: none; }
   border-bottom-color: var(--primary);
 }
 
+/* ── Mejoras para tabla de ítems en modal de Cotización ─────── */
+#tabla-items-cot {
+  table-layout: auto;
+  width: 100%;
+}
+
+#tabla-items-cot th,
+#tabla-items-cot td {
+  padding: 6px 7px;
+  vertical-align: middle;
+}
+
+#tabla-items-cot .item-desc {
+  min-width: 210px;
+  font-size: 13px;
+}
+
+#tabla-items-cot .item-cant,
+#tabla-items-cot .item-precio,
+#tabla-items-cot .item-unidad {
+  font-size: 12.5px;
+  padding: 5px 6px;
+}
+
+#tabla-items-cot .item-subtotal {
+  font-size: 12.8px;
+  font-weight: 600;
+}
+
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 768px) {
   #sidebar { transform: translateX(-100%); }

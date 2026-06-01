@@ -58,7 +58,7 @@ async function cargarRequerimientos(pagina) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Consecutivo</th><th>Tipo</th><th>Descripción</th>
+            <th>Consecutivo</th><th>Tipo</th><th>Notas / Detalles</th>
             <th>Solicitante</th><th>Cotización</th><th>Estado</th><th>Fecha</th><th></th>
           </tr></thead>
           <tbody>
@@ -67,7 +67,7 @@ async function cargarRequerimientos(pagina) {
               <td class="fw-600">${r.consecutivo}</td>
               <td>${r.tipo}</td>
               <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${r.descripcion}">${r.descripcion}</td>
+                  title="${r.notas || r.descripcion || ''}">${r.notas || r.descripcion || ''}</td>
               <td>${r.solicitante_nombre}</td>
               <td>${r.requiere_cotizacion ? '✔' : '—'}</td>
               <td>${UI.badge(r.estado)}</td>
@@ -158,14 +158,30 @@ function abrirEditorRequerimiento(req = null) {
     document.getElementById('req-tipo').value = req.tipo || '';
     document.getElementById('req-area').value = req.area || '';
     document.getElementById('req-departamento').value = req.departamento || '';
-    document.getElementById('req-descripcion').value = req.descripcion || '';
-    document.getElementById('req-cotizacion').checked = !!req.requiere_cotizacion;
+    document.getElementById('req-notas').value = req.notas || req.descripcion || '';
+
+    // Cargar ítems del catálogo si existen (Paso 5)
+    window.requerimientoItemsSeleccionados = (req.items || []).map(i => ({
+      catalogo_id: i.catalogo_id,
+      codigo: i.codigo,
+      descripcion: i.descripcion,
+      cantidad: Math.round(i.cantidad) || 1
+    }));
+    renderItemsSeleccionados();
   } else {
     // Modo nuevo
     editandoId = null;
     tituloEl.textContent = 'Nuevo requerimiento';
     btnGuardar.textContent = 'Guardar';
     form.reset();
+    window.requerimientoItemsSeleccionados = [];
+    renderItemsSeleccionados();
+  }
+
+  // Mostrar/ocultar sección de catálogo según si ya hay tipo seleccionado
+  const seccion = document.getElementById('seccion-items-catalogo');
+  if (seccion) {
+    seccion.style.display = document.getElementById('req-tipo').value ? 'block' : 'none';
   }
 
   UI.abrirModal('modal-req');
@@ -207,9 +223,33 @@ function renderDetalle(req) {
           <td>${UI.fecha(req.created_at)}</td></tr>
     </table>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
-      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Descripción</div>
-      <p style="margin:0;line-height:1.6">${req.descripcion}</p>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Notas / Detalles</div>
+      <p style="margin:0;line-height:1.6">${req.notas || req.descripcion || '—'}</p>
     </div>
+
+    <!-- Ítems del Catálogo (Paso 5) -->
+    ${req.items && req.items.length > 0 ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Ítems solicitados del Catálogo</div>
+      <table style="width:100%; font-size:13px; border-collapse: collapse;">
+        <thead>
+          <tr style="background:#f8f9fa;">
+            <th style="text-align:left; padding:4px 6px;">Código</th>
+            <th style="text-align:left; padding:4px 6px;">Descripción</th>
+            <th style="text-align:right; padding:4px 6px;">Cantidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${req.items.map(item => `
+            <tr>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${item.codigo}</strong></td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee;">${item.descripcion}</td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${parseFloat(item.cantidad).toLocaleString('es-MX')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
 
     ${ (req.estado === 'borrador' || req.estado === 'incompleto') && (Auth.getUsuario() && Auth.getUsuario().id === req.solicitante_id) ? `
     <div style="margin-top:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:7px;padding:10px 12px;font-size:13px">
@@ -909,9 +949,20 @@ async function editarCotizacion(cotizacionId) {
         tbody.appendChild(row);
       });
 
-      // Default a 16% de IVA al editar
+      // Intentamos restaurar el % de IVA original de la cotización (si es 0%, 8% o 16%)
       const ivaSel = document.getElementById('cot-iva-porcentaje');
-      if (ivaSel) ivaSel.value = '16';
+      if (ivaSel) {
+        if (c.monto_subtotal > 0 && c.iva !== undefined) {
+          const porcentaje = Math.round((parseFloat(c.iva) / parseFloat(c.monto_subtotal)) * 100);
+          if ([0, 8, 16].includes(porcentaje)) {
+            ivaSel.value = porcentaje.toString();
+          } else {
+            ivaSel.value = '16';
+          }
+        } else {
+          ivaSel.value = '16';
+        }
+      }
 
       calcularTotalItems();
     } else {
@@ -921,6 +972,7 @@ async function editarCotizacion(cotizacionId) {
     }
 
     configurarToggleDesglose(requerimientoActual, c);
+    configurarListenerIVA(); // Garantiza que cambiar IVA (incluido 0%) recalcule en tiempo real
 
     const modal = document.getElementById('modal-cotizacion');
     if (modal) modal.style.display = 'flex';
@@ -958,8 +1010,11 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     tipo:                document.getElementById('req-tipo').value,
     area:                document.getElementById('req-area').value,
     departamento:        document.getElementById('req-departamento').value,
-    descripcion:         document.getElementById('req-descripcion').value,
-    requiere_cotizacion: document.getElementById('req-cotizacion').checked,
+    notas:               document.getElementById('req-notas')?.value || '',
+    items:               (window.requerimientoItemsSeleccionados || []).map(i => ({
+                       catalogo_id: i.catalogo_id,
+                       cantidad: i.cantidad
+                     })), // del Paso 5 - only needed fields
   };
 
   try {
@@ -995,6 +1050,145 @@ if (busquedaInput) {
   }, 350));
 }
 
+// ── Integración Catálogo con Requerimientos (Paso 5) ──────────────────────────
+window.requerimientoItemsSeleccionados = [];
+
+const reqTipoSelect = document.getElementById('req-tipo');
+if (reqTipoSelect) {
+  reqTipoSelect.addEventListener('change', () => {
+    const seccion = document.getElementById('seccion-items-catalogo');
+    if (seccion) {
+      seccion.style.display = reqTipoSelect.value ? 'block' : 'none';
+    }
+    // Limpiar selección anterior si cambia el tipo
+    if (reqTipoSelect.value) {
+      window.requerimientoItemsSeleccionados = [];
+      renderItemsSeleccionados();
+    }
+  });
+}
+
+function renderItemsSeleccionados() {
+  const contenedor = document.getElementById('items-seleccionados-req');
+  if (!contenedor) return;
+
+  if (!window.requerimientoItemsSeleccionados || window.requerimientoItemsSeleccionados.length === 0) {
+    contenedor.innerHTML = '<span class="text-muted" style="font-size:12px;">No hay ítems seleccionados</span>';
+    return;
+  }
+
+  let html = '';
+  window.requerimientoItemsSeleccionados.forEach((item, index) => {
+    html += `
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; background:#f8f9fa; padding:4px 8px; border-radius:4px;">
+        <span style="flex:1; font-size:13px;">${item.codigo} — ${item.descripcion}</span>
+        <input type="number" value="${Math.round(item.cantidad)}" min="1" step="1" 
+               style="width:70px; font-size:12px;" 
+               onchange="actualizarCantidadItem(${index}, this.value)">
+        <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px; font-size:11px;" 
+                onclick="eliminarItemSeleccionado(${index})">×</button>
+      </div>
+    `;
+  });
+  contenedor.innerHTML = html;
+}
+
+window.actualizarCantidadItem = function(index, nuevaCantidad) {
+  if (window.requerimientoItemsSeleccionados[index]) {
+    // Forzamos a número entero
+    window.requerimientoItemsSeleccionados[index].cantidad = Math.max(1, Math.round(parseFloat(nuevaCantidad) || 1));
+  }
+};
+
+window.eliminarItemSeleccionado = function(index) {
+  window.requerimientoItemsSeleccionados.splice(index, 1);
+  renderItemsSeleccionados();
+};
+
+async function buscarEnCatalogo() {
+  const input = document.getElementById('busqueda-catalogo');
+  const contenedor = document.getElementById('resultados-catalogo');
+  if (!input || !contenedor) return;
+
+  const busqueda = input.value.trim();
+  const tipo = document.getElementById('req-tipo')?.value;
+
+  if (!tipo) {
+    Toast.info('Primero selecciona el Tipo de requerimiento');
+    return;
+  }
+
+  contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#666;">Buscando...</div>';
+
+  try {
+    const params = new URLSearchParams({ tipo, busqueda, soloActivos: 'true' });
+    const resultados = await Api.get(`/catalogo?${params.toString()}`);
+
+    if (!resultados.length) {
+      contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#666;">No se encontraron resultados.</div>';
+      return;
+    }
+
+    let html = '';
+    resultados.forEach(item => {
+      const yaSeleccionado = window.requerimientoItemsSeleccionados.some(i => i.catalogo_id === item.id);
+      const safeDesc = item.descripcion.replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #eee; font-size:12px; gap:6px;">
+          <div style="flex:1; min-width:0;">
+            <strong>${item.codigo}</strong> — ${item.descripcion}
+            <span style="color:#888; font-size:11px;">($${parseFloat(item.costo_referencia).toFixed(2)})</span>
+          </div>
+
+          ${!yaSeleccionado ? `
+            <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+              <input type="number" id="qty-${item.id}" value="1" min="1" step="1" 
+                     style="width:58px; font-size:11px; padding:2px 4px;">
+              <button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px; font-size:11px;"
+                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia})">
+                + Agregar
+              </button>
+            </div>
+          ` : `
+            <span style="color:#28a745; font-size:11px; flex-shrink:0;">✓ Agregado</span>
+          `}
+        </div>
+      `;
+    });
+    contenedor.innerHTML = html;
+  } catch (err) {
+    contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#c00;">Error al buscar.</div>';
+  }
+}
+
+window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo) {
+  if (!window.requerimientoItemsSeleccionados) window.requerimientoItemsSeleccionados = [];
+
+  const yaExiste = window.requerimientoItemsSeleccionados.find(i => i.catalogo_id === catalogo_id);
+  if (yaExiste) return;
+
+  const qtyInput = document.getElementById(`qty-${catalogo_id}`);
+  const cantidad = qtyInput ? parseFloat(qtyInput.value) || 1 : 1;
+
+  window.requerimientoItemsSeleccionados.push({
+    catalogo_id,
+    codigo,
+    descripcion,
+    costo_referencia: costo,
+    cantidad: Math.max(1, Math.round(cantidad))   // Forzamos a entero
+  });
+
+  renderItemsSeleccionados();
+
+  // Limpiar resultados después de agregar
+  const cont = document.getElementById('resultados-catalogo');
+  if (cont) cont.innerHTML = '';
+};
+
+// Mantener la función antigua por compatibilidad (por si se usa en otro lado)
+window.agregarItemDesdeCatalogo = window.agregarItemConCantidad;
+
 // ── FUNCIONES DEL MODAL DE COTIZACIÓN ─────────────────────────────
 
 function abrirModalCotizacion() {
@@ -1020,6 +1214,7 @@ function prepararModalCotizacion(req) {
 
   cargarProveedoresEnModal();
   configurarModalSegunTipo(req);
+  configurarListenerIVA(); // Asegura que el selector de IVA siempre responda (incluyendo 0%)
   if (!cotizacionEditandoId) {
     configurarToggleDesglose(req, null);
   }
@@ -1091,7 +1286,7 @@ async function guardarCotizacionOriginal() {
         });
       });
 
-      const ivaPorcentaje = parseFloat(document.getElementById('cot-iva-porcentaje')?.value) || 16;
+      const ivaPorcentaje = obtenerIvaPorcentaje();
 
       datos.monto_subtotal = calculo.subtotal;
       datos.iva = calculo.iva;
@@ -1110,9 +1305,9 @@ async function guardarCotizacionOriginal() {
       }
 
       // En modo simple asumimos que el monto ya incluye IVA (o el usuario lo maneja manualmente)
-      datos.monto_total = monto_total;
-      datos.monto_subtotal = monto_total / 1.16; // estimado 16%
-      datos.iva = monto_total - datos.monto_subtotal;
+      datos.monto_total = redondear2(monto_total);
+      datos.monto_subtotal = redondear2(monto_total / 1.16); // estimado 16%
+      datos.iva = redondear2(datos.monto_total - datos.monto_subtotal);
     }
 
     let response;
@@ -1343,6 +1538,8 @@ function configurarToggleDesglose(requerimiento, cotizacion = null) {
       simpleDiv.style.display = 'none';
       itemsDiv.style.display = 'block';
 
+      configurarListenerIVA(); // Asegura listener del IVA aunque no hubiera filas aún
+
       if (tbody.children.length === 0) {
         const montoActual = parseFloat(document.getElementById('cot_monto_total').value) || 0;
 
@@ -1365,9 +1562,9 @@ function configurarToggleDesglose(requerimiento, cotizacion = null) {
       itemsDiv.style.display = 'none';
       simpleDiv.style.display = 'block';
 
-      const totalItems = calcularTotalItems();
-      if (totalItems > 0) {
-        document.getElementById('cot_monto_total').value = totalItems.toFixed(2);
+      const totalCalc = calcularTotalItems();
+      if (totalCalc && totalCalc.total > 0) {
+        document.getElementById('cot_monto_total').value = totalCalc.total.toFixed(2);
       }
 
       tbody.innerHTML = '';
@@ -1409,13 +1606,6 @@ function crearFilaItem(itemData = {}) {
     input.addEventListener('input', calcularTotalItems);
   });
 
-  // Escuchar cambios en el selector de IVA (si existe)
-  const ivaSelect = document.getElementById('cot-iva-porcentaje');
-  if (ivaSelect && !ivaSelect.dataset.listenerAttached) {
-    ivaSelect.dataset.listenerAttached = 'true';
-    ivaSelect.addEventListener('change', calcularTotalItems);
-  }
-
   // Delegación para eliminar item (se adjunta al tbody una sola vez)
   const itemsTbody = document.querySelector('#tabla-items-cot tbody');
   if (itemsTbody && !itemsTbody.dataset.delegateAttached) {
@@ -1448,6 +1638,28 @@ function eliminarItem(btn) {
   calcularTotalItems();
 }
 
+function configurarListenerIVA() {
+  // Ya no es necesario el guard flag porque ahora también lo cableamos una sola vez al final del script.
+  const ivaSelect = document.getElementById('cot-iva-porcentaje');
+  if (!ivaSelect) return;
+  // Adjuntamos de forma segura (evitamos duplicados revisando si ya tiene listeners vía una marca ligera)
+  if (ivaSelect.dataset.ivaListenerAttached === 'true') return;
+  ivaSelect.dataset.ivaListenerAttached = 'true';
+  ivaSelect.addEventListener('change', calcularTotalItems);
+  ivaSelect.addEventListener('input', calcularTotalItems); // extra robustez
+}
+
+function redondear2(n) {
+  // Redondeo seguro para dinero (evita problemas de punto flotante)
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function obtenerIvaPorcentaje() {
+  const val = document.getElementById('cot-iva-porcentaje')?.value;
+  const num = parseFloat(val);
+  return isNaN(num) ? 16 : num;
+}
+
 function calcularTotalItems() {
   let subtotal = 0;
   const rows = document.querySelectorAll('#tabla-items-cot tbody tr');
@@ -1455,18 +1667,20 @@ function calcularTotalItems() {
   rows.forEach(row => {
     const cantidad = parseFloat(row.querySelector('.item-cant').value) || 0;
     const precio = parseFloat(row.querySelector('.item-precio').value) || 0;
-    const sub = cantidad * precio;
+    const sub = redondear2(cantidad * precio);
 
     row.querySelector('.item-subtotal').textContent = sub.toFixed(2);
     subtotal += sub;
   });
 
-  // Calcular IVA
-  const ivaPorcentaje = parseFloat(document.getElementById('cot-iva-porcentaje')?.value) || 16;
-  const ivaMonto = subtotal * (ivaPorcentaje / 100);
-  const totalFinal = subtotal + ivaMonto;
+  subtotal = redondear2(subtotal);
 
-  // Actualizar UI
+  // Calcular IVA
+  const ivaPorcentaje = obtenerIvaPorcentaje();
+  const ivaMonto = redondear2(subtotal * (ivaPorcentaje / 100));
+  const totalFinal = redondear2(subtotal + ivaMonto);
+
+  // Actualizar UI - siempre con exactamente 2 decimales
   const subEl = document.getElementById('cot-subtotal');
   const ivaEl = document.getElementById('cot-iva-monto');
   const totalEl = document.getElementById('cot-total-final');
@@ -1477,3 +1691,13 @@ function calcularTotalItems() {
 
   return { subtotal, iva: ivaMonto, total: totalFinal };
 }
+
+// ── Cableado robusto del selector de IVA (se ejecuta una sola vez al cargar la página)
+// Esto garantiza que seleccionar 0% (u otro %) siempre recalcule correctamente los totales.
+(function () {
+  const ivaSelect = document.getElementById('cot-iva-porcentaje');
+  if (ivaSelect) {
+    ivaSelect.addEventListener('change', calcularTotalItems);
+    ivaSelect.addEventListener('input', calcularTotalItems);
+  }
+})();

@@ -17,15 +17,6 @@
       <div class="metrics-grid" id="metrics"></div>
 
       <div class="card">
-        <div class="card-title" id="titulo-oc">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-               viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-          Órdenes de compra recientes
-        </div>
-        <div id="tabla-oc"></div>
-      </div>
-
-      <div class="card">
         <div class="card-title" id="titulo-req">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
                viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0
@@ -33,6 +24,15 @@
           Requerimientos pendientes de revisión
         </div>
         <div id="tabla-req"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="titulo-oc">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+               viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+          Órdenes de compra recientes
+        </div>
+        <div id="tabla-oc"></div>
       </div>
 
       <!-- Reporte de Órdenes de Compra (solo contabilidad y admin) -->
@@ -80,10 +80,6 @@
           <div style="margin-top:22px;">
             <button id="btn-generar-reporte" class="btn btn-primary">Descargar Excel</button>
           </div>
-        </div>
-
-        <div style="font-size:12px; color:#6b7280;">
-          Solo Contabilidad y Administración pueden generar este reporte.
         </div>
       </div>
     </main>

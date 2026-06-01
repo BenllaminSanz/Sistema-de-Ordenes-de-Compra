@@ -73,7 +73,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
               </tr>
               <tr>
                 <td style="padding:4px 0; vertical-align:top;"><strong>Descripción:</strong></td>
-                <td style="padding:4px 0; white-space:pre-line;">${req.descripcion || '—'}</td>
+                <td style="padding:4px 0; white-space:pre-line;">${req.notas || req.descripcion || '—'}</td>
               </tr>
               <tr>
                 <td style="padding:4px 0;"><strong>Tipo:</strong></td>
@@ -132,7 +132,7 @@ Le solicitamos su cotización para el siguiente requerimiento:
 Requerimiento: ${req.consecutivo || 'REQ-' + req.id}
 Título: ${req.titulo_solicitud || '—'}
 Tipo: ${req.tipo || '—'}
-Descripción: ${req.descripcion || '—'}
+Notas: ${req.notas || req.descripcion || '—'}
 
 Por favor responda a este correo con su propuesta.
 

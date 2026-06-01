@@ -47,7 +47,7 @@ async function listar(filtros = {}) {
        oc.id, oc.numero_oc, oc.estado,
        oc.fecha_autorizacion, oc.datatextnow_id,
        oc.created_at,
-       r.consecutivo, r.tipo, r.descripcion, r.solicitante_id,
+       r.consecutivo, r.tipo, r.notas AS descripcion, r.solicitante_id,
        u.nombre AS autorizado_por_nombre,
        p.nombre AS proveedor_nombre,
        c.monto_total,
@@ -78,7 +78,7 @@ async function listar(filtros = {}) {
 async function obtenerPorId(id) {
   const [[oc]] = await pool.query(
     `SELECT oc.*,
-       r.consecutivo, r.tipo, r.descripcion, r.requiere_cotizacion, r.solicitante_id,
+       r.consecutivo, r.tipo, r.notas AS descripcion, r.requiere_cotizacion, r.solicitante_id,
        u.nombre  AS autorizado_por_nombre,
        s.nombre  AS solicitante_nombre,
        p.nombre  AS proveedor_nombre,
