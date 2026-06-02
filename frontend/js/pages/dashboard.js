@@ -111,13 +111,15 @@ async function cargarReqPendientes() {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Consecutivo</th><th>Tipo</th><th>Notas / Detalles</th>
+            <th>Consecutivo</th><th>Tipo</th><th>Área</th><th>Depto</th><th>Notas / Detalles</th>
             <th>Solicitante</th><th>Fecha</th><th></th>
           </tr></thead>
           <tbody>${datos.map(r => `
             <tr>
               <td class="fw-600">${r.consecutivo}</td>
               <td>${r.tipo}</td>
+              <td>${r.area || '—'}</td>
+              <td>${r.departamento || '—'}</td>
               <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
                 ${r.notas || r.descripcion || '—'}</td>
               <td>${r.solicitante_nombre}</td>

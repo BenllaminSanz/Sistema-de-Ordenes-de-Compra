@@ -1,6 +1,6 @@
 import express from 'express';
 import * as cotizacionesController from '../controllers/cotizacionesController.js';
-import { autenticar } from '../middlewares/authMiddleware.js';
+import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -56,6 +56,9 @@ router.post('/:id/seleccionar', cotizacionesController.seleccionarCotizacion);
 
 // Nueva ruta para deseleccionar una cotización (con confirmación en frontend)
 router.post('/:id/deseleccionar', cotizacionesController.deseleccionarCotizacion);
+
+// Enviar (o re-enviar) manualmente el correo de solicitud de cotización (botón en UI)
+router.post('/:id/enviar', autorizar('contabilidad', 'admin'), cotizacionesController.enviarCorreoCotizacion);
 
 // Subir archivo PDF real a una cotización
 router.post('/:id/archivo', uploadCotizacionPdf.single('pdf'), cotizacionesController.subirArchivoCotizacion);

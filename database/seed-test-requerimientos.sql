@@ -276,12 +276,11 @@ INSERT INTO historial_estados (entidad_tipo, entidad_id, estado_anterior, estado
   ('requerimiento', @req_cerrado, 'aprobado', 'cerrado', @aprobador, 'Servicio completado y documentado.', DATE_SUB(NOW(), INTERVAL 30 DAY));
 
 -- ============================================================
--- EJEMPLOS DE ÍTEMS LIBRES (texto libre - no existían en catálogo)
--- Demuestra el flujo híbrido Opción B
+-- EJEMPLOS DE ÍTEMS LIBRES (texto libre - no existían en catálogo al momento)
 -- ============================================================
 
--- NOTA: Ya NO se permite mezclar catálogo + libres en un mismo req.
--- Este ejemplo de libre se mueve a un req separado más abajo (ver REQ-2026S-020).
+-- NOTA: No se permite mezclar catálogo + libres en un mismo req (exclusivo).
+-- Ejemplos de libres van en reqs separados (ver e.g. REQ-2026S-020).
 
 -- Un requerimiento que es 100% libre (ejemplo típico cuando surge algo nuevo)
 INSERT INTO requerimientos 

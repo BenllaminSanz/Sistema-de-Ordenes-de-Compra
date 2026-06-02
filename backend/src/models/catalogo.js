@@ -60,8 +60,9 @@ async function obtenerPorId(id) {
   return item || null;
 }
 
-async function crear(datos) {
-  const [result] = await pool.query(
+async function crear(datos, conn = null) {
+  const db = conn || pool;
+  const [result] = await db.query(
     `
     INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, proveedor_id, activo)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -76,6 +77,45 @@ async function crear(datos) {
     ]
   );
   return result.insertId;
+}
+
+/**
+ * Genera un código único para el catálogo basado en tipo y descripción.
+ * Usado al formalizar ítems libres desde una cotización seleccionada.
+ */
+async function generarCodigoUnico(conn, tipo, baseDescripcion = '') {
+  const prefijos = { 
+    PARTES: 'P', 
+    SERVICIOS: 'S', 
+    FLETES: 'F', 
+    PRODUCTOS: 'P' 
+  };
+  const pref = prefijos[tipo] || 'X';
+
+  let base = (baseDescripcion || 'NUEVO')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8) || 'ITEM';
+
+  let codigo = `${pref}-${base}`;
+  let i = 1;
+
+  while (true) {
+    const [ex] = await conn.query('SELECT 1 FROM catalogo WHERE codigo = ? LIMIT 1', [codigo]);
+    if (ex.length === 0) return codigo;
+
+    codigo = `${pref}-${base}-${i}`;
+    i++;
+    if (i > 50) {
+      codigo = `${pref}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+      // one last check
+      const [ex2] = await conn.query('SELECT 1 FROM catalogo WHERE codigo = ? LIMIT 1', [codigo]);
+      if (ex2.length === 0) return codigo;
+      // very rare fallback
+      codigo = `${pref}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      return codigo;
+    }
+  }
 }
 
 async function actualizar(id, datos) {
@@ -102,4 +142,4 @@ async function cambiarEstado(id, activo) {
   return r.affectedRows;
 }
 
-export { listar, obtenerPorId, crear, actualizar, cambiarEstado };
+export { listar, obtenerPorId, crear, actualizar, cambiarEstado, generarCodigoUnico };

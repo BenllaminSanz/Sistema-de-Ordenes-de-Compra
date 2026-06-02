@@ -60,13 +60,13 @@ async function crear(req, res) {
       area, 
       departamento, 
       notas, 
-      descripcion,           // legacy: soporte para campo antiguo 'descripcion'
+      descripcion,           // compatibilidad con datos antiguos (campo 'descripcion' antes de 'notas')
       requiere_cotizacion,
       items,                 // ítems del catálogo [{catalogo_id, cantidad}]
       items_libres           // ítems en texto libre (aún no en catálogo) [{descripcion, cantidad, unidad?, notas?}]
     } = req.body;
 
-    const notasFinal = (notas || descripcion || '').trim(); // soporta campo legacy 'descripcion'
+    const notasFinal = (notas || descripcion || '').trim(); // compat datos antiguos
 
     // Validaciones básicas
     if (!titulo_solicitud || titulo_solicitud.trim().length < 10) {
@@ -162,7 +162,7 @@ async function actualizar(req, res) {
       area,
       departamento,
       tipo,
-      notas: (notas || descripcion)?.trim(), // legacy 'descripcion'
+      notas: (notas || descripcion)?.trim(), // compat datos antiguos
       requiere_cotizacion: requiereCotFinal,
       datatextnow_id,
     }, items, items_libres);

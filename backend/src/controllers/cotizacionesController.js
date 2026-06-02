@@ -18,6 +18,10 @@ async function enviarCotizacionesPendientesOportunista() {
         if (result.success) {
           await Cotizacion.marcarComoEnviadaPorCorreo(cot.id);
           console.log(`[Email] Cotización #${cot.id} enviada (programada)`);
+        } else if (result.reason === 'no_requiere_segun_condicion') {
+          // Regla de negocio: no corresponde enviar correo para este tipo de requerimiento
+          await Cotizacion.marcarComoProcesadaSinEnvioCorreo(cot.id);
+          console.log(`[Email] Cotización #${cot.id} procesada sin envío (regla: solo servicios o libres/actualizar precios).`);
         }
       } catch (err) {
         console.error(`[Email] Error enviando cotización pendiente #${cot.id}:`, err.message);
@@ -136,7 +140,7 @@ export const crearCotizacion = async (req, res) => {
 
     const esFechaPasada = scheduledDate && scheduledDate < ahora;
 
-    // Comparamos solo la fecha (sin hora) para decidir si es "hoy o antes"
+    // Comparamos solo la fecha (sin hora) para decidir si es hoy o anterior
     let esHoyOMenor = true;
     if (scheduledDate) {
       const fechaProgramada = new Date(
@@ -158,13 +162,13 @@ export const crearCotizacion = async (req, res) => {
       estadoInicial = 'enviada';
     }
 
+    const round2 = (n) => Math.round( (parseFloat(n) || 0) * 100 ) / 100;
     const id = await Cotizacion.crear({
       requerimiento_id: parseInt(requerimiento_id),
       proveedor_id: parseInt(proveedor_id),
-      monto_total: monto_total || 0,
-      monto_subtotal: monto_subtotal || 0,
-      iva: iva || 0,
-      moneda: moneda || 'MXN',
+      monto_total: round2(monto_total || 0),
+      monto_subtotal: round2(monto_subtotal || 0),
+      iva: round2(iva || 0),
       archivo_url: archivo_url || null,
       fecha_envio: fecha_envio || null,
       scheduled_at: finalScheduledAt,
@@ -186,11 +190,16 @@ export const crearCotizacion = async (req, res) => {
     if (esFechaPasada) {
       console.log(`[Cotizacion] Cotización #${id} con fecha pasada. Se guardó como enviada (sin enviar correo).`);
     } else if (esHoyOMenor) {
-      // Hoy (o sin fecha programada) → enviar inmediatamente
+      // Hoy (o sin fecha programada) → intentar enviar inmediatamente
       enviarSolicitudDeCotizacion(id).then(result => {
         if (result.success) {
           console.log(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
           Cotizacion.marcarComoEnviadaPorCorreo(id).catch(() => {});
+        } else if (result.reason === 'no_requiere_segun_condicion') {
+          // Según la regla de negocio (solo SERVICIOS o libres/actualizar precios para otros tipos)
+          // se crea el registro pero no se envía correo automático.
+          Cotizacion.marcarComoProcesadaSinEnvioCorreo(id).catch(() => {});
+          console.log(`[Email] Cotización #${id} creada pero NO se envió correo (regla de tipo/catálogo/precios).`);
         }
       }).catch(err => {
         console.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
@@ -236,6 +245,21 @@ export const actualizarCotizacion = async (req, res) => {
           mensaje: validacionFecha.mensaje 
         });
       }
+    }
+
+    // Redondear montos y precios a 2 decimales, cantidades a enteros (si vienen en datos)
+    const round2 = (n) => Math.round( (parseFloat(n) || 0) * 100 ) / 100;
+    if (datos.monto_total !== undefined) datos.monto_total = round2(datos.monto_total);
+    if (datos.monto_subtotal !== undefined) datos.monto_subtotal = round2(datos.monto_subtotal);
+    if (datos.iva !== undefined) datos.iva = round2(datos.iva);
+    if (Array.isArray(datos.items)) {
+      datos.items = datos.items.map(it => {
+        if (it) {
+          it.cantidad = Math.max(1, Math.round( parseFloat(it.cantidad) || 1 ));
+          if (it.precio_unitario !== undefined) it.precio_unitario = round2(it.precio_unitario);
+        }
+        return it;
+      });
     }
 
     const affected = await Cotizacion.actualizar(id, datos, datos.items || null);
@@ -288,7 +312,7 @@ export const seleccionarCotizacion = async (req, res) => {
 
       res.json({
         success: true,
-        message: 'Cotización seleccionada correctamente. Las demás han sido rechazadas.'
+        message: 'Cotización seleccionada correctamente. Las demás han sido rechazadas. Los ítems libres de la cotización han sido agregados automáticamente como nuevos registros en el catálogo (con el precio acordado y proveedor recomendado) para que estén disponibles en futuros requerimientos.'
       });
     } else {
       res.status(400).json({
@@ -398,6 +422,42 @@ export const subirArchivoCotizacion = async (req, res) => {
 
 // Exportamos la función para poder llamarla desde otros lugares (ej: login)
 export { enviarCotizacionesPendientesOportunista };
+
+/**
+ * Envía (o re-envía) el correo de solicitud de cotización para una cotización existente.
+ * Usado por el botón manual "Enviar correo" en la UI.
+ * Respeta la regla de negocio dentro de enviarSolicitudDeCotizacion.
+ */
+export const enviarCorreoCotizacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cotId = parseInt(id, 10);
+
+    if (!cotId) {
+      return res.status(400).json({ success: false, mensaje: 'ID de cotización inválido' });
+    }
+
+    const result = await enviarSolicitudDeCotizacion(cotId);
+
+    if (result.success) {
+      await Cotizacion.marcarComoEnviadaPorCorreo(cotId);
+      return res.json({ success: true, message: 'Solicitud de cotización enviada al proveedor' });
+    } else if (result.reason === 'no_requiere_segun_condicion') {
+      return res.status(400).json({
+        success: false,
+        mensaje: 'Esta cotización no corresponde a un requerimiento que requiera envío de correo (ítems de catálogo para tipos que no son SERVICIOS).'
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        mensaje: result.reason || 'No se pudo enviar la solicitud de cotización'
+      });
+    }
+  } catch (error) {
+    console.error('[enviarCorreoCotizacion] Error:', error);
+    res.status(500).json({ success: false, mensaje: 'Error interno al enviar el correo' });
+  }
+};
 
 // Eliminar cotización
 export const eliminarCotizacion = async (req, res) => {

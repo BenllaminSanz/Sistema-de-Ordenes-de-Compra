@@ -165,7 +165,7 @@ export async function generarReporteStatusPOS(req, res) {
 
       // Use cotizacion data if available for totals/iva
       const ivaMonto = parseFloat(row.cot_iva) || (costoTotal * 0.16);
-      const flete = 0; // placeholder (pendiente integrar datos de flete)
+      const flete = 0; // placeholder - pendiente datos de flete
       const totalConIVA = costoTotal + ivaMonto + flete;
 
       // Derivar STATUS a partir de OC + Recepción + notas (para coincidir con Excel)

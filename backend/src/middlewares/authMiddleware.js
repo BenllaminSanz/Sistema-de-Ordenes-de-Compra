@@ -28,7 +28,7 @@ const verificarToken = async (req, res, next) => {
     }
 };
 
-// Alias para que sea compatible con tu código anterior
+// Alias (usado en rutas)
 const autenticar = verificarToken;
 
 // ─── Middleware genérico de roles (igual que tu autorizar) ───────────────

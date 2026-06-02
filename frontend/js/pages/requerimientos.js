@@ -42,11 +42,15 @@ async function cargarRequerimientos(pagina) {
   const busqueda = document.getElementById('fil-busqueda').value;
   const estado   = document.getElementById('fil-estado').value;
   const tipo     = document.getElementById('fil-tipo').value;
+  const area     = document.getElementById('fil-area').value;
+  const depto    = document.getElementById('fil-departamento').value;
 
   let qs = `?pagina=${pagina}&limite=15`;
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
   if (estado)   qs += `&estado=${estado}`;
   if (tipo)     qs += `&tipo=${tipo}`;
+  if (area)     qs += `&area=${encodeURIComponent(area)}`;
+  if (depto)    qs += `&departamento=${encodeURIComponent(depto)}`;
 
   try {
     const { datos, total, limite } = await Api.get('/requerimientos' + qs);
@@ -57,7 +61,7 @@ async function cargarRequerimientos(pagina) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Consecutivo</th><th>Tipo</th><th>Notas / Detalles</th>
+            <th>Consecutivo</th><th>Tipo</th><th>Área</th><th>Depto</th><th>Notas / Detalles</th>
             <th>Solicitante</th><th>Cotización</th><th>Estado</th><th>Fecha</th><th></th>
           </tr></thead>
           <tbody>
@@ -65,6 +69,8 @@ async function cargarRequerimientos(pagina) {
             <tr>
               <td class="fw-600">${r.consecutivo}</td>
               <td>${r.tipo}</td>
+              <td>${r.area || '—'}</td>
+              <td>${r.departamento || '—'}</td>
               <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   title="${r.notas || r.descripcion || ''}">${r.notas || r.descripcion || ''}</td>
               <td>${r.solicitante_nombre}</td>
@@ -152,7 +158,7 @@ function abrirEditorRequerimiento(req = null) {
     tituloEl.textContent = 'Editar requerimiento';
     btnGuardar.textContent = 'Guardar cambios';
 
-    // Prefill campos
+    // Cargar valores existentes para edición
     document.getElementById('req-titulo').value = req.titulo_solicitud || '';
     document.getElementById('req-tipo').value = req.tipo || '';
     document.getElementById('req-area').value = req.area || '';
@@ -171,7 +177,7 @@ function abrirEditorRequerimiento(req = null) {
     // Cargar ítems libres (texto libre) si existen
     window.requerimientoItemsLibres = (req.items_libres || []).map(i => ({
       descripcion: i.descripcion,
-      cantidad: parseFloat(i.cantidad) || 1,
+      cantidad: Math.max(1, Math.round(parseFloat(i.cantidad) || 1)),
       unidad: i.unidad || '',
       notas: i.notas || ''
     }));
@@ -198,7 +204,7 @@ function abrirEditorRequerimiento(req = null) {
       }
     }
 
-    // Advertencia si por legacy viene mezclado
+    // Advertencia para datos históricos que pudieron quedar en estado mezclado antes de la regla de exclusividad
     const tieneAmbos = (req.items && req.items.length > 0) && (req.items_libres && req.items_libres.length > 0);
     if (tieneAmbos) {
       Toast.warning('Este requerimiento tiene tanto ítems del catálogo como libres. Elige un solo tipo (catálogo o solo nuevos para cotizar).');
@@ -270,6 +276,10 @@ function renderDetalle(req) {
       ${req.titulo_solicitud ? `<tr><td style="padding:6px 0;color:#6b7280">Título</td><td class="fw-600">${req.titulo_solicitud}</td></tr>` : ''}
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${req.tipo}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Área</td>
+          <td>${req.area || '—'}</td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Departamento</td>
+          <td>${req.departamento || '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
           <td>${UI.badge(req.estado)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Solicitante</td>
@@ -492,13 +502,15 @@ async function imprimirRequerimiento() {
                             </thead>
                             <tbody>
                                 ${seleccionada.items.map(item => {
-                                    const sub = ((item.cantidad || 1) * (item.precio_unitario || 0)).toLocaleString('es-MX');
+                                    const cantidad = Math.round(item.cantidad || 1);
+                                    const precio = redondear2(item.precio_unitario || 0);
+                                    const sub = redondear2(cantidad * precio).toLocaleString('es-MX');
                                     return `
                                         <tr>
                                             <td style="padding:4px; border:1px solid #ccc;">${item.descripcion || ''}</td>
-                                            <td style="text-align:center; padding:4px; border:1px solid #ccc;">${item.cantidad || 1}</td>
+                                            <td style="text-align:center; padding:4px; border:1px solid #ccc;">${cantidad}</td>
                                             <td style="text-align:center; padding:4px; border:1px solid #ccc;">${item.unidad || 'pieza'}</td>
-                                            <td style="text-align:right; padding:4px; border:1px solid #ccc;">$${(item.precio_unitario || 0).toLocaleString('es-MX')}</td>
+                                            <td style="text-align:right; padding:4px; border:1px solid #ccc;">$${precio.toLocaleString('es-MX')}</td>
                                             <td style="text-align:right; padding:4px; border:1px solid #ccc; font-weight:600;">$${sub}</td>
                                         </tr>
                                     `;
@@ -641,6 +653,12 @@ async function cargarCotizaciones(reqId) {
 
       const esGestor = puedeGestionarCotizaciones();
 
+      // Solo mostrar botón de enviar correo para casos que lo requieren según la regla
+      const reqParaCot = requerimientoActual || {};
+      const esLibresParaCot = reqParaCot.items_libres && reqParaCot.items_libres.length > 0;
+      const esServicioParaCot = (reqParaCot.tipo || '').toUpperCase() === 'SERVICIOS';
+      const mostrarBotonEnviar = esGestor && (esLibresParaCot || esServicioParaCot);
+
       html += `
         <tr data-cot-id="${c.id}">
           <td><strong>${c.proveedor_nombre || 'Sin proveedor'}</strong></td>
@@ -653,30 +671,38 @@ async function cargarCotizaciones(reqId) {
           <td class="text-muted">${c.fecha_envio ? UI.fecha(c.fecha_envio) : '—'}</td>
           <td>
             ${c.archivo_url 
-              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline">📄 Ver PDF</a>` 
-              : (c.seleccionada === 1 && esGestor
-                  ? `<button class="btn btn-warning btn-sm" data-cot-action="adjuntar-pdf" data-cot-id="${c.id}">📎 Adjuntar PDF</button>`
-                  : `<span class="text-muted small">Sin PDF</span>`)}
+              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline" title="Ver PDF adjunto como respaldo de la cotización">📄 Ver PDF</a>` 
+              : `<span class="text-muted small">—</span>`}
           </td>
           <td class="text-center">
             ${c.seleccionada !== 1 && esGestor
               ? `
-                <div class="d-flex gap-1" style="justify-content:center">
-                  <button class="btn btn-success btn-sm" data-cot-action="seleccionar" data-cot-id="${c.id}">Seleccionar</button>
-                  <button class="btn btn-outline btn-sm" data-cot-action="editar" data-cot-id="${c.id}" title="Editar">✎</button>
-                  <button class="btn btn-danger btn-sm" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar">×</button>
+                <div class="d-flex gap-1 justify-content-center flex-wrap" style="font-size:0.75rem;">
+                  <button class="btn btn-success btn-sm px-1 py-0" data-cot-action="seleccionar" data-cot-id="${c.id}" title="Seleccionar esta cotización como ganadora">✓</button>
+                  <button class="btn btn-outline btn-sm px-1 py-0" data-cot-action="editar" data-cot-id="${c.id}" title="Editar cotización">✎</button>
+                  ${mostrarBotonEnviar ? `<button class="btn btn-primary btn-sm px-1 py-0" data-cot-action="enviar-correo" data-cot-id="${c.id}" title="Enviar solicitud de cotización por correo">✉</button>` : ''}
+                  <button class="btn btn-danger btn-sm px-1 py-0" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar cotización">×</button>
                 </div>`
               : c.seleccionada === 1
                 ? `
-                  <div style="display:flex; flex-direction:column; align-items:center; gap:4px">
+                  <div style="display:flex; flex-direction:column; align-items:center; gap:3px; font-size:0.72rem;">
                     <span class="text-success fw-600">✓ Seleccionada</span>
-                    ${esGestor ? `
-                      <button class="btn btn-danger btn-sm" 
-                              data-cot-action="deseleccionar" data-cot-id="${c.id}"
-                              title="Quitar esta cotización como seleccionada">
-                        Deseleccionar
-                      </button>
-                    ` : ''}
+                    <div class="d-flex gap-1 justify-content-center flex-wrap">
+                      ${esGestor && !c.archivo_url ? `
+                        <button class="btn btn-warning btn-sm px-1 py-0" 
+                                data-cot-action="adjuntar-pdf" data-cot-id="${c.id}"
+                                title="Adjuntar PDF de la cotización como respaldo/evidencia de la elección">
+                          📎 Adjuntar PDF
+                        </button>
+                      ` : ''}
+                      ${esGestor ? `
+                        <button class="btn btn-danger btn-sm px-1 py-0" 
+                                data-cot-action="deseleccionar" data-cot-id="${c.id}"
+                                title="Quitar selección de esta cotización">
+                          Deseleccionar
+                        </button>
+                      ` : ''}
+                    </div>
                   </div>`
                 : `<span class="text-muted small">—</span>`}
           </td>
@@ -710,6 +736,7 @@ if (listaCotizaciones && !listaCotizaciones.dataset.delegateAttached) {
     if (action === 'eliminar') eliminarCotizacion(cotId);
     if (action === 'adjuntar-pdf') adjuntarPdfACotizacion(cotId);
     if (action === 'deseleccionar') deseleccionarCotizacion(cotId, reqId);
+    if (action === 'enviar-correo') enviarCorreoCotizacion(cotId);
     if (action === 'toggle-desglose') {
       // Special case: needs the button element itself
       toggleDesgloseCotizacion(btn, cotId);
@@ -758,14 +785,16 @@ function toggleDesgloseCotizacion(btn, cotizacionId) {
 
       let granTotal = 0;
       items.forEach(it => {
-        const sub = (it.cantidad || 0) * (it.precio_unitario || 0);
+        const cantidad = Math.round(it.cantidad || 0);
+        const precio = redondear2(it.precio_unitario || 0);
+        const sub = redondear2(cantidad * precio);
         granTotal += sub;
         itemsHtml += `
           <tr>
             <td>${it.descripcion || '—'}</td>
-            <td class="text-center">${it.cantidad || 1}</td>
+            <td class="text-center">${cantidad}</td>
             <td>${it.unidad || 'pieza'}</td>
-            <td class="text-end">$${(it.precio_unitario || 0).toLocaleString('es-MX')}</td>
+            <td class="text-end">$${precio.toLocaleString('es-MX')}</td>
             <td class="text-end fw-600">$${sub.toLocaleString('es-MX')}</td>
           </tr>`;
       });
@@ -837,6 +866,27 @@ async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
     cargarCotizaciones(requerimientoActual.id);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al deseleccionar la cotización');
+  }
+}
+
+/**
+ * Envía manualmente la solicitud de cotización por correo para una cotización existente.
+ * Usado principalmente para SERVICIOS (botón explícito) y para ítems libres.
+ */
+async function enviarCorreoCotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) {
+    return Toast.error('No tienes permisos para enviar correos de cotización');
+  }
+  if (!confirm('¿Enviar ahora la solicitud de cotización por correo a este proveedor?')) {
+    return;
+  }
+
+  try {
+    await Api.post(`/cotizaciones/${cotizacionId}/enviar`);
+    Toast.success('Solicitud de cotización enviada por correo');
+    await cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
   }
 }
 
@@ -1046,7 +1096,6 @@ async function editarCotizacion(cotizacionId) {
     }
 
     configurarToggleDesglose(requerimientoActual, c);
-    configurarListenerIVA(); // Garantiza que cambiar IVA (incluido 0%) recalcule en tiempo real
 
     const modal = document.getElementById('modal-cotizacion');
     if (modal) modal.style.display = 'flex';
@@ -1142,7 +1191,7 @@ if (busquedaInput) {
   }, 350));
 }
 
-// ── Integración Catálogo con Requerimientos (híbrido: catálogo + libres) ──────
+// ── Integración Catálogo con Requerimientos (exclusivo: catálogo O libres) ──────
 window.requerimientoItemsSeleccionados = [];
 window.requerimientoItemsLibres = [];
 
@@ -1159,7 +1208,7 @@ if (reqTipoSelect) {
       selector.style.display = reqTipoSelect.value ? 'block' : 'none';
     }
 
-    // Limpiar selección anterior si cambia el tipo
+    // Limpiar selecciones previas al cambiar tipo de requerimiento
     if (reqTipoSelect.value) {
       window.requerimientoItemsSeleccionados = [];
       window.requerimientoItemsLibres = [];
@@ -1264,8 +1313,10 @@ window.agregarItemLibre = function() {
   }
 
   const desc = document.getElementById('libre-descripcion')?.value.trim();
-  const cant = parseFloat(document.getElementById('libre-cantidad')?.value) || 1;
+  let cant = parseFloat(document.getElementById('libre-cantidad')?.value) || 1;
   const unidad = document.getElementById('libre-unidad')?.value.trim() || '';
+
+  cant = Math.max(1, Math.round(cant));
 
   if (!desc || desc.length < 3) {
     Toast.error('La descripción del ítem libre debe tener al menos 3 caracteres');
@@ -1412,7 +1463,7 @@ window.eliminarItemLibre = function(index) {
   }
 };
 
-// Mantener compatibilidad: ahora abren el modal dedicado de libres
+// Compatibilidad: abre el modal dedicado de libres
 window.mostrarFormItemLibre = function() {
   abrirModalItemsLibres();
   // Enfocar el campo de descripción dentro del modal
@@ -1586,7 +1637,7 @@ window.crearRequerimientoParaAltaCatalogo = function(texto, tipo) {
   // Abrir editor de nuevo requerimiento
   abrirEditorRequerimiento(null);
 
-  // Prefill después de que el modal/DOM esté listo
+  // Inicializar valores del formulario después de abrir el modal
   setTimeout(() => {
     const tituloEl = document.getElementById('req-titulo');
     const tipoEl = document.getElementById('req-tipo');
@@ -1670,9 +1721,10 @@ function prepararModalCotizacion(req) {
 
   cargarProveedoresEnModal();
   configurarModalSegunTipo(req);
-  configurarListenerIVA(); // Asegura que el selector de IVA siempre responda (incluyendo 0%)
   if (!cotizacionEditandoId) {
     configurarToggleDesglose(req, null);
+    // Prellenar ítems desde el requerimiento (libres o catálogo)
+    prellenarItemsCotizacionDesdeReq(req);
   }
 
   // Sin restricción de fechas.
@@ -1730,8 +1782,11 @@ async function guardarCotizacionOriginal() {
         const descripcion = row.querySelector('.item-desc').value.trim();
         if (!descripcion) return;
 
-        const cantidad = parseFloat(row.querySelector('.item-cant').value) || 1;
-        const precio_unitario = parseFloat(row.querySelector('.item-precio').value) || 0;
+        let cantidad = parseFloat(row.querySelector('.item-cant').value) || 1;
+        let precio_unitario = parseFloat(row.querySelector('.item-precio').value) || 0;
+
+        cantidad = Math.max(1, Math.round(cantidad));
+        precio_unitario = redondear2(precio_unitario);
 
         datos.items.push({
           descripcion,
@@ -1753,14 +1808,15 @@ async function guardarCotizacionOriginal() {
       }
     } 
     else {
-      const monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
+      let monto_total = parseFloat(document.getElementById('cot_monto_total').value) || 0;
+      monto_total = redondear2(monto_total);
       
       if (monto_total <= 0) {
         return Toast.error('Debe ingresar un monto total válido');
       }
 
       // En modo simple asumimos que el monto ya incluye IVA (o el usuario lo maneja manualmente)
-      datos.monto_total = redondear2(monto_total);
+      datos.monto_total = monto_total;
       datos.monto_subtotal = redondear2(monto_total / 1.16); // estimado 16%
       datos.iva = redondear2(datos.monto_total - datos.monto_subtotal);
     }
@@ -1849,16 +1905,26 @@ function prepararConfirmacionEnvioCotizacion() {
   const esHoy = fechaSeleccionada.getTime() === hoy.getTime();
   const esPasado = fechaSeleccionada < hoy;
 
+  // Regla: solo permitir opciones de envío si el req tiene libres o es SERVICIOS.
+  // Para catálogo puro (no servicios): siempre forzar "guardar sin enviar".
+  const reqActual = requerimientoActual || {};
+  const esLibres = reqActual.items_libres && reqActual.items_libres.length > 0;
+  const esServicioReq = (reqActual.tipo || '').toUpperCase() === 'SERVICIOS';
+  const permiteOpcionesEnvio = esLibres || esServicioReq;
+
   body.innerHTML = '';
   footer.innerHTML = '';
 
-  if (esPasado) {
-    // === CASO: FECHA PASADA ===
-    titulo.textContent = 'Fecha anterior a hoy';
+  if (esPasado || !permiteOpcionesEnvio) {
+    // === CASO: FECHA PASADA O REQUERIMIENTO DE CATÁLOGO (sin libres y no servicio) ===
+    // En estos casos NO corresponde enviar correo.
+    titulo.textContent = !permiteOpcionesEnvio ? 'Cotización para ítems de catálogo' : 'Fecha anterior a hoy';
     body.innerHTML = `
       <div class="alert alert-warning">
-        <strong>Atención:</strong> La fecha seleccionada ya pasó.<br><br>
-        Se guardará el registro de la cotización, <strong>pero no se enviará ningún correo</strong> al proveedor.
+        <strong>Atención:</strong> 
+        ${!permiteOpcionesEnvio 
+          ? 'Este requerimiento usa ítems que ya están en el catálogo.<br>Se guardará la cotización como registro interno, <strong>pero no se enviará correo</strong> al proveedor.'
+          : 'La fecha seleccionada ya pasó.<br><br>Se guardará el registro de la cotización, <strong>pero no se enviará ningún correo</strong> al proveedor.'}
       </div>
       <p>¿Deseas continuar de todas formas?</p>
     `;
@@ -1868,7 +1934,7 @@ function prepararConfirmacionEnvioCotizacion() {
     `;
 
   } else if (esHoy) {
-    // === CASO: HOY ===
+    // === CASO: HOY (solo para casos que permiten envío: libres o servicios) ===
     titulo.textContent = '¿Enviar cotización ahora?';
     body.innerHTML = `
       <p>La fecha de envío es <strong>hoy</strong>.</p>
@@ -1880,7 +1946,7 @@ function prepararConfirmacionEnvioCotizacion() {
     `;
 
   } else {
-    // === CASO: FECHA FUTURA ===
+    // === CASO: FECHA FUTURA (solo cuando se permite envío) ===
     titulo.textContent = 'Programar envío de cotización';
 
     const fechaFormateada = fechaSeleccionada.toLocaleDateString('es-MX', {
@@ -1936,11 +2002,6 @@ async function ejecutarGuardadoCotizacion() {
   await guardarCotizacionOriginal();
 }
 
-// Alias por compatibilidad (por si hay botones que llaman a guardarCotizacion directamente)
-async function guardarCotizacion() {
-  prepararConfirmacionEnvioCotizacion();
-}
-
 // Cargar proveedores en el modal
 async function cargarProveedoresEnModal() {
   try {
@@ -1989,8 +2050,6 @@ function configurarToggleDesglose(requerimiento, cotizacion = null) {
     if (newCheckbox.checked) {
       simpleDiv.style.display = 'none';
       itemsDiv.style.display = 'block';
-
-      configurarListenerIVA(); // Asegura listener del IVA aunque no hubiera filas aún
 
       if (tbody.children.length === 0) {
         const montoActual = parseFloat(document.getElementById('cot_monto_total').value) || 0;
@@ -2054,9 +2113,49 @@ function crearFilaItem(itemData = {}) {
     unidadSelect.value = itemData.unidad;
   }
 
+  // Sanitize initial values
+  const cantInput = row.querySelector('.item-cant');
+  if (cantInput) {
+    let c = parseFloat(cantInput.value) || 1;
+    cantInput.value = Math.max(1, Math.round(c));
+  }
+
+  const precioInput = row.querySelector('.item-precio');
+  if (precioInput) {
+    let p = parseFloat(precioInput.value) || 0;
+    if (itemData.precio_unitario !== undefined && itemData.precio_unitario !== '' && itemData.precio_unitario !== null) {
+      p = parseFloat(itemData.precio_unitario) || 0;
+    }
+    precioInput.value = redondear2(p);
+  }
+
   row.querySelectorAll('input').forEach(input => {
     input.addEventListener('input', calcularTotalItems);
   });
+
+  // Enforce rules on blur for cotizacion items
+  if (cantInput) {
+    cantInput.addEventListener('blur', () => {
+      let val = parseFloat(cantInput.value) || 1;
+      val = Math.max(1, Math.round(val));
+      cantInput.value = val;
+      calcularTotalItems();
+    });
+  }
+  if (precioInput) {
+    precioInput.addEventListener('blur', () => {
+      let val = parseFloat(precioInput.value) || 0;
+      precioInput.value = redondear2(val);
+      calcularTotalItems();
+    });
+  }
+
+  // Also enforce on input for immediate feedback (prevent bad values)
+  if (cantInput) {
+    cantInput.addEventListener('input', () => {
+      // optional live, but blur is sufficient to not fight typing
+    });
+  }
 
   // Delegación para eliminar item (se adjunta al tbody una sola vez)
   const itemsTbody = document.querySelector('#tabla-items-cot tbody');
@@ -2078,6 +2177,60 @@ function configurarModalSegunTipo(requerimiento) {
   itemsDiv.style.display = 'none';
 }
 
+/**
+ * Prellena la tabla de ítems de la cotización con los ítems del requerimiento:
+ * - Si tiene items_libres → usa las descripciones libres (para cotizar nuevos y luego formalizar en catálogo).
+ * - Si tiene ítems de catálogo → copia las descripciones para registro interno (sin necesidad de email).
+ */
+function prellenarItemsCotizacionDesdeReq(req) {
+  const tbody = document.querySelector('#tabla-items-cot tbody');
+  const itemsDiv = document.getElementById('cotizacion-tipo-items');
+  const simpleDiv = document.getElementById('cotizacion-tipo-simple');
+  const checkbox = document.getElementById('cot_desglosar_items');
+
+  if (!tbody || !itemsDiv || !simpleDiv) return;
+
+  // Solo prellenar si es una cotización nueva
+  if (cotizacionEditandoId) return;
+
+  const tieneLibres = req.items_libres && req.items_libres.length > 0;
+  const tieneCatalogo = req.items && req.items.length > 0;
+
+  if (!tieneLibres && !tieneCatalogo) return;
+
+  // Forzar modo items
+  simpleDiv.style.display = 'none';
+  itemsDiv.style.display = 'block';
+  if (checkbox) checkbox.checked = true;
+
+  tbody.innerHTML = '';
+
+  let itemsFuente = [];
+
+  if (tieneLibres) {
+    itemsFuente = req.items_libres.map(l => ({
+      descripcion: l.descripcion || '',
+      cantidad: Math.max(1, Math.round(l.cantidad || 1)),
+      unidad: l.unidad || 'pieza',
+      precio_unitario: ''   // se completará con la respuesta del proveedor
+    }));
+  } else if (tieneCatalogo) {
+    itemsFuente = req.items.map(i => ({
+      descripcion: i.descripcion || i.codigo || '',
+      cantidad: Math.max(1, Math.round(i.cantidad || 1)),
+      unidad: 'pieza',
+      precio_unitario: ''
+    }));
+  }
+
+  itemsFuente.forEach(data => {
+    const row = crearFilaItem(data);
+    tbody.appendChild(row);
+  });
+
+  calcularTotalItems();
+}
+
 function agregarItemCotizacion() {
   const tbody = document.querySelector('#tabla-items-cot tbody');
   const row = crearFilaItem();
@@ -2088,17 +2241,6 @@ function agregarItemCotizacion() {
 function eliminarItem(btn) {
   btn.closest('tr').remove();
   calcularTotalItems();
-}
-
-function configurarListenerIVA() {
-  // Ya no es necesario el guard flag porque ahora también lo cableamos una sola vez al final del script.
-  const ivaSelect = document.getElementById('cot-iva-porcentaje');
-  if (!ivaSelect) return;
-  // Adjuntamos de forma segura (evitamos duplicados revisando si ya tiene listeners vía una marca ligera)
-  if (ivaSelect.dataset.ivaListenerAttached === 'true') return;
-  ivaSelect.dataset.ivaListenerAttached = 'true';
-  ivaSelect.addEventListener('change', calcularTotalItems);
-  ivaSelect.addEventListener('input', calcularTotalItems); // extra robustez
 }
 
 function redondear2(n) {
@@ -2117,8 +2259,8 @@ function calcularTotalItems() {
   const rows = document.querySelectorAll('#tabla-items-cot tbody tr');
 
   rows.forEach(row => {
-    const cantidad = parseFloat(row.querySelector('.item-cant').value) || 0;
-    const precio = parseFloat(row.querySelector('.item-precio').value) || 0;
+    const cantidad = Math.round( parseFloat(row.querySelector('.item-cant').value) || 0 );
+    const precio = redondear2( parseFloat(row.querySelector('.item-precio').value) || 0 );
     const sub = redondear2(cantidad * precio);
 
     row.querySelector('.item-subtotal').textContent = sub.toFixed(2);
@@ -2144,8 +2286,7 @@ function calcularTotalItems() {
   return { subtotal, iva: ivaMonto, total: totalFinal };
 }
 
-// ── Cableado robusto del selector de IVA (se ejecuta una sola vez al cargar la página)
-// Esto garantiza que seleccionar 0% (u otro %) siempre recalcule correctamente los totales.
+// Cableado único del selector de IVA (al cargar). Garantiza recalculo de totales (incl. 0%).
 (function () {
   const ivaSelect = document.getElementById('cot-iva-porcentaje');
   if (ivaSelect) {

@@ -1,5 +1,6 @@
 // backend/src/models/cotizaciones.js
 import pool from '../config/db.js';
+import * as Catalogo from './catalogo.js';
 
 async function listarPorRequerimiento(requerimiento_id, incluirItems = true) {
   const [rows] = await pool.query(`
@@ -96,6 +97,8 @@ async function crear(datos, items = []) {
     // Insertar items si existen
     if (items && items.length > 0) {
       for (const item of items) {
+        const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
+        const precio = item.precio_unitario != null ? parseFloat(item.precio_unitario) : 0;
         await conn.query(`
           INSERT INTO cotizacion_items 
             (cotizacion_id, descripcion, cantidad, unidad, precio_unitario, notas_item)
@@ -103,9 +106,9 @@ async function crear(datos, items = []) {
           [
             cotizacionId,
             item.descripcion,
-            item.cantidad || 1,
+            cantidad,
             item.unidad || 'pieza',
-            item.precio_unitario,
+            isNaN(precio) ? 0 : Math.round(precio * 100) / 100,  // 2 decimales
             item.notas_item || null
           ]);
       }
@@ -145,6 +148,19 @@ export async function marcarComoEnviadaPorCorreo(cotizacionId) {
   await pool.query(`
     UPDATE cotizaciones 
     SET email_sent_at = NOW(), estado = 'enviada'
+    WHERE id = ?
+  `, [cotizacionId]);
+}
+
+/**
+ * Marca una cotización como procesada para email (sin envío real),
+ * según reglas de negocio (ej. no corresponde para este tipo de requerimiento).
+ * Solo setea email_sent_at para que no se reintente, pero no fuerza estado 'enviada'.
+ */
+export async function marcarComoProcesadaSinEnvioCorreo(cotizacionId) {
+  await pool.query(`
+    UPDATE cotizaciones 
+    SET email_sent_at = NOW()
     WHERE id = ?
   `, [cotizacionId]);
 }
@@ -206,6 +222,8 @@ async function actualizar(id, datos, items = null) {
 
       // Insertar los nuevos
       for (const item of items) {
+        const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
+        const precio = item.precio_unitario != null ? parseFloat(item.precio_unitario) : 0;
         await conn.query(`
           INSERT INTO cotizacion_items 
             (cotizacion_id, descripcion, cantidad, unidad, precio_unitario, notas_item)
@@ -213,9 +231,9 @@ async function actualizar(id, datos, items = null) {
           [
             id,
             item.descripcion,
-            item.cantidad || 1,
+            cantidad,
             item.unidad || 'pieza',
-            item.precio_unitario || 0,
+            isNaN(precio) ? 0 : Math.round(precio * 100) / 100,  // limitar a 2 decimales
             item.notas_item || null
           ]
         );
@@ -254,6 +272,9 @@ async function seleccionar(id, requerimiento_id) {
           estado = 'seleccionada',
           fecha_seleccion = NOW()
       WHERE id = ?`, [id]);
+
+    // Formalizar ítems (de libres) en catálogo vía helper compartido
+    await formalizarCotizacionEnCatalogo(id, conn);
 
     await conn.commit();
     return true;
@@ -306,6 +327,61 @@ async function eliminar(id) {
   return r.affectedRows;
 }
 
+/**
+ * Formaliza ítems de una cotización (provenientes de libres) en el catálogo.
+ * Llamado desde seleccionar() y desde creación de OC.
+ * Dedup por tipo+descripción. Preserva histórico de libres en req.
+ */
+async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
+  const [[cot]] = await conn.query(
+    `SELECT c.proveedor_id, r.tipo as req_tipo 
+     FROM cotizaciones c
+     JOIN requerimientos r ON r.id = c.requerimiento_id
+     WHERE c.id = ?`,
+    [cotizacionId]
+  );
+
+  if (!cot) return;
+
+  const [cotItems] = await conn.query(
+    `SELECT descripcion, cantidad, unidad, precio_unitario 
+     FROM cotizacion_items 
+     WHERE cotizacion_id = ?`,
+    [cotizacionId]
+  );
+
+  if (cotItems.length === 0) return;
+
+  for (const item of cotItems) {
+    // Evitar duplicados por descripción + tipo (case insensitive)
+    const [existing] = await conn.query(
+      `SELECT id FROM catalogo WHERE tipo = ? AND LOWER(descripcion) = LOWER(?) LIMIT 1`,
+      [cot.req_tipo || 'PARTES', item.descripcion]
+    );
+    if (existing.length > 0) {
+      continue;
+    }
+
+    const codigo = await Catalogo.generarCodigoUnico(
+      conn, 
+      cot.req_tipo || 'PARTES', 
+      item.descripcion
+    );
+
+    await conn.query(
+      `INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, proveedor_id, activo)
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [
+        cot.req_tipo || 'PARTES',
+        codigo,
+        item.descripcion,
+        item.precio_unitario || null,
+        cot.proveedor_id || null
+      ]
+    );
+  }
+}
+
 export { 
   listarPorRequerimiento, 
   obtenerPorId, 
@@ -313,5 +389,6 @@ export {
   actualizar, 
   seleccionar, 
   deseleccionar,
-  eliminar 
+  eliminar,
+  formalizarCotizacionEnCatalogo
 };

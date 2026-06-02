@@ -263,11 +263,10 @@ CREATE TABLE `recepciones` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- NUEVA TABLA: requerimiento_items_libres
--- Soporta el flujo híbrido (Opción B): permite registrar ítems en texto libre
--- cuando lo que necesita el solicitante aún NO existe en el catálogo maestro.
--- Los ítems estructurados siguen en `requerimiento_items` (vinculados a catalogo).
--- Más adelante se puede ofrecer funcionalidad para "convertir" un libre a catálogo.
+-- TABLA: requerimiento_items_libres
+-- Ítems en texto libre (aún no registrados en catálogo) asociados a un requerimiento.
+-- Regla: un requerimiento usa SOLO catálogo (requerimiento_items) O SOLO libres (esta tabla), nunca ambos.
+-- Los libres se formalizan a catálogo al seleccionar la cotización (o al crear la OC).
 -- ============================================================
 DROP TABLE IF EXISTS `requerimiento_items_libres`;
 

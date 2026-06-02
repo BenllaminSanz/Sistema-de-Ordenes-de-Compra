@@ -162,7 +162,7 @@ async function crear(datos, solicitante_id) {
         datos.area,
         datos.departamento,
         datos.tipo,
-        datos.notas || datos.descripcion || '', // legacy 'descripcion'
+        datos.notas || datos.descripcion || '', // compatibilidad con datos antiguos (antes 'descripcion')
         requiereCotEnBD,
       ]
     );
@@ -188,10 +188,11 @@ async function crear(datos, solicitante_id) {
     if (tieneItems) {
       for (const item of datos.items) {
         if (item.catalogo_id && item.cantidad > 0) {
+          const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
           await conn.query(
             `INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
              VALUES (?, ?, ?)`,
-            [requerimientoId, item.catalogo_id, item.cantidad]
+            [requerimientoId, item.catalogo_id, cantidad]
           );
         }
       }
@@ -201,13 +202,14 @@ async function crear(datos, solicitante_id) {
     if (tieneLibres) {
       for (const item of datos.items_libres) {
         if (item && item.descripcion && (item.cantidad || 0) > 0) {
+          const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
           await conn.query(
             `INSERT INTO requerimiento_items_libres (requerimiento_id, descripcion, cantidad, unidad, notas)
              VALUES (?, ?, ?, ?, ?)`,
             [
               requerimientoId,
               item.descripcion,
-              item.cantidad || 1,
+              cantidad,
               item.unidad || null,
               item.notas || null
             ]
@@ -259,7 +261,7 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
     if (datos.departamento            !== undefined) campos.departamento            = datos.departamento;
     if (datos.tipo        !== undefined) campos.tipo        = datos.tipo;
     if (datos.notas !== undefined) campos.notas = datos.notas;
-    if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // legacy 'descripcion' → notas
+    if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // compat datos antiguos (renombre a notas)
     if (datos.requiere_cotizacion !== undefined)
       campos.requiere_cotizacion = datos.requiere_cotizacion ? 1 : 0;
     if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id; // PO de DataTextNow
@@ -289,10 +291,11 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
 
       for (const item of items) {
         if (item && item.catalogo_id && (item.cantidad || 0) > 0) {
+          const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
           await conn.query(
             `INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
              VALUES (?, ?, ?)`,
-            [id, item.catalogo_id, item.cantidad]
+            [id, item.catalogo_id, cantidad]
           );
         }
       }
@@ -305,13 +308,14 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
 
       for (const item of itemsLibres) {
         if (item && item.descripcion && (item.cantidad || 0) > 0) {
+          const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
           await conn.query(
             `INSERT INTO requerimiento_items_libres (requerimiento_id, descripcion, cantidad, unidad, notas)
              VALUES (?, ?, ?, ?, ?)`,
             [
               id,
               item.descripcion,
-              item.cantidad || 1,
+              cantidad,
               item.unidad || null,
               item.notas || null
             ]
@@ -321,7 +325,7 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
       if (affected === 0) affected = 1;
     }
 
-    // Asegurar consistencia del flag requiere_cotizacion según los ítems actuales (para legacy y switches)
+    // Consistencia de requiere_cotizacion según ítems (derivado de presencia de libres vs catálogo)
     const finalTieneLibres = Array.isArray(itemsLibres) ? (itemsLibres.length > 0) : null;
     const finalTieneItems = Array.isArray(items) ? (items.length > 0) : null;
     if (finalTieneLibres === true) {

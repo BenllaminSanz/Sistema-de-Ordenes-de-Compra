@@ -1,4 +1,6 @@
 import pool from '../config/db.js';
+import * as Catalogo from './catalogo.js';
+import { formalizarCotizacionEnCatalogo } from './cotizaciones.js';
 
 async function generarNumeroOC(conn) {
   const anio = new Date().getFullYear();
@@ -190,6 +192,11 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
        VALUES ('orden_compra', ?, NULL, 'generada', ?, 'OC generada')`,
       [ocId, autorizado_por]
     );
+
+    // Formalizar ítems de la cotización en catálogo (helper compartido)
+    if (cotizacion_id) {
+      await formalizarCotizacionEnCatalogo(cotizacion_id, conn);
+    }
 
     await conn.commit();
     return ocId;

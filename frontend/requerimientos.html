@@ -42,6 +42,19 @@
               <option value="SERVICIOS">Servicios</option>
               <option value="FLETES">Fletes</option>
             </select>
+            <select id="fil-area" class="form-control">
+              <option value="">Todas las áreas</option>
+              <option value="ADMINISTRACION">Administración</option>
+              <option value="PRODUCCION">Producción</option>
+            </select>
+            <select id="fil-departamento" class="form-control">
+              <option value="">Todos los deptos</option>
+              <option value="RH">Recursos Humanos</option>
+              <option value="IT">IT</option>
+              <option value="VENTAS">Ventas</option>
+              <option value="MTTO">Mantenimiento</option>
+              <option value="ALMACEN">Almacén</option>
+            </select>
             <button class="btn btn-outline btn-sm" onclick="cargarRequerimientos(1)">Filtrar</button>
           </div>
 
@@ -63,7 +76,7 @@
             <div class="card" id="detalle-info"></div>
             <div class="card" id="detalle-cotizaciones" class="hidden">
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
-                <div class="card-title mb-0">Cotizaciones</div>
+                <div class="card-title mb-0">Cotizaciones <small class="text-muted">(adjunta PDF de la seleccionada como respaldo)</small></div>
                   <button class="btn btn-sm btn-outline" onclick="abrirModalCotizacion()"
                         id="btn-agregar-cot">+ Agregar Cotización</button>
               </div>
@@ -219,7 +232,7 @@
           </div>
           <div style="width:65px;">
             <label style="font-size:10px; margin-bottom:1px; display:block;">Cantidad</label>
-            <input type="number" id="libre-cantidad" class="form-control form-control-sm" value="1" min="0.0001" step="0.01">
+            <input type="number" id="libre-cantidad" class="form-control form-control-sm" value="1" min="1" step="1">
           </div>
           <div style="width:80px;">
             <label style="font-size:10px; margin-bottom:1px; display:block;">Unidad (opc)</label>

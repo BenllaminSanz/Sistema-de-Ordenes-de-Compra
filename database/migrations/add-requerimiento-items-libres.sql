@@ -1,8 +1,8 @@
 -- ============================================================
 -- MIGRACIÓN: add-requerimiento-items-libres.sql
 -- Fecha: 2026-06
--- Descripción: Agrega soporte para ítems en texto libre en requerimientos
---              (flujo híbrido cuando el artículo/servicio no existe aún en catálogo)
+-- Descripción: Agrega soporte para ítems en texto libre (libres) en requerimientos.
+--              (Para casos donde el artículo/servicio aún no existe en el catálogo)
 --
 -- INSTRUCCIONES:
 --   1. Haz backup de tu base de datos.
@@ -10,11 +10,8 @@
 --        mysql -u root -p ordenes_compra < database/migrations/add-requerimiento-items-libres.sql
 --   3. Luego actualiza el código backend/frontend.
 --
--- Esta tabla permite que un requerimiento tenga:
---   - Ítems estructurados del catálogo (requerimiento_items → catalogo)
---   - Ítems libres en descripción de texto (esta tabla)
---
--- Más adelante se puede agregar una función de "vincular a catálogo" para migrar libres → catálogo.
+-- Regla actual: un requerimiento es SOLO de ítems de catálogo O SOLO de ítems libres.
+-- Los ítems libres se formalizan (alta en catálogo) al seleccionar cotización o generar OC.
 -- ============================================================
 
 USE `ordenes_compra`;
@@ -38,9 +35,9 @@ CREATE TABLE IF NOT EXISTS `requerimiento_items_libres` (
 
 SET FOREIGN_KEY_CHECKS = 1;
 
--- Hacer opcional el costo de referencia en catálogo (observación cliente)
+-- Hacer opcional el costo de referencia en catálogo (observación cliente temprana)
 ALTER TABLE `catalogo` 
   MODIFY `costo_referencia` decimal(14,2) DEFAULT NULL COMMENT 'Costo de referencia (opcional). Si no se conoce, dejar en blanco.';
 
 -- Mensaje de confirmación
-SELECT 'Tabla requerimiento_items_libres creada + costo_referencia ahora opcional en catálogo.' AS resultado;
+SELECT 'Tabla requerimiento_items_libres + costo_referencia opcional aplicados.' AS resultado;

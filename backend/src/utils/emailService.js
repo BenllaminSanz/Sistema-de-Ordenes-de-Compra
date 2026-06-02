@@ -3,9 +3,13 @@ import * as Requerimiento from '../models/requerimientos.js';
 import * as Cotizacion from '../models/cotizaciones.js';
 
 /**
- * Envía correo al proveedor SOLICITANDO una cotización.
- * Se dispara automáticamente al crear el registro de cotización para ese proveedor.
- * Este es el correo principal de "petición de cotización" (RFQ).
+ * Envía correo al proveedor SOLICITANDO una cotización (RFQ).
+ * 
+ * Importante: el correo lista únicamente los ítems (descripción, cantidad, unidad).
+ * NO incluye precios propuestos por nosotros. Los proveedores responden con sus precios,
+ * y luego los registramos/editamos en la cotización.
+ * 
+ * Se usa principalmente para ítems libres (no en catálogo) o servicios.
  */
 export async function enviarSolicitudDeCotizacion(cotizacionId) {
   try {
@@ -26,22 +30,35 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       return { success: false, reason: 'sin_requerimiento' };
     }
 
+    // Regla de envío de email para cotizaciones:
+    // - SERVICIOS o con items_libres: sí se envía.
+    // - Catálogo puro (no servicio): no se envía (solo registro interno).
+    const tipo = (req.tipo || '').toUpperCase();
+    const esServicio = tipo === 'SERVICIOS';
+    const tieneLibres = Array.isArray(req.items_libres) && req.items_libres.length > 0;
+
+    if (!esServicio && !tieneLibres) {
+      console.log(`[Email] Cotización #${cotizacionId} — NO se envía (requerimiento con ítems de catálogo y no es de tipo SERVICIOS).`);
+      return { success: false, reason: 'no_requiere_segun_condicion' };
+    }
+
+    // Continuar con envío para SERVICIOS o cuando hay ítems libres
+
     const fechaLimite = cot.fecha_envio 
       ? new Date(cot.fecha_envio).toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
       : null;
 
-    // Preparar información del monto y conceptos
-    const monto = parseFloat(cot.monto_total || 0).toLocaleString('es-MX');
+    // Preparar lista de conceptos a cotizar (sin precios, ya que los provee el proveedor)
     const tieneItems = cot.items && cot.items.length > 0;
     let conceptosHtml = '';
 
     if (tieneItems) {
       conceptosHtml = `
-        <p style="margin:12px 0 6px; font-weight:600; color:#1e293b;">Conceptos cotizados:</p>
-        <ul style="margin:0; padding-left:20px; color:#334155; font-size:14px;">
+        <ul style="margin:8px 0 0 20px; padding-left:0; color:#334155; font-size:14px; line-height:1.5;">
           ${cot.items.map(item => {
-            const sub = ((item.cantidad || 1) * (item.precio_unitario || 0)).toLocaleString('es-MX');
-            return `<li>${item.descripcion} — ${item.cantidad || 1} ${item.unidad || 'pieza'} × $${(item.precio_unitario || 0).toLocaleString('es-MX')} = <strong>$${sub}</strong></li>`;
+            const qty = item.cantidad || 1;
+            const unit = item.unidad ? ' ' + item.unidad : '';
+            return `<li style="margin-bottom:4px;"><strong>${item.descripcion}</strong>${qty > 1 || unit ? ` — ${qty}${unit}` : ''}</li>`;
           }).join('')}
         </ul>
       `;
@@ -52,13 +69,26 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
         <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
           
           <h2 style="color: #1e3a8a; margin: 0 0 8px; font-size: 22px;">Solicitud de Cotización</h2>
-          <p style="color: #475569; font-size: 15px; margin-bottom: 20px;">
-            Estimado(a) <strong>${cot.proveedor_nombre || 'Proveedor'}</strong>,
+          <!-- Cuerpo simple estilo cliente: solo pedir los items -->
+          <p style="color: #334155; font-size: 15px; margin: 16px 0 8px;">
+            Buenas tardes <strong>${cot.proveedor_nombre || 'Proveedor'}</strong>,
           </p>
 
-          <p style="color: #334155; font-size: 15px; line-height: 1.55;">
-            Por medio de la presente, le solicitamos amablemente su <strong>cotización</strong> para el siguiente requerimiento:
+          <p style="color: #334155; font-size: 15px; line-height: 1.55; margin-bottom: 8px;">
+            Por favor su ayuda para cotizar lo siguiente
           </p>
+
+          ${conceptosHtml || '<p style="margin:0; color:#334155;">- (sin conceptos detallados)</p>'}
+
+          <p style="color: #334155; font-size: 15px; margin-top: 20px;">
+            Saludos
+          </p>
+
+          <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
+            Atentamente,<br>
+            <strong>Equipo de Compras</strong><br>
+            Sistema de Órdenes de Compra
+          </div>
 
           <!-- Datos del requerimiento -->
           <div style="background: #f1f5f9; border-radius: 6px; padding: 18px; margin: 20px 0;">
@@ -83,38 +113,8 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
                 <td style="padding:4px 0;"><strong>Área / Depto:</strong></td>
                 <td style="padding:4px 0;">${req.area || ''} ${req.departamento ? ' / ' + req.departamento : ''}</td>
               </tr>
-              ${fechaLimite ? `
-              <tr>
-                <td style="padding:4px 0;"><strong>Fecha deseada de envío:</strong></td>
-                <td style="padding:4px 0; color:#b45309;"><strong>${fechaLimite}</strong></td>
-              </tr>` : ''}
             </table>
           </div>
-
-          <!-- Monto propuesto y conceptos -->
-          <div style="background:#ecfdf5; border-radius:6px; padding:14px 18px; margin:16px 0;">
-            <p style="margin:0 0 6px; font-size:14px; color:#166534;">
-              <strong>Monto propuesto por usted:</strong> 
-              <span style="font-size:18px; font-weight:700;">$${monto} ${cot.moneda || 'MXN'}</span>
-            </p>
-            ${conceptosHtml}
-          </div>
-
-          <p style="color: #334155; font-size: 15px; line-height: 1.55;">
-            Favor de enviarnos su mejor propuesta a la brevedad posible. Puede responder directamente a este correo 
-            adjuntando su cotización en formato PDF o Excel, o proporcionarnos los datos para capturarla en nuestro sistema.
-          </p>
-
-          <p style="color: #334155; font-size: 15px;">
-            Quedamos atentos a sus comentarios y a su cotización.
-          </p>
-
-          <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
-            Atentamente,<br>
-            <strong>Equipo de Compras</strong><br>
-            Sistema de Órdenes de Compra
-          </div>
-
         </div>
         
         <p style="text-align:center; color:#94a3b8; font-size:11px; margin-top:16px;">
@@ -123,20 +123,23 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       </div>
     `;
 
-    const textoPlano = `Solicitud de Cotización - ${req.consecutivo || 'REQ-' + req.id}
-    
-Estimado proveedor,
+    // Texto plano simple (estilo del ejemplo del cliente)
+    let itemsTextoPlano = '';
+    if (tieneItems) {
+      itemsTextoPlano = '\n' + cot.items.map(item => {
+        return `${item.descripcion}`;
+      }).join('\n\n');
+    }
 
-Le solicitamos su cotización para el siguiente requerimiento:
+    const proveedorNombre = cot.proveedor_nombre || 'Proveedor';
 
-Requerimiento: ${req.consecutivo || 'REQ-' + req.id}
-Título: ${req.titulo_solicitud || '—'}
-Tipo: ${req.tipo || '—'}
-Notas: ${req.notas || req.descripcion || '—'}
+    const textoPlano = `Buenas tardes ${proveedorNombre}
 
-Por favor responda a este correo con su propuesta.
+Por favor su ayuda para cotizar lo siguiente
 
-Gracias.`;
+${itemsTextoPlano}
+
+Saludos`;
 
     const result = await enviarCorreo({
       to: cot.proveedor_email,
