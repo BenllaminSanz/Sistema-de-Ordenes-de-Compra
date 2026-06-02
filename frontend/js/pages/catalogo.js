@@ -64,9 +64,9 @@ async function cargarCatalogo() {
         ? `<span class="badge bg-success">Activo</span>` 
         : `<span class="badge bg-secondary">Inactivo</span>`;
 
-      const costo = parseFloat(item.costo_referencia || 0).toLocaleString('es-MX', { 
-        minimumFractionDigits: 2 
-      });
+      const costo = (item.costo_referencia != null && !isNaN(parseFloat(item.costo_referencia)))
+        ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2 })
+        : '—';
 
       let acciones = '';
       if (esAdminCatalogo) {
@@ -84,7 +84,7 @@ async function cargarCatalogo() {
           <td><strong>${item.codigo}</strong></td>
           <td>${item.descripcion || '—'}</td>
           <td><span class="badge bg-light text-dark">${item.tipo}</span></td>
-          <td class="text-end">$${costo}</td>
+          <td class="text-end">${costo === '—' ? '—' : '$' + costo}</td>
           <td>${estado}</td>
           ${esAdminCatalogo ? `<td class="d-flex gap-1">${acciones}</td>` : ''}
         </tr>
@@ -223,10 +223,13 @@ async function guardarCatalogo(e) {
     tieneErrores = true;
   }
 
-  const costo = parseFloat(costoStr);
-  if (isNaN(costo) || costo < 0) {
-    mostrarErrorCampo('costo', 'El costo de referencia debe ser un número mayor o igual a 0');
-    tieneErrores = true;
+  let costo = null;
+  if (costoStr && costoStr.trim() !== '') {
+    costo = parseFloat(costoStr);
+    if (isNaN(costo) || costo < 0) {
+      mostrarErrorCampo('costo', 'El costo de referencia debe ser un número mayor o igual a 0');
+      tieneErrores = true;
+    }
   }
 
   if (tieneErrores) {

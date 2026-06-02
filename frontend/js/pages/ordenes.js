@@ -163,7 +163,38 @@ function renderDetalle(oc) {
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
       <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Descripción del requerimiento</div>
       <p style="margin:0;line-height:1.6;font-size:13px">${oc.descripcion}</p>
-    </div>`;
+    </div>
+
+    ${oc.items && oc.items.length > 0 ? `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Ítems / Líneas de la OC ${oc.cotizacion_id ? '(según cotización seleccionada)' : '(según requerimiento — sin cotización)'}</div>
+      <table style="width:100%; font-size:12px; border-collapse:collapse;">
+        <thead><tr style="background:#f8f9fa">
+          <th style="text-align:left;padding:3px 4px;">Descripción</th>
+          <th style="text-align:right;padding:3px 4px;">Cant.</th>
+          <th style="text-align:right;padding:3px 4px;">Precio unit.</th>
+        </tr></thead>
+        <tbody>
+          ${oc.items.map(it => {
+            const desc = it.descripcion || (it.codigo ? (it.codigo + ' — ' + (it.descripcion||'')) : '—');
+            const cant = parseFloat(it.cantidad || 0).toLocaleString('es-MX');
+            let precio = '—';
+            if (it.precio_unitario != null) {
+              precio = '$' + Number(it.precio_unitario).toLocaleString('es-MX');
+            } else if (it.precio_unitario_referencia != null) {
+              precio = '$' + Number(it.precio_unitario_referencia).toLocaleString('es-MX') + ' (ref)';
+            }
+            const unidad = it.unidad ? ' ' + it.unidad : '';
+            return `<tr>
+              <td style="padding:3px 4px; border-bottom:1px solid #eee;">${desc}${unidad}</td>
+              <td style="padding:3px 4px; border-bottom:1px solid #eee; text-align:right;">${cant}</td>
+              <td style="padding:3px 4px; border-bottom:1px solid #eee; text-align:right;">${precio}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div style="font-size:11px; color:#64748b; margin-top:4px;">${oc.cotizacion_id ? 'Precios según la cotización elegida.' : 'Precios de referencia del catálogo (el precio real puede variar). Para fijar proveedor y precios use el flujo de cotización.'}</div>
+    </div>` : '' }`;
 
   // Historial
   const tl = document.getElementById('historial-timeline');

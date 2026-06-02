@@ -27,7 +27,7 @@ if (tablaProveedores) {
       abrirModalProveedor(id);
     }
     if (action === 'toggle') {
-      const activo = btn.dataset.activo === 'true';
+      const activo = btn.dataset.activo === 'true' || btn.dataset.activo === '1';
       toggleActivo(id, activo);
     }
   });
@@ -62,7 +62,7 @@ async function cargarProveedores() {
                 <div class="d-flex gap-2">
                   <button class="btn btn-sm btn-outline" data-action="editar" data-id="${p.id}">Editar</button>
                   ${Auth.puedeHacer(['admin'])
-                    ? `<button class="btn btn-sm ${p.activo ? 'btn-danger' : 'btn-success'}" data-action="toggle" data-id="${p.id}" data-activo="${p.activo}">
+                    ? `<button class="btn btn-sm ${p.activo ? 'btn-danger' : 'btn-success'}" data-action="toggle" data-id="${p.id}" data-activo="${p.activo ? 'true' : 'false'}">
                          ${p.activo ? 'Desactivar' : 'Activar'}</button>`
                     : ''}
                 </div>

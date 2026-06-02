@@ -167,6 +167,42 @@ function abrirEditorRequerimiento(req = null) {
       cantidad: Math.round(i.cantidad) || 1
     }));
     renderItemsSeleccionados();
+
+    // Cargar ítems libres (texto libre) si existen
+    window.requerimientoItemsLibres = (req.items_libres || []).map(i => ({
+      descripcion: i.descripcion,
+      cantidad: parseFloat(i.cantidad) || 1,
+      unidad: i.unidad || '',
+      notas: i.notas || ''
+    }));
+    renderLibresResumen();
+
+    // Sincronizar el checkbox del selector al final según el contenido
+    const checkbox = document.getElementById('usar-items-nuevos');
+    if (checkbox) {
+      const esModoLibres = (req.items_libres && req.items_libres.length > 0) && (!req.items || req.items.length === 0);
+      checkbox.checked = esModoLibres;
+
+      // Si es modo libres, podemos abrir el modal de libres automáticamente (o no, según preferencia)
+      // Por ahora solo marcamos el checkbox. El usuario puede abrirlo con el botón si quiere editar.
+      const seccionEl = document.getElementById('seccion-items-catalogo');
+      const actions = document.getElementById('libres-actions');
+      if (esModoLibres) {
+        if (seccionEl) seccionEl.style.display = 'none';
+        if (actions) actions.style.display = 'block';
+        // Opcional: mostrar un pequeño recordatorio
+        // Toast.info('Este requerimiento usa ítems nuevos. Abre "Gestionar ítems nuevos" si necesitas editarlos.');
+      } else {
+        if (seccionEl) seccionEl.style.display = 'block';
+        if (actions) actions.style.display = 'none';
+      }
+    }
+
+    // Advertencia si por legacy viene mezclado
+    const tieneAmbos = (req.items && req.items.length > 0) && (req.items_libres && req.items_libres.length > 0);
+    if (tieneAmbos) {
+      Toast.warning('Este requerimiento tiene tanto ítems del catálogo como libres. Elige un solo tipo (catálogo o solo nuevos para cotizar).');
+    }
   } else {
     // Modo nuevo
     editandoId = null;
@@ -174,13 +210,37 @@ function abrirEditorRequerimiento(req = null) {
     btnGuardar.textContent = 'Guardar';
     form.reset();
     window.requerimientoItemsSeleccionados = [];
+    window.requerimientoItemsLibres = [];
     renderItemsSeleccionados();
+    renderLibresResumen();
+
+    const checkbox = document.getElementById('usar-items-nuevos');
+    if (checkbox) checkbox.checked = false;
+
+    const seccion = document.getElementById('seccion-items-catalogo');
+    if (seccion) seccion.style.opacity = '1';
   }
 
-  // Mostrar/ocultar sección de catálogo según si ya hay tipo seleccionado
+  // Mostrar/ocultar sección de catálogo y el selector según tipo
   const seccion = document.getElementById('seccion-items-catalogo');
+  const selector = document.getElementById('selector-items-nuevos');
+  const tipoVal = document.getElementById('req-tipo').value;
+
   if (seccion) {
-    seccion.style.display = document.getElementById('req-tipo').value ? 'block' : 'none';
+    seccion.style.display = tipoVal ? 'block' : 'none';
+  }
+  if (selector) {
+    selector.style.display = tipoVal ? 'block' : 'none';
+  }
+
+  // Si ya está marcado el selector de items nuevos, ocultar la sección catálogo
+  const cb = document.getElementById('usar-items-nuevos');
+  const actions = document.getElementById('libres-actions');
+  if (cb && cb.checked) {
+    if (seccion) seccion.style.display = 'none';
+    if (actions) actions.style.display = 'block';
+  } else if (actions) {
+    actions.style.display = 'none';
   }
 
   UI.abrirModal('modal-req');
@@ -250,6 +310,20 @@ function renderDetalle(req) {
       </table>
     </div>` : ''}
 
+    <!-- Ítems en texto libre (no estaban en catálogo al momento de la solicitud) -->
+    ${req.items_libres && req.items_libres.length > 0 ? `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #f0ad4e">
+      <div style="font-size:11px;color:#b45309;margin-bottom:3px">
+        Ítems en texto libre (no existían en el catálogo)
+        <span style="font-size:9px; color:#854d0e;">— (Este req debe ser SOLO de libres para cotización y alta en catálogo)</span>
+      </div>
+      <ul style="margin:0; padding-left:16px; font-size:12px;">
+        ${req.items_libres.map(item => `
+          <li>${item.descripcion} — <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}</li>
+        `).join('')}
+      </ul>
+    </div>` : ''}
+
     ${ (req.estado === 'borrador' || req.estado === 'incompleto') && (Auth.getUsuario() && Auth.getUsuario().id === req.solicitante_id) ? `
     <div style="margin-top:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:7px;padding:10px 12px;font-size:13px">
       <strong>📝 Borrador</strong> — Puedes editar este requerimiento antes de enviarlo a revisión.
@@ -306,6 +380,7 @@ function renderDetalle(req) {
       const action = btn.dataset.action;
       if (action === 'imprimirRequerimiento') imprimirRequerimiento();
       if (action === 'editarRequerimientoActual') editarRequerimientoActual();
+      if (action === 'generarOC') generarOC();
     });
 
     window.delegate(accionesPanel, 'button[data-estado]', 'click', (e, btn) => {
@@ -1004,15 +1079,31 @@ document.getElementById('form-req').addEventListener('submit', async e => {
   const btn = document.getElementById('btn-guardar-req');
   btn.disabled = true;
 
+  const tieneCatalogo = (window.requerimientoItemsSeleccionados || []).length > 0;
+  const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
+
+  if (tieneCatalogo && tieneLibres) {
+    Toast.error('No se puede guardar un requerimiento con ítems del catálogo y ítems libres al mismo tiempo. Elige uno de los dos tipos.');
+    btn.disabled = false;
+    return;
+  }
+
   const payload = {
     titulo_solicitud:    document.getElementById('req-titulo').value,
     tipo:                document.getElementById('req-tipo').value,
     area:                document.getElementById('req-area').value,
     departamento:        document.getElementById('req-departamento').value,
     notas:               document.getElementById('req-notas')?.value || '',
+    requiere_cotizacion: tieneLibres,
     items:               (window.requerimientoItemsSeleccionados || []).map(i => ({
                        catalogo_id: i.catalogo_id,
                        cantidad: i.cantidad
+                     })),
+    items_libres:        (window.requerimientoItemsLibres || []).map(i => ({
+                       descripcion: i.descripcion,
+                       cantidad: i.cantidad,
+                       unidad: i.unidad || null,
+                       notas: i.notas || null
                      })),
   };
 
@@ -1023,6 +1114,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       resultado = await Api.put(`/requerimientos/${idAEditar}`, payload);
       editandoId = null;
       UI.cerrarModal('modal-req');
+      if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
       Toast.success('Requerimiento actualizado');
       if (requerimientoActual && requerimientoActual.id === idAEditar) {
         abrirDetalle(idAEditar);
@@ -1031,6 +1123,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       resultado = await Api.post('/requerimientos', payload);
       editandoId = null;
       UI.cerrarModal('modal-req');
+      if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
       Toast.success(`Requerimiento ${resultado.consecutivo} creado (borrador)`);
       abrirDetalle(resultado.id);
     }
@@ -1049,20 +1142,36 @@ if (busquedaInput) {
   }, 350));
 }
 
-// ── Integración Catálogo con Requerimientos ───────────────────────────────────
+// ── Integración Catálogo con Requerimientos (híbrido: catálogo + libres) ──────
 window.requerimientoItemsSeleccionados = [];
+window.requerimientoItemsLibres = [];
 
 const reqTipoSelect = document.getElementById('req-tipo');
 if (reqTipoSelect) {
   reqTipoSelect.addEventListener('change', () => {
     const seccion = document.getElementById('seccion-items-catalogo');
+    const selector = document.getElementById('selector-items-nuevos');
+
     if (seccion) {
       seccion.style.display = reqTipoSelect.value ? 'block' : 'none';
     }
+    if (selector) {
+      selector.style.display = reqTipoSelect.value ? 'block' : 'none';
+    }
+
     // Limpiar selección anterior si cambia el tipo
     if (reqTipoSelect.value) {
       window.requerimientoItemsSeleccionados = [];
+      window.requerimientoItemsLibres = [];
       renderItemsSeleccionados();
+      renderLibresResumen();
+
+      // Resetear el selector de items nuevos
+      const checkbox = document.getElementById('usar-items-nuevos');
+      if (checkbox) checkbox.checked = false;
+
+      const seccion2 = document.getElementById('seccion-items-catalogo');
+      if (seccion2) seccion2.style.opacity = '1';
     }
   });
 }
@@ -1072,19 +1181,19 @@ function renderItemsSeleccionados() {
   if (!contenedor) return;
 
   if (!window.requerimientoItemsSeleccionados || window.requerimientoItemsSeleccionados.length === 0) {
-    contenedor.innerHTML = '<span class="text-muted" style="font-size:12px;">No hay ítems seleccionados</span>';
+    contenedor.innerHTML = '<span class="text-muted" style="font-size:11px;">Ninguno seleccionado aún. Busca arriba y agrega ítems del catálogo.</span>';
     return;
   }
 
   let html = '';
   window.requerimientoItemsSeleccionados.forEach((item, index) => {
     html += `
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; background:#f8f9fa; padding:4px 8px; border-radius:4px;">
-        <span style="flex:1; font-size:13px;">${item.codigo} — ${item.descripcion}</span>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px; background:#e6f4ea; padding:3px 6px; border-radius:4px; border:1px solid #a3d9b1;">
+        <span style="flex:1; font-size:12px;">${item.codigo} — ${item.descripcion}</span>
         <input type="number" value="${Math.round(item.cantidad)}" min="1" step="1" 
-               style="width:70px; font-size:12px;" 
+               style="width:60px; font-size:11px;" 
                onchange="actualizarCantidadItem(${index}, this.value)">
-        <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px; font-size:11px;" 
+        <button type="button" class="btn btn-sm btn-danger" style="padding:0 4px; font-size:10px; line-height:1;" 
                 onclick="eliminarItemSeleccionado(${index})">×</button>
       </div>
     `;
@@ -1102,6 +1211,219 @@ window.actualizarCantidadItem = function(index, nuevaCantidad) {
 window.eliminarItemSeleccionado = function(index) {
   window.requerimientoItemsSeleccionados.splice(index, 1);
   renderItemsSeleccionados();
+};
+
+// ── Ítems Libres (texto libre / no en catálogo) - Lógica separada en modal dedicado ─────────────
+function renderLibresResumen() {
+  // Ya no mostramos el resumen/count en la vista principal de catálogo 
+  // (el "cargar items nuevos" está oculto de la sección de catálogo por diseño).
+  // Solo actualizamos si el elemento existe (compatibilidad o uso futuro).
+  const countEl = document.getElementById('libres-count');
+  if (countEl) {
+    const count = (window.requerimientoItemsLibres || []).length;
+    countEl.textContent = count;
+  }
+}
+
+function renderItemsLibresModal() {
+  const contenedor = document.getElementById('items-libres-lista-modal');
+  if (!contenedor) return;
+
+  if (!window.requerimientoItemsLibres || window.requerimientoItemsLibres.length === 0) {
+    contenedor.innerHTML = '<span class="text-muted" style="font-size:11px;">No hay ítems libres. Este modal es para requerimientos que son SOLO de ítems nuevos (que necesitan cotización para alta en catálogo).</span>';
+    return;
+  }
+
+  let html = '';
+  window.requerimientoItemsLibres.forEach((item, index) => {
+    const unidad = item.unidad ? ` ${item.unidad}` : '';
+    html += `
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; background:#fffbeb; padding:3px 6px; border-radius:3px; border:1px solid #fde047; font-size:12px;">
+        <span style="flex:1;">${item.descripcion} — <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}${unidad}</strong></span>
+        <button type="button" class="btn btn-sm btn-danger" style="padding:0 4px; font-size:10px; line-height:1;" 
+                onclick="eliminarItemLibre(${index}); renderItemsLibresModal();">×</button>
+      </div>
+    `;
+  });
+  contenedor.innerHTML = html;
+}
+
+window.agregarItemLibre = function() {
+  const tieneCatalogo = window.requerimientoItemsSeleccionados && window.requerimientoItemsSeleccionados.length > 0;
+
+  if (tieneCatalogo) {
+    if (!confirm('Este requerimiento tiene ítems del catálogo.\n\nNo se permite mezclar. ¿Quieres limpiar los ítems del catálogo para agregar solo ítems libres (nuevos) en este requerimiento?')) {
+      return;
+    }
+    window.requerimientoItemsSeleccionados = [];
+    renderItemsSeleccionados();
+
+    // Marcar el selector ya que ahora es modo ítems nuevos
+    const checkbox = document.getElementById('usar-items-nuevos');
+    if (checkbox) checkbox.checked = true;
+  }
+
+  const desc = document.getElementById('libre-descripcion')?.value.trim();
+  const cant = parseFloat(document.getElementById('libre-cantidad')?.value) || 1;
+  const unidad = document.getElementById('libre-unidad')?.value.trim() || '';
+
+  if (!desc || desc.length < 3) {
+    Toast.error('La descripción del ítem libre debe tener al menos 3 caracteres');
+    return;
+  }
+  if (cant <= 0) {
+    Toast.error('La cantidad debe ser mayor a 0');
+    return;
+  }
+
+  if (!window.requerimientoItemsLibres) window.requerimientoItemsLibres = [];
+
+  window.requerimientoItemsLibres.push({
+    descripcion: desc,
+    cantidad: cant,
+    unidad: unidad,
+    notas: ''
+  });
+
+  // Asegurar que el selector al final está marcado (modo ítems nuevos)
+  const checkbox = document.getElementById('usar-items-nuevos');
+  if (checkbox) checkbox.checked = true;
+
+  // Actualizar ambas vistas (resumen en modal principal + lista completa en modal dedicado)
+  renderLibresResumen();
+  renderItemsLibresModal();
+
+  // Limpiar form (esté donde esté)
+  const descInput = document.getElementById('libre-descripcion');
+  const cantInput = document.getElementById('libre-cantidad');
+  const unidadInput = document.getElementById('libre-unidad');
+  if (descInput) descInput.value = '';
+  if (cantInput) cantInput.value = '1';
+  if (unidadInput) unidadInput.value = '';
+};
+
+// ── Funciones para abrir/cerrar el modal dedicado de ítems libres ──────────────
+window.abrirModalItemsLibres = function() {
+  const tieneCatalogo = window.requerimientoItemsSeleccionados && window.requerimientoItemsSeleccionados.length > 0;
+
+  if (tieneCatalogo) {
+    if (!confirm('Este requerimiento ya tiene ítems del catálogo.\n\nSi agregas ítems libres, se recomienda crear un REQUERIMIENTO SEPARADO (los ítems del catálogo no necesitan cotización, los libres sí).\n\n¿Quieres limpiar los ítems del catálogo y trabajar solo con ítems nuevos/libres en este requerimiento?')) {
+      return;
+    }
+    // Limpiar catálogo para pasar a modo "solo libres"
+    window.requerimientoItemsSeleccionados = [];
+    renderItemsSeleccionados();
+  }
+
+  const modal = document.getElementById('modal-req-libres');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  renderItemsLibresModal();
+};
+
+window.cerrarModalItemsLibres = function() {
+  const modal = document.getElementById('modal-req-libres');
+  if (modal) modal.style.display = 'none';
+  // Refrescar resumen en el modal principal
+  renderLibresResumen();
+};
+
+// --- Selector al final del formulario para modo ítems nuevos ---
+window.toggleModoItemsNuevos = function(checked) {
+  const checkbox = document.getElementById('usar-items-nuevos');
+  if (!checkbox) return;
+
+  if (checked) {
+    // El usuario quiere ítems libres / nuevos
+    const tieneCatalogo = window.requerimientoItemsSeleccionados && window.requerimientoItemsSeleccionados.length > 0;
+
+    if (tieneCatalogo) {
+      if (!confirm('Ya tienes ítems del catálogo seleccionados.\n\nNo se permite mezclar. Si continúas se limpiarán los ítems del catálogo para trabajar solo con ítems nuevos (que requieren cotización para alta en el catálogo).\n\n¿Continuar?')) {
+        checkbox.checked = false;
+        return;
+      }
+      window.requerimientoItemsSeleccionados = [];
+      renderItemsSeleccionados();
+    }
+
+    // Abrir el modal de libres
+    if (typeof abrirModalItemsLibres === 'function') {
+      abrirModalItemsLibres();
+    }
+
+    // Ocultar la sección de catálogo mientras estamos en modo ítems nuevos
+    const seccion = document.getElementById('seccion-items-catalogo');
+    if (seccion) {
+      seccion.style.display = 'none';
+    }
+
+    // Mostrar las acciones de libres
+    const actions = document.getElementById('libres-actions');
+    if (actions) actions.style.display = 'block';
+  } else {
+    // Deseleccionar: volver a modo catálogo
+    const tieneLibres = window.requerimientoItemsLibres && window.requerimientoItemsLibres.length > 0;
+
+    if (tieneLibres) {
+      if (!confirm('Tienes ítems nuevos/libres agregados.\n\nSi deseleccionas se limpiarán para poder usar el catálogo nuevamente.\n\n¿Continuar?')) {
+        checkbox.checked = true;
+        return;
+      }
+      window.requerimientoItemsLibres = [];
+      renderLibresResumen();
+    }
+
+    cerrarModalItemsLibres();
+
+    // Restaurar la sección de catálogo
+    const seccion = document.getElementById('seccion-items-catalogo');
+    if (seccion) seccion.style.display = 'block';
+
+    // Ocultar las acciones de libres
+    const actions = document.getElementById('libres-actions');
+    if (actions) actions.style.display = 'none';
+
+    // Enfocar la búsqueda de catálogo
+    const busq = document.getElementById('busqueda-catalogo');
+    if (busq) setTimeout(() => busq.focus(), 100);
+
+    // Asegurar que el checkbox está desmarcado
+    const cb = document.getElementById('usar-items-nuevos');
+    if (cb) cb.checked = false;
+  }
+};
+
+window.deseleccionarYVolverACatalogo = function() {
+  const checkbox = document.getElementById('usar-items-nuevos');
+  if (checkbox) {
+    checkbox.checked = false;
+    // Disparar el cambio manualmente
+    window.toggleModoItemsNuevos(false);
+  } else {
+    cerrarModalItemsLibres();
+  }
+};
+
+window.eliminarItemLibre = function(index) {
+  if (window.requerimientoItemsLibres) {
+    window.requerimientoItemsLibres.splice(index, 1);
+    renderLibresResumen();
+    renderItemsLibresModal();
+  }
+};
+
+// Mantener compatibilidad: ahora abren el modal dedicado de libres
+window.mostrarFormItemLibre = function() {
+  abrirModalItemsLibres();
+  // Enfocar el campo de descripción dentro del modal
+  setTimeout(() => {
+    const inp = document.getElementById('libre-descripcion');
+    if (inp) inp.focus();
+  }, 150);
+};
+
+window.ocultarFormItemLibre = function() {
+  cerrarModalItemsLibres();
 };
 
 async function buscarEnCatalogo() {
@@ -1124,7 +1446,17 @@ async function buscarEnCatalogo() {
     const resultados = await Api.get(`/catalogo?${params.toString()}`);
 
     if (!resultados.length) {
-      contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#666;">No se encontraron resultados.</div>';
+      contenedor.innerHTML = `
+        <div style="padding:8px; font-size:11px; color:#7c3f00; background:#fff3cd; border:1px solid #f0ad4e; border-radius:4px;">
+          <strong>No existe en el catálogo.</strong><br>
+          <span>Al final del formulario marca la casilla <strong>"Los ítems que necesito no se encuentran en el catálogo"</strong> para abrir el formulario de ítems nuevos.</span>
+          <div style="margin-top:4px;">
+            <button type="button" class="btn btn-sm btn-warning" style="font-size:10px; font-weight:600;" 
+                    onclick="crearRequerimientoParaAltaCatalogoFromCurrent()">
+              O crear un REQUERIMIENTO SEPARADO
+            </button>
+          </div>
+        </div>`;
       return;
     }
 
@@ -1137,7 +1469,7 @@ async function buscarEnCatalogo() {
         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #eee; font-size:12px; gap:6px;">
           <div style="flex:1; min-width:0;">
             <strong>${item.codigo}</strong> — ${item.descripcion}
-            <span style="color:#888; font-size:11px;">($${parseFloat(item.costo_referencia).toFixed(2)})</span>
+            <span style="color:#888; font-size:11px;">${(item.costo_referencia != null) ? '($' + parseFloat(item.costo_referencia).toFixed(2) + ')' : ''}</span>
           </div>
 
           ${!yaSeleccionado ? `
@@ -1145,7 +1477,7 @@ async function buscarEnCatalogo() {
               <input type="number" id="qty-${item.id}" value="1" min="1" step="1" 
                      style="width:58px; font-size:11px; padding:2px 4px;">
               <button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px; font-size:11px;"
-                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia})">
+                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0})">
                 + Agregar
               </button>
             </div>
@@ -1155,13 +1487,47 @@ async function buscarEnCatalogo() {
         </div>
       `;
     });
+
+    // Enlace sutil pero siempre visible para recordar el flujo de nuevo ítem
+    html += `
+      <div style="padding:3px 4px; font-size:9.5px; color:#854d0e; background:#fffbeb; margin-top:3px; border-radius:3px; border:1px solid #fde047;">
+        ¿Ninguno coincide? Marca al final del formulario <strong>"Los ítems que necesito no se encuentran en el catálogo"</strong> o 
+        <a href="#" onclick="crearRequerimientoParaAltaCatalogoFromCurrent(); return false;" style="font-weight:600; color:#b45309; text-decoration:underline;">crea un req separado</a>.
+      </div>
+    `;
+
     contenedor.innerHTML = html;
+
+    // Patrón cómodo: siempre ofrecer "agregar como nuevo" como último recurso (inspirado en combobox + add new patterns de UX research)
+    // Esto anima a buscar primero (evita duplicados) pero hace obvio el camino para libres.
+    const addNewHint = document.createElement('div');
+    addNewHint.style.cssText = 'margin-top:4px; font-size:10px;';
+    addNewHint.innerHTML = ` <button type="button" class="btn btn-sm btn-outline" style="font-size:10px;" onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true);">+ Agregar este ítem como nuevo (libre)</button>`;
+    contenedor.appendChild(addNewHint);
   } catch (err) {
     contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#c00;">Error al buscar.</div>';
   }
 }
 
 window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo) {
+  const tieneLibres = window.requerimientoItemsLibres && window.requerimientoItemsLibres.length > 0;
+
+  if (tieneLibres) {
+    if (!confirm('Este requerimiento ya tiene ítems en texto libre (nuevos).\n\nLos ítems del catálogo no necesitan cotización, mientras que los libres sí la requieren para darlos de alta.\n\n¿Quieres limpiar los ítems libres y agregar solo ítems del catálogo en este requerimiento?')) {
+      return;
+    }
+    window.requerimientoItemsLibres = [];
+    renderLibresResumen();
+    // También refrescar el modal de libres si está abierto
+    const libresModal = document.getElementById('modal-req-libres');
+    if (libresModal && libresModal.style.display !== 'none') {
+      renderItemsLibresModal();
+    }
+    // Desmarcar el selector ya que ahora es modo catálogo
+    const checkbox = document.getElementById('usar-items-nuevos');
+    if (checkbox) checkbox.checked = false;
+  }
+
   if (!window.requerimientoItemsSeleccionados) window.requerimientoItemsSeleccionados = [];
 
   const yaExiste = window.requerimientoItemsSeleccionados.find(i => i.catalogo_id === catalogo_id);
@@ -1186,6 +1552,98 @@ window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo
 };
 
 window.agregarItemDesdeCatalogo = window.agregarItemConCantidad;
+
+window.agregarComoLibreDesdeBusqueda = function() {
+  const input = document.getElementById('busqueda-catalogo');
+  const contenedor = document.getElementById('resultados-catalogo');
+  if (!input) return;
+
+  const texto = input.value.trim();
+  if (!texto) {
+    Toast.info('Escribe una descripción en el buscador primero');
+    return;
+  }
+
+  // Prellenar y abrir el modal dedicado de libres
+  const descInput = document.getElementById('libre-descripcion');
+  if (descInput) descInput.value = texto;
+
+  abrirModalItemsLibres();
+
+  // Limpiar resultados
+  if (contenedor) contenedor.innerHTML = '';
+};
+
+/**
+ * Abre el editor de requerimiento prellenado para el flujo de "alta en catálogo".
+ * Según feedback del cliente: si el ítem no existe, se debe generar en OTRO req
+ * para poder cotizarlo y luego cargarlo al catálogo.
+ */
+window.crearRequerimientoParaAltaCatalogo = function(texto, tipo) {
+  const contenedor = document.getElementById('resultados-catalogo');
+  if (contenedor) contenedor.innerHTML = '';
+
+  // Abrir editor de nuevo requerimiento
+  abrirEditorRequerimiento(null);
+
+  // Prefill después de que el modal/DOM esté listo
+  setTimeout(() => {
+    const tituloEl = document.getElementById('req-titulo');
+    const tipoEl = document.getElementById('req-tipo');
+    const notasEl = document.getElementById('req-notas');
+
+    if (tipoEl) {
+      tipoEl.value = tipo || '';
+      tipoEl.dispatchEvent(new Event('change')); // mostrar sección de ítems
+    }
+
+    if (tituloEl) {
+      tituloEl.value = `Alta en catálogo: ${texto || 'Ítem / servicio no registrado'}`;
+    }
+
+    if (notasEl) {
+      notasEl.value = `SOLICITUD DE ALTA EN CATÁLOGO\n\nEl siguiente ítem/servicio no existe actualmente en el catálogo maestro:\n\n${texto || ''}\n\nAcción requerida: Cotizar con proveedor(es), aprobar y crear el registro en el Catálogo (por Contabilidad/Admin).\n\nUna vez cargado al catálogo, se podrá vincular a requerimientos operativos.`;
+    }
+
+    // Limpiar selecciones de items (no tiene sentido para alta)
+    window.requerimientoItemsSeleccionados = [];
+    window.requerimientoItemsLibres = [];
+    if (typeof renderItemsSeleccionados === 'function') renderItemsSeleccionados();
+    renderLibresResumen();
+
+    // Marcar el selector para indicar modo ítems nuevos
+    const checkbox = document.getElementById('usar-items-nuevos');
+    if (checkbox) checkbox.checked = true;
+
+    // Las acciones y visibilidad se manejan en el código común de display después del if-else
+
+    // Opcional: Toast informativo
+    if (typeof Toast !== 'undefined') {
+      Toast.info('Requerimiento prellenado para solicitud de alta en catálogo. Abre "Gestionar ítems nuevos" para describir los ítems que faltan.');
+    }
+
+    // Para req de alta, abrir directamente el modal de libres para que el usuario agregue las descripciones
+    setTimeout(() => {
+      if (typeof abrirModalItemsLibres === 'function') {
+        abrirModalItemsLibres();
+      }
+    }, 400);
+  }, 250);
+};
+
+/**
+ * Helpers para el botón grande del nuevo diseño del modal de requerimiento.
+ * Llaman a la función principal pasando el tipo y texto actual del formulario.
+ */
+window.crearRequerimientoParaAltaCatalogoFromCurrent = function() {
+  const tipoEl = document.getElementById('req-tipo');
+  const busqEl = document.getElementById('busqueda-catalogo');
+  const tipo = tipoEl ? tipoEl.value : '';
+  const texto = busqEl ? busqEl.value.trim() : '';
+  crearRequerimientoParaAltaCatalogo(texto, tipo);
+};
+
+window.crearRequerimientoParaAltaCatalogoFromForm = window.crearRequerimientoParaAltaCatalogoFromCurrent;
 
 // ── FUNCIONES DEL MODAL DE COTIZACIÓN ─────────────────────────────
 

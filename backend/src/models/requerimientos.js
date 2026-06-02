@@ -103,7 +103,7 @@ async function obtenerPorId(id) {
     [id]
   );
 
-  // Cargar ítems del catálogo asociados
+  // Cargar ítems del catálogo asociados (estructurados)
   const [items] = await pool.query(
     `SELECT 
        ri.id,
@@ -120,7 +120,21 @@ async function obtenerPorId(id) {
     [id]
   );
 
-  return { ...req, historial, items };
+  // Cargar ítems en texto libre (cuando no existen en el catálogo aún)
+  const [itemsLibres] = await pool.query(
+    `SELECT 
+       id,
+       descripcion,
+       cantidad,
+       unidad,
+       notas
+     FROM requerimiento_items_libres
+     WHERE requerimiento_id = ?
+     ORDER BY id ASC`,
+    [id]
+  );
+
+  return { ...req, historial, items, items_libres: itemsLibres };
 }
 
 /**
@@ -134,6 +148,9 @@ async function crear(datos, solicitante_id) {
 
     const consecutivo = await generarConsecutivo(conn, datos.tipo);
   
+    const tieneLibresEnDatos = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
+    const requiereCotEnBD = tieneLibresEnDatos ? 1 : (datos.requiere_cotizacion ? 1 : 0);
+
     const [result] = await conn.query(
       `INSERT INTO requerimientos
          (consecutivo, solicitante_id, titulo_solicitud, area, departamento, tipo, notas, requiere_cotizacion, estado)
@@ -146,7 +163,7 @@ async function crear(datos, solicitante_id) {
         datos.departamento,
         datos.tipo,
         datos.notas || datos.descripcion || '', // legacy 'descripcion'
-        datos.requiere_cotizacion ? 1 : 0,
+        requiereCotEnBD,
       ]
     );
 
@@ -160,14 +177,40 @@ async function crear(datos, solicitante_id) {
       [requerimientoId, solicitante_id]
     );
 
+    const tieneItems = Array.isArray(datos.items) && datos.items.length > 0;
+    const tieneLibres = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
+
+    if (tieneItems && tieneLibres) {
+      throw new Error('No se puede mezclar ítems del catálogo con ítems libres en el mismo requerimiento');
+    }
+
     // Insertar ítems del catálogo si se enviaron
-    if (Array.isArray(datos.items) && datos.items.length > 0) {
+    if (tieneItems) {
       for (const item of datos.items) {
         if (item.catalogo_id && item.cantidad > 0) {
           await conn.query(
             `INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
              VALUES (?, ?, ?)`,
             [requerimientoId, item.catalogo_id, item.cantidad]
+          );
+        }
+      }
+    }
+
+    // Insertar ítems en texto libre (no existen en catálogo) si se enviaron
+    if (tieneLibres) {
+      for (const item of datos.items_libres) {
+        if (item && item.descripcion && (item.cantidad || 0) > 0) {
+          await conn.query(
+            `INSERT INTO requerimiento_items_libres (requerimiento_id, descripcion, cantidad, unidad, notas)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              requerimientoId,
+              item.descripcion,
+              item.cantidad || 1,
+              item.unidad || null,
+              item.notas || null
+            ]
           );
         }
       }
@@ -186,30 +229,115 @@ async function crear(datos, solicitante_id) {
 /**
  * Actualizar campos editables de un requerimiento.
  * Solo permitido cuando estado = 'borrador' o 'incompleto'.
+ * Soporta reemplazo de:
+ *   - ítems del catálogo (arreglo 'items')
+ *   - ítems en texto libre (arreglo 'items_libres') - para cuando aún no existen en catálogo
  */
-async function actualizar(id, datos) {
-  const campos = {};
-  if (datos.titulo_solicitud        !== undefined) campos.titulo_solicitud        = datos.titulo_solicitud;
-  if (datos.area                    !== undefined) campos.area                    = datos.area;
-  if (datos.departamento            !== undefined) campos.departamento            = datos.departamento;
-  if (datos.tipo        !== undefined) campos.tipo        = datos.tipo;
-  if (datos.notas !== undefined) campos.notas = datos.notas;
-  if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // legacy 'descripcion' → notas
-  if (datos.requiere_cotizacion !== undefined)
-    campos.requiere_cotizacion = datos.requiere_cotizacion ? 1 : 0;
-  if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id; // PO de DataTextNow (de reportes Excel)
+async function actualizar(id, datos, items = null, itemsLibres = null) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  if (Object.keys(campos).length === 0) return 0;
+    // Verificar existencia y que el estado permita edición
+    const [[actual]] = await conn.query(
+      'SELECT estado FROM requerimientos WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    if (!actual) {
+      await conn.rollback();
+      return 0;
+    }
+    if (!['borrador', 'incompleto'].includes(actual.estado)) {
+      await conn.rollback();
+      return 0;
+    }
 
-  const sets    = Object.keys(campos).map(c => `${c} = ?`).join(', ');
-  const valores = [...Object.values(campos), id];
+    // 1. Actualizar campos escalares (si hay)
+    const campos = {};
+    if (datos.titulo_solicitud        !== undefined) campos.titulo_solicitud        = datos.titulo_solicitud;
+    if (datos.area                    !== undefined) campos.area                    = datos.area;
+    if (datos.departamento            !== undefined) campos.departamento            = datos.departamento;
+    if (datos.tipo        !== undefined) campos.tipo        = datos.tipo;
+    if (datos.notas !== undefined) campos.notas = datos.notas;
+    if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // legacy 'descripcion' → notas
+    if (datos.requiere_cotizacion !== undefined)
+      campos.requiere_cotizacion = datos.requiere_cotizacion ? 1 : 0;
+    if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id; // PO de DataTextNow
 
-  const [result] = await pool.query(
-    `UPDATE requerimientos SET ${sets} WHERE id = ? AND estado IN ('borrador','incompleto')`,
-    valores
-  );
+    let affected = 0;
+    if (Object.keys(campos).length > 0) {
+      const sets    = Object.keys(campos).map(c => `${c} = ?`).join(', ');
+      const valores = [...Object.values(campos), id];
+      const [result] = await conn.query(
+        `UPDATE requerimientos SET ${sets} WHERE id = ? AND estado IN ('borrador','incompleto')`,
+        valores
+      );
+      affected = result.affectedRows;
+    }
 
-  return result.affectedRows;
+    const tieneItems = Array.isArray(items) && items.length > 0;
+    const tieneLibres = Array.isArray(itemsLibres) && itemsLibres.length > 0;
+
+    if (tieneItems && tieneLibres) {
+      await conn.rollback();
+      throw new Error('No se puede mezclar ítems del catálogo con ítems libres en el mismo requerimiento');
+    }
+
+    // 2. Reemplazar ítems del catálogo si se proporcionó el arreglo (incluye [] para limpiar)
+    if (Array.isArray(items)) {
+      await conn.query('DELETE FROM requerimiento_items WHERE requerimiento_id = ?', [id]);
+
+      for (const item of items) {
+        if (item && item.catalogo_id && (item.cantidad || 0) > 0) {
+          await conn.query(
+            `INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
+             VALUES (?, ?, ?)`,
+            [id, item.catalogo_id, item.cantidad]
+          );
+        }
+      }
+      if (affected === 0) affected = 1;
+    }
+
+    // 3. Reemplazar ítems en texto libre si se proporcionó el arreglo
+    if (Array.isArray(itemsLibres)) {
+      await conn.query('DELETE FROM requerimiento_items_libres WHERE requerimiento_id = ?', [id]);
+
+      for (const item of itemsLibres) {
+        if (item && item.descripcion && (item.cantidad || 0) > 0) {
+          await conn.query(
+            `INSERT INTO requerimiento_items_libres (requerimiento_id, descripcion, cantidad, unidad, notas)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              id,
+              item.descripcion,
+              item.cantidad || 1,
+              item.unidad || null,
+              item.notas || null
+            ]
+          );
+        }
+      }
+      if (affected === 0) affected = 1;
+    }
+
+    // Asegurar consistencia del flag requiere_cotizacion según los ítems actuales (para legacy y switches)
+    const finalTieneLibres = Array.isArray(itemsLibres) ? (itemsLibres.length > 0) : null;
+    const finalTieneItems = Array.isArray(items) ? (items.length > 0) : null;
+    if (finalTieneLibres === true) {
+      await conn.query('UPDATE requerimientos SET requiere_cotizacion = 1 WHERE id = ?', [id]);
+    } else if (finalTieneItems === true && finalTieneLibres === false) {
+      await conn.query('UPDATE requerimientos SET requiere_cotizacion = 0 WHERE id = ?', [id]);
+    }
+
+    await conn.commit();
+    return affected;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 /**

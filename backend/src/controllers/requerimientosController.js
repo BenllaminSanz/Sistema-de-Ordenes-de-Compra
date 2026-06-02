@@ -62,7 +62,8 @@ async function crear(req, res) {
       notas, 
       descripcion,           // legacy: soporte para campo antiguo 'descripcion'
       requiere_cotizacion,
-      items                  // nuevos ítems del catálogo [{catalogo_id, cantidad}]
+      items,                 // ítems del catálogo [{catalogo_id, cantidad}]
+      items_libres           // ítems en texto libre (aún no en catálogo) [{descripcion, cantidad, unidad?, notas?}]
     } = req.body;
 
     const notasFinal = (notas || descripcion || '').trim(); // soporta campo legacy 'descripcion'
@@ -72,12 +73,22 @@ async function crear(req, res) {
       return res.status(400).json({ mensaje: 'El titulo debe tener al menos 10 caracteres' });
     }
 
-    // Para requerimientos normales ya no exigimos descripción larga (se usa el catálogo)
-    // La validación de notas solo aplica si no se envían items del catálogo
-    const tieneItems = Array.isArray(items) && items.length > 0;
-    if (!tieneItems && notasFinal.length < 5) {
-      return res.status(400).json({ mensaje: 'Las notas deben tener al menos 5 caracteres cuando no se seleccionan ítems del catálogo' });
+    // Validación de notas: solo se exige si NO hay items (ni del catálogo ni libres)
+    const tieneItemsEstructurados = Array.isArray(items) && items.length > 0;
+    const tieneItemsLibres = Array.isArray(items_libres) && items_libres.length > 0;
+
+    if (tieneItemsEstructurados && tieneItemsLibres) {
+      return res.status(400).json({ 
+        mensaje: 'No se puede mezclar ítems del catálogo con ítems en texto libre en el mismo requerimiento. Un requerimiento debe ser solo de ítems existentes (del catálogo) o solo de ítems nuevos (libres para cotizar y dar de alta).' 
+      });
     }
+
+    if (!tieneItemsEstructurados && !tieneItemsLibres && notasFinal.length < 5) {
+      return res.status(400).json({ mensaje: 'Las notas deben tener al menos 5 caracteres cuando no se seleccionan ítems del catálogo ni ítems libres' });
+    }
+
+    // Forzar requiere_cotizacion=true si hay ítems libres (regla de negocio: solo ellos necesitan cotización para alta en catálogo)
+    const requiereCotFinal = tieneItemsLibres ? true : (requiere_cotizacion || false);
 
     const id = await _crear(
       { 
@@ -86,8 +97,9 @@ async function crear(req, res) {
         area, 
         departamento, 
         notas: notasFinal, 
-        requiere_cotizacion,
-        items 
+        requiere_cotizacion: requiereCotFinal,
+        items,
+        items_libres
       },
       req.usuario.id
     );
@@ -109,7 +121,30 @@ async function crear(req, res) {
 // ─── PUT /requerimientos/:id ──────────────────────────────────────────────────
 async function actualizar(req, res) {
   try {
-    const { titulo_solicitud, area, departamento, tipo, notas, descripcion, requiere_cotizacion, datatextnow_id } = req.body;
+    const { 
+      titulo_solicitud, 
+      area, 
+      departamento, 
+      tipo, 
+      notas, 
+      descripcion, 
+      requiere_cotizacion, 
+      datatextnow_id,
+      items,                  // ítems del catálogo para reemplazar
+      items_libres            // ítems en texto libre para reemplazar (cuando no están en catálogo)
+    } = req.body;
+
+    const tieneItemsEstructurados = Array.isArray(items) && items.length > 0;
+    const tieneItemsLibres = Array.isArray(items_libres) && items_libres.length > 0;
+
+    if (tieneItemsEstructurados && tieneItemsLibres) {
+      return res.status(400).json({ 
+        mensaje: 'No se puede mezclar ítems del catálogo con ítems en texto libre en el mismo requerimiento. Un requerimiento debe ser solo de ítems existentes (del catálogo) o solo de ítems nuevos (libres para cotizar y dar de alta).' 
+      });
+    }
+
+    // Forzar requiere_cotizacion=true cuando se usan items_libres (libres siempre requieren cotización)
+    const requiereCotFinal = tieneItemsLibres ? true : (requiere_cotizacion || false);
 
     // Los solicitantes solo pueden editar sus propios requerimientos
     if (req.usuario.rol === 'solicitante') {
@@ -128,9 +163,9 @@ async function actualizar(req, res) {
       departamento,
       tipo,
       notas: (notas || descripcion)?.trim(), // legacy 'descripcion'
-      requiere_cotizacion,
+      requiere_cotizacion: requiereCotFinal,
       datatextnow_id,
-    });
+    }, items, items_libres);
 
     if (afectados === 0) {
       return res.status(404).json({

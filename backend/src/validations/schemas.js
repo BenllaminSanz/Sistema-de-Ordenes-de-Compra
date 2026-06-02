@@ -37,6 +37,23 @@ export const crearRequerimientoSchema = z.object({
       cantidad: z.number().positive(),
     })
   ).optional().default([]),
+  // Ítems en texto libre (cuando no existen aún en el catálogo)
+  items_libres: z.array(
+    z.object({
+      descripcion: z.string().min(3, 'La descripción debe tener al menos 3 caracteres').trim(),
+      cantidad: z.number().positive(),
+      unidad: z.string().trim().optional().nullable(),
+      notas: z.string().trim().optional().nullable(),
+    })
+  ).optional().default([]),
+}).refine((data) => {
+  const tieneItems = Array.isArray(data.items) && data.items.length > 0;
+  const tieneLibres = Array.isArray(data.items_libres) && data.items_libres.length > 0;
+  // No se permite mezclar: un requerimiento es o de ítems del catálogo o de ítems nuevos (libres)
+  return !(tieneItems && tieneLibres);
+}, {
+  message: "No se puede mezclar ítems del catálogo con ítems en texto libre en el mismo requerimiento. Usa solo uno de los dos tipos.",
+  path: ["items"], // o items_libres
 });
 
 export const actualizarRequerimientoSchema = z.object({
@@ -53,6 +70,23 @@ export const actualizarRequerimientoSchema = z.object({
       cantidad: z.number().positive(),
     })
   ).optional(),
+  // Ítems en texto libre (cuando no existen aún en el catálogo)
+  items_libres: z.array(
+    z.object({
+      descripcion: z.string().min(3, 'La descripción debe tener al menos 3 caracteres').trim(),
+      cantidad: z.number().positive(),
+      unidad: z.string().trim().optional().nullable(),
+      notas: z.string().trim().optional().nullable(),
+    })
+  ).optional(),
+}).refine((data) => {
+  const tieneItems = Array.isArray(data.items) && data.items.length > 0;
+  const tieneLibres = Array.isArray(data.items_libres) && data.items_libres.length > 0;
+  // No se permite mezclar: un requerimiento es o de ítems del catálogo o de ítems nuevos (libres)
+  return !(tieneItems && tieneLibres);
+}, {
+  message: "No se puede mezclar ítems del catálogo con ítems en texto libre en el mismo requerimiento. Usa solo uno de los dos tipos.",
+  path: ["items"],
 });
 
 // ============================================================

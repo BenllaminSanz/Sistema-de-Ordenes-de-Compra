@@ -370,9 +370,9 @@ async function main() {
       const cotIdForOc = selectedCotByReq[reqId] || null;
       const [ocResult] = await conn.query(`
         INSERT INTO ordenes_compra 
-          (numero_oc, requerimiento_id, cotizacion_id, autorizado_por, estado, datatextnow_id, fecha_autorizacion, created_at)
+          (numero_oc, requerimiento_id, cotizacion_id, autorizado_por, estado, datatextnow_id, fecha_autorizacion, created_at, notas)
         VALUES 
-          (CONCAT('OC-2025-', LPAD(?, 4, '0')), ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY), DATE_SUB(NOW(), INTERVAL ? DAY))
+          (CONCAT('OC-2025-', LPAD(?, 4, '0')), ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY), DATE_SUB(NOW(), INTERVAL ? DAY), ?)
       `, [
         100 + i,
         reqId,
@@ -381,7 +381,8 @@ async function main() {
         d.estado,
         d.datatext,
         Math.floor(Math.random() * 45) + 5,
-        Math.floor(Math.random() * 60) + 10
+        Math.floor(Math.random() * 60) + 10,
+        null
       ]);
 
       const ocId = ocResult.insertId;

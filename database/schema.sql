@@ -75,7 +75,7 @@ CREATE TABLE `catalogo` (
   `tipo` enum('PARTES','SERVICIOS','FLETES') COLLATE utf8mb4_unicode_ci NOT NULL,
   `codigo` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Código editable. Obligatorio para PARTES y SERVICIOS',
   `descripcion` text COLLATE utf8mb4_unicode_ci NOT NULL,
-  `costo_referencia` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `costo_referencia` decimal(14,2) DEFAULT NULL COMMENT 'Costo de referencia (opcional). Si no se conoce, dejar en blanco.',
   `proveedor_id` int unsigned DEFAULT NULL COMMENT 'Proveedor recomendado (opcional)',
   `activo` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -216,20 +216,26 @@ CREATE TABLE `ordenes_compra` (
   `numero_oc` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Número de OC visible para el usuario',
   `requerimiento_id` int unsigned NOT NULL,
   `cotizacion_id` int unsigned DEFAULT NULL COMMENT 'Cotización seleccionada (NULL si no requirió cotizar)',
+  `proveedor_id` int unsigned DEFAULT NULL,
+  `monto_total` decimal(14,2) DEFAULT NULL,
+  `moneda` char(3) COLLATE utf8mb4_unicode_ci DEFAULT 'MXN',
   `autorizado_por` int unsigned NOT NULL COMMENT 'Usuario (contabilidad o admin) que registró la autorización de la OC',
   `estado` enum('generada','distribuida','en_proceso','recibida','cerrada','cancelada') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'generada',
   `datatextnow_id` varchar(60) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Número de PO / Order code en DataTextNow (ej. 0310005905). Se toma de los reportes Excel de DataTextNow (columna Number / Order code). Usado para cruzar información con las exportaciones externas.',
   `fecha_autorizacion` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `notas` text COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Notas internas de la OC (copiadas del requerimiento o agregadas al generar)',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_oc_numero` (`numero_oc`),
   KEY `fk_oc_requerimiento` (`requerimiento_id`),
   KEY `fk_oc_cotizacion` (`cotizacion_id`),
+  KEY `fk_oc_proveedor` (`proveedor_id`),
   KEY `fk_oc_autorizado` (`autorizado_por`),
   KEY `idx_oc_estado` (`estado`),
   CONSTRAINT `fk_oc_autorizado` FOREIGN KEY (`autorizado_por`) REFERENCES `usuarios` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_oc_cotizacion` FOREIGN KEY (`cotizacion_id`) REFERENCES `cotizaciones` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_oc_proveedor` FOREIGN KEY (`proveedor_id`) REFERENCES `proveedores` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_oc_requerimiento` FOREIGN KEY (`requerimiento_id`) REFERENCES `requerimientos` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -255,6 +261,29 @@ CREATE TABLE `recepciones` (
   CONSTRAINT `fk_rec_orden_compra` FOREIGN KEY (`orden_compra_id`) REFERENCES `ordenes_compra` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_rec_usuario` FOREIGN KEY (`recibido_por`) REFERENCES `usuarios` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- NUEVA TABLA: requerimiento_items_libres
+-- Soporta el flujo híbrido (Opción B): permite registrar ítems en texto libre
+-- cuando lo que necesita el solicitante aún NO existe en el catálogo maestro.
+-- Los ítems estructurados siguen en `requerimiento_items` (vinculados a catalogo).
+-- Más adelante se puede ofrecer funcionalidad para "convertir" un libre a catálogo.
+-- ============================================================
+DROP TABLE IF EXISTS `requerimiento_items_libres`;
+
+CREATE TABLE `requerimiento_items_libres` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `requerimiento_id` int unsigned NOT NULL,
+  `descripcion` text COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Descripción del ítem/servicio cuando no está (todavía) en el catálogo',
+  `cantidad` decimal(12,4) NOT NULL DEFAULT '1.0000',
+  `unidad` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'pieza, kg, hora, servicio, lote, etc.',
+  `notas` text COLLATE utf8mb4_unicode_ci,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_req_libre_requerimiento` (`requerimiento_id`),
+  CONSTRAINT `fk_req_libre_requerimiento` FOREIGN KEY (`requerimiento_id`) REFERENCES `requerimientos` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Ítems en texto libre (no catálogo) asociados a un requerimiento. Complementa a requerimiento_items.';
 
 -- ============================================================
 -- Restaurar configuración

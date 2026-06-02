@@ -91,7 +91,7 @@
   <div class="modal-box">
     <div class="modal-header">
       <h3 class="modal-title">Nuevo requerimiento</h3>
-      <button class="modal-close" onclick="UI.cerrarModal('modal-req')">×</button>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">×</button>
     </div>
     <form id="form-req">
       <div class="form-group">
@@ -129,27 +129,116 @@
       <div class="form-group">
         <label class="form-label">Notas / Detalles adicionales</label>
         <textarea id="req-notas" class="form-control" rows="2"
-                  placeholder="Notas adicionales o justificación (opcional para requerimientos con ítems del catálogo)"></textarea>
+                  placeholder="Notas / justificación adicional (recomendado completar cuando uses ítems del catálogo o para describir un ítem nuevo)"></textarea>
       </div>
 
-      <!-- Sección de ítems del Catálogo -->
+      <!-- Sección de ítems del Catálogo (principal y por defecto - solo catálogo) -->
       <div class="form-group" id="seccion-items-catalogo" style="display:none;">
-        <label class="form-label">Ítems del Catálogo *</label>
-        <div class="d-flex gap-2 mb-2">
-          <input type="text" id="busqueda-catalogo" class="form-control" placeholder="Buscar en catálogo..." style="flex:1;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="buscarEnCatalogo()">Buscar</button>
-        </div>
-        <div id="resultados-catalogo" style="max-height:140px; overflow:auto; border:1px solid #ddd; border-radius:6px; padding:4px; margin-bottom:8px; font-size:13px;"></div>
+        <label class="form-label" style="font-weight:600; color:#0d6efd;">Ítems del Catálogo (existentes)</label>
+        <small class="text-muted d-block mb-2">Busca y selecciona ítems que <strong>ya existen</strong> en el catálogo. Estos no requieren cotización.</small>
 
-        <div style="font-size:12px; color:#666; margin-bottom:4px;">Ítems seleccionados:</div>
-        <div id="items-seleccionados-req" style="min-height:40px; border:1px dashed #ccc; border-radius:6px; padding:6px; font-size:13px;"></div>
+        <!-- Búsqueda catálogo -->
+        <div class="d-flex gap-2 mb-1">
+          <input type="text" id="busqueda-catalogo" class="form-control form-control-sm" placeholder="Buscar en catálogo..." style="flex:1;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="buscarEnCatalogo()">Buscar</button>
+        </div>
+        <div id="resultados-catalogo" style="max-height:120px; overflow:auto; border:1px solid #b3d7ff; border-radius:4px; padding:4px; font-size:11px; background:white;"></div>
+
+        <!-- Seleccionados catálogo -->
+        <div style="font-size:11px; font-weight:500; color:#0d6efd; margin:6px 0 2px;">Ítems seleccionados del catálogo:</div>
+        <div id="items-seleccionados-req" style="min-height:30px; border:1px dashed #0d6efd; border-radius:4px; padding:4px; font-size:11px; background:white;"></div>
+      </div>
+
+      <!-- Selector al FINAL del formulario para ítems nuevos (no se muestra en primera instancia) -->
+      <div class="form-group" id="selector-items-nuevos" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee;">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="usar-items-nuevos" onchange="toggleModoItemsNuevos(this.checked)">
+          <label class="form-check-label" for="usar-items-nuevos" style="font-weight: 500;">
+            Los ítems que necesito <strong>no se encuentran en el catálogo</strong>
+          </label>
+        </div>
+        <small class="text-muted d-block mt-1" style="font-size: 10.5px;">
+          Marca esta opción para abrir el formulario de ítems nuevos (libres). 
+          Este requerimiento será para solicitar cotización y dar de alta los ítems en el catálogo. 
+          No se pueden mezclar con ítems del catálogo.
+        </small>
+
+        <!-- Acciones para libres, se muestra principalmente cuando el selector está marcado -->
+        <div id="libres-actions" style="margin-top: 6px; display: none;">
+          <button type="button" class="btn btn-sm btn-outline-warning" onclick="abrirModalItemsLibres()">
+            Abrir / editar formulario de ítems nuevos
+          </button>
+        </div>
       </div>
       <!-- El solicitante ya no define si requiere cotización (lo decide Contabilidad) -->
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-req')">Cancelar</button>
+        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="btn-guardar-req">Guardar</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ── Modal separado: Ítems Libres / Solicitud de ítem nuevo (no en catálogo) ──────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-req-libres" style="display: none;">
+  <div class="modal-box" style="max-width: 620px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Ítems nuevos (en texto libre)</h3>
+      <button class="modal-close" onclick="cerrarModalItemsLibres()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Guía fuerte según feedback del cliente -->
+      <div style="background:#fff3cd; border:1px solid #f0ad4e; border-radius:4px; padding:8px; margin-bottom:10px; font-size:12px;">
+        <strong>Importante:</strong> Un requerimiento debe ser <strong>o solo de ítems del catálogo (existentes, sin cotización)</strong> o <strong>solo de ítems nuevos/libres (que requieren cotización para dar de alta en el catálogo)</strong>. No se permite mezclar los dos tipos.
+      </div>
+
+      <button type="button" 
+              class="btn btn-warning btn-sm w-100 mb-3" 
+              style="font-weight:600;"
+              onclick="crearRequerimientoParaAltaCatalogoFromCurrent(); cerrarModalItemsLibres();">
+        Crear REQUERIMIENTO SEPARADO (solo para ítems nuevos + cotización + alta en catálogo)
+      </button>
+
+      <button type="button" 
+              class="btn btn-sm btn-outline-secondary w-100 mb-2" 
+              onclick="deseleccionarYVolverACatalogo()">
+        Volver a usar ítems del catálogo (deseleccionar)
+      </button>
+
+      <hr style="margin:10px 0;">
+
+      <h6 style="margin-bottom:6px;">Agregar ítem nuevo en texto libre a este requerimiento (alternativa)</h6>
+
+      <!-- Formulario para libre (dentro de este modal) -->
+      <div id="form-item-libre" style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:4px; padding:8px; margin-bottom:10px; font-size:12px;">
+        <div class="d-flex gap-2 align-items-end flex-wrap">
+          <div style="flex: 2 1 170px; min-width:150px;">
+            <label style="font-size:10px; margin-bottom:1px; display:block;">Descripción *</label>
+            <input type="text" id="libre-descripcion" class="form-control form-control-sm" placeholder="Ej: Servicio de maquinado especial...">
+          </div>
+          <div style="width:65px;">
+            <label style="font-size:10px; margin-bottom:1px; display:block;">Cantidad</label>
+            <input type="number" id="libre-cantidad" class="form-control form-control-sm" value="1" min="0.0001" step="0.01">
+          </div>
+          <div style="width:80px;">
+            <label style="font-size:10px; margin-bottom:1px; display:block;">Unidad (opc)</label>
+            <input type="text" id="libre-unidad" class="form-control form-control-sm" placeholder="pieza, hr">
+          </div>
+          <div style="padding-bottom:2px;">
+            <button type="button" class="btn btn-sm btn-primary" style="font-size:11px; padding:2px 8px;" onclick="agregarItemLibre()">Agregar</button>
+          </div>
+        </div>
+      </div>
+
+      <h6 style="font-size:12px; margin-bottom:4px;">Ítems libres agregados a este requerimiento:</h6>
+      <div id="items-libres-lista-modal" style="min-height:40px; border:1px dashed #f0ad4e; border-radius:4px; padding:4px; font-size:12px; background:#fffaf0; margin-bottom:8px;"></div>
+
+      <div class="text-end">
+        <button type="button" class="btn btn-outline btn-sm" onclick="cerrarModalItemsLibres()">Cerrar</button>
+      </div>
+
+    </div>
   </div>
 </div>
 

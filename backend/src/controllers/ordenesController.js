@@ -41,10 +41,27 @@ async function crear(req, res) {
     if (!requerimiento_id) {
       return res.status(400).json({ mensaje: 'requerimiento_id es requerido' });
     }
-    const id = await _crear(requerimiento_id, cotizacion_id, req.usuario.id);
+
+    // Defensa: solo se puede generar OC de requerimientos en estado 'aprobado'
+    const { obtenerPorId: obtenerReq } = await import('../models/requerimientos.js');
+    const reqData = await obtenerReq(requerimiento_id);
+    if (!reqData) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
+    if (reqData.estado !== 'aprobado') {
+      return res.status(422).json({ mensaje: `El requerimiento debe estar en estado 'aprobado' para generar una OC (estado actual: ${reqData.estado})` });
+    }
+    if (reqData.requiere_cotizacion && !cotizacion_id) {
+      return res.status(400).json({ mensaje: 'Este requerimiento requiere cotización. Debes proporcionar cotizacion_id (selecciona una cotización antes de generar la OC).' });
+    }
+
+    // Copiamos las notas del requerimiento como notas iniciales de la OC (útil para el caso sin cotización)
+    const notasOC = reqData.notas || null;
+    const id = await _crear(requerimiento_id, cotizacion_id, req.usuario.id, notasOC);
     res.status(201).json(await obtenerPorId(id));
   } catch (err) {
     console.error('[crear OC]', err);
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje || 'Error' });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }

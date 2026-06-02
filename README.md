@@ -11,6 +11,7 @@ El sistema incluye control de roles, historial de cambios de estado, generación
 ## Características Principales
 
 - **Gestión de Requerimientos** con flujo de aprobación (borrador → en revisión → aprobado/rechazado/incompleto)
+  - Soporte híbrido: ítems del catálogo maestro + ítems en "texto libre" (cuando aún no existen en el catálogo)
 - **Solicitud y comparación de Cotizaciones** con items, precios y archivos adjuntos
 - **Generación de Órdenes de Compra**
 - **Control de Recepciones** de mercancía
@@ -136,6 +137,9 @@ Dentro de la carpeta `backend/`:
 | `npm run dev`     | Inicia el servidor con nodemon      |
 | `npm start`       | Inicia el servidor en modo normal   |
 | `node scripts/seed-admin.js` | Crea/actualiza el usuario administrador |
+| `node scripts/seed-demo-data.js` | Datos completos de demostración (usuarios, proveedores, catálogo, requerimientos, cotizaciones, OCs...) |
+| `database/seed-test-requerimientos.sql` | SQL puro: muchos requerimientos SOLO catálogo + SOLO libres (puros, sin mezclar). Ideal para probar el nuevo selector de modo al final del form, los dos modales, edición de catálogo vs libres, y la regla de no mezclar. Incluye borradores, incompletos, en revisión, etc. |
+| `database/migrations/add-requerimiento-items-libres.sql` | Migración para agregar soporte de ítems en texto libre (Opción B - híbrido) |
 
 ## Variables de Entorno
 

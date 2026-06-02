@@ -70,7 +70,7 @@ async function crear(datos) {
       datos.tipo,
       datos.codigo,
       datos.descripcion,
-      datos.costo_referencia || 0,
+      datos.costo_referencia != null ? datos.costo_referencia : null,
       datos.proveedor_id || null,
       datos.activo !== undefined ? datos.activo : 1
     ]

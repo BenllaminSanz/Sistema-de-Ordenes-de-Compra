@@ -298,9 +298,9 @@ async function main() {
 
     for (const o of ordenesData) {
       await conn.query(`
-        INSERT INTO ordenes_compra (numero_oc, requerimiento_id, cotizacion_id, autorizado_por, estado, datatextnow_id, fecha_autorizacion)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [o.numero_oc, o.requerimiento_id, o.cotizacion_id, o.autorizado_por, o.estado, o.datatextnow_id, o.fecha_autorizacion]);
+        INSERT INTO ordenes_compra (numero_oc, requerimiento_id, cotizacion_id, autorizado_por, estado, datatextnow_id, fecha_autorizacion, notas)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [o.numero_oc, o.requerimiento_id, o.cotizacion_id, o.autorizado_por, o.estado, o.datatextnow_id, o.fecha_autorizacion, null]);
     }
     console.log(`   ✓ ${ordenesData.length} órdenes de compra creadas (con referencias a Lines decenas en los requerimientos)`);
 

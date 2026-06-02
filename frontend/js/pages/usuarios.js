@@ -15,7 +15,7 @@ const tablaUsuarios = document.getElementById('tabla-usuarios');
 if (tablaUsuarios) {
   window.delegate(tablaUsuarios, 'button[data-action="toggle-usuario"]', 'click', (e, btn) => {
     const id = parseInt(btn.dataset.id);
-    const activo = btn.dataset.activo === 'true';
+    const activo = btn.dataset.activo === 'true' || btn.dataset.activo === '1';
     toggleUsuario(id, activo);
   });
 }
@@ -42,7 +42,7 @@ async function cargarUsuarios() {
               <td class="text-muted text-sm">${UI.fecha(u.created_at)}</td>
               <td>
                 <button class="btn btn-sm ${u.activo ? 'btn-danger' : 'btn-success'}" 
-                        data-action="toggle-usuario" data-id="${u.id}" data-activo="${u.activo}">
+                        data-action="toggle-usuario" data-id="${u.id}" data-activo="${u.activo ? 'true' : 'false'}">
                   ${u.activo ? 'Desactivar' : 'Activar'}
                 </button>
               </td>

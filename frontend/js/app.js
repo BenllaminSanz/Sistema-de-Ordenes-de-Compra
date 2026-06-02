@@ -45,7 +45,18 @@ const Api = {
       return;
     }
 
-    const data = res.status === 204 ? null : await res.json();
+    let data = null;
+    try {
+      data = res.status === 204 ? null : await res.json();
+    } catch (e) {
+      // If not JSON (e.g. 403 plain text from middleware), use text
+      try {
+        const text = await res.text();
+        data = { message: text || 'Error' };
+      } catch (_) {
+        data = { message: 'Error desconocido' };
+      }
+    }
     if (!res.ok) {
       const errorObj = {
         status: res.status,

@@ -50,14 +50,15 @@ async function listar(filtros = {}) {
        r.consecutivo, r.tipo, r.notas AS descripcion, r.solicitante_id,
        u.nombre AS autorizado_por_nombre,
        p.nombre AS proveedor_nombre,
-       c.monto_total,
+       COALESCE(oc.monto_total, c.monto_total) AS monto_total,
+       COALESCE(oc.moneda, c.moneda, 'MXN') AS moneda,
        rec.estado AS estado_recepcion,
        rec.fecha_recepcion
      FROM ordenes_compra oc
      JOIN requerimientos r ON r.id = oc.requerimiento_id
      JOIN usuarios u       ON u.id = oc.autorizado_por
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
-     LEFT JOIN proveedores  p ON p.id = c.proveedor_id
+     LEFT JOIN proveedores  p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)
      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
      ${whereClause}
      ORDER BY oc.created_at DESC
@@ -82,13 +83,15 @@ async function obtenerPorId(id) {
        u.nombre  AS autorizado_por_nombre,
        s.nombre  AS solicitante_nombre,
        p.nombre  AS proveedor_nombre,
-       c.monto_total, c.moneda, c.archivo_url
+       COALESCE(oc.monto_total, c.monto_total) AS monto_total,
+       COALESCE(oc.moneda, c.moneda, 'MXN') AS moneda,
+       c.archivo_url
      FROM ordenes_compra oc
      JOIN requerimientos r ON r.id = oc.requerimiento_id
      JOIN usuarios u       ON u.id = oc.autorizado_por
      LEFT JOIN usuarios s  ON s.id = r.solicitante_id
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
-     LEFT JOIN proveedores  p ON p.id = c.proveedor_id
+     LEFT JOIN proveedores  p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)
      WHERE oc.id = ?`,
     [id]
   );
@@ -103,22 +106,74 @@ async function obtenerPorId(id) {
      ORDER BY h.created_at ASC`,
     [id]
   );
-  return { ...oc, historial };
+
+  // Cargar ítems/líneas de la OC:
+  // - Si tiene cotizacion_id: usar los items de esa cotización (con precios pactados)
+  // - Si no (caso catálogo directo): usar los ítems del requerimiento (catálogo con costo_referencia o libres)
+  let items = [];
+  if (oc.cotizacion_id) {
+    const [cotItems] = await pool.query(`
+      SELECT ci.id, ci.descripcion, ci.cantidad, ci.unidad, ci.precio_unitario, ci.notas_item
+      FROM cotizacion_items ci
+      WHERE ci.cotizacion_id = ?
+      ORDER BY ci.id ASC
+    `, [oc.cotizacion_id]);
+    items = cotItems.map(it => ({ ...it, origen: 'cotizacion' }));
+  } else {
+    const [catItems] = await pool.query(`
+      SELECT ri.id, c.codigo, c.descripcion, ri.cantidad, c.costo_referencia AS precio_unitario_referencia, 'catalogo' AS origen
+      FROM requerimiento_items ri
+      JOIN catalogo c ON c.id = ri.catalogo_id
+      WHERE ri.requerimiento_id = ?
+      ORDER BY ri.id ASC
+    `, [oc.requerimiento_id]);
+    if (catItems.length > 0) {
+      items = catItems;
+    } else {
+      const [libItems] = await pool.query(`
+        SELECT id, descripcion, cantidad, unidad, NULL AS precio_unitario_referencia, 'libres' AS origen
+        FROM requerimiento_items_libres
+        WHERE requerimiento_id = ?
+        ORDER BY id ASC
+      `, [oc.requerimiento_id]);
+      items = libItems;
+    }
+  }
+
+  return { ...oc, historial, items };
 }
 
-async function crear(requerimiento_id, cotizacion_id, autorizado_por) {
+async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = null) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
     const numero_oc = await generarNumeroOC(conn);
 
+    // Heredar proveedor, monto_total y moneda de la cotización (si existe).
+    // Esto hace que la OC "congele" los términos comerciales del proveedor elegido.
+    let proveedor_id = null;
+    let monto_total = null;
+    let moneda = 'MXN';
+
+    if (cotizacion_id) {
+      const [[cot]] = await conn.query(
+        `SELECT proveedor_id, monto_total, moneda FROM cotizaciones WHERE id = ?`,
+        [cotizacion_id]
+      );
+      if (cot) {
+        proveedor_id = cot.proveedor_id || null;
+        monto_total = cot.monto_total || null;
+        moneda = cot.moneda || 'MXN';
+      }
+    }
+
     const [result] = await conn.query(
       `INSERT INTO ordenes_compra
-         (numero_oc, requerimiento_id, cotizacion_id, autorizado_por,
-          estado, fecha_autorizacion)
-       VALUES (?, ?, ?, ?, 'generada', NOW())`,
-      [numero_oc, requerimiento_id, cotizacion_id || null, autorizado_por]
+         (numero_oc, requerimiento_id, cotizacion_id, proveedor_id, monto_total, moneda,
+          autorizado_por, estado, fecha_autorizacion, notas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'generada', NOW(), ?)`,
+      [numero_oc, requerimiento_id, cotizacion_id || null, proveedor_id, monto_total, moneda, autorizado_por, notas]
     );
     const ocId = result.insertId;
 
