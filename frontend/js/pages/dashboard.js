@@ -1,6 +1,6 @@
 /**
  * dashboard.js
- * Lógica del Dashboard (extraída de dashboard.html)
+ * Lógica del Dashboard
  */
 
 Auth.requiereAuth();
@@ -111,85 +111,31 @@ cargarMetricas();
 cargarOCRecientes();
 cargarReqPendientes();
 
-// ==============================================
-// Reporte de Órdenes de Compra (Fase 1)
-// Solo visible para contabilidad y admin
-// ==============================================
-function inicializarReporteOrdenes() {
+// ─── Reporte STATUS POS HILOS (solo contabilidad/admin) ────────────────────────
+function inicializarReporteStatus() {
   const user = Auth.getUsuario();
-  const puedeGenerar = user && ['contabilidad', 'admin'].includes(user.rol);
+  const puedeVer = user && ['contabilidad', 'admin'].includes(user.rol);
 
-  const card = document.getElementById('reporte-card');
+  const card = document.getElementById('reporte-status-card');
   if (!card) return;
 
-  if (!puedeGenerar) {
+  if (!puedeVer) {
     card.style.display = 'none';
     return;
   }
 
   card.style.display = 'block';
 
-  const tipoSelect = document.getElementById('rep-tipo');
-  const anioInput = document.getElementById('rep-anio');
-  const mesContainer = document.getElementById('rep-mes-container');
-  const semanaContainer = document.getElementById('rep-semana-container');
-  const btn = document.getElementById('btn-generar-reporte');
-
-  function actualizarCampos() {
-    const tipo = tipoSelect.value;
-    mesContainer.style.display = (tipo === 'mensual') ? 'block' : 'none';
-    semanaContainer.style.display = (tipo === 'semanal') ? 'block' : 'none';
-  }
-
-  tipoSelect.addEventListener('change', actualizarCampos);
-  actualizarCampos();
-
-  btn.addEventListener('click', async () => {
-    const tipo = tipoSelect.value;
-    const anio = anioInput.value || new Date().getFullYear();
-    let url = `/api/reportes/ordenes-compra?tipo=${tipo}&anio=${anio}`;
-
-    if (tipo === 'mensual') {
-      const mes = document.getElementById('rep-mes').value;
-      url += `&mes=${mes}`;
-    } else if (tipo === 'semanal') {
-      const semana = document.getElementById('rep-semana').value;
-      url += `&semana=${semana}`;
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Generando...';
-
-    try {
-      const token = Auth.getToken();
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.mensaje || 'Error al generar el reporte');
+  const btn = document.getElementById('btn-descargar-status');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (window.Reportes && typeof Reportes.descargarStatusPOS === 'function') {
+        Reportes.descargarStatusPOS();
+      } else {
+        Toast.error('No se pudo cargar el módulo de reportes');
       }
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-
-      // Nombre sugerido
-      const filename = response.headers.get('Content-Disposition')?.split('filename=')[1] || `Reporte_Ordenes_Compra_${tipo}_${anio}.xlsx`;
-      a.download = filename.replace(/"/g, '');
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (e) {
-      alert(e.message || 'Error al descargar el reporte');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Descargar Excel';
-    }
-  });
+    });
+  }
 }
 
-inicializarReporteOrdenes();
+inicializarReporteStatus();

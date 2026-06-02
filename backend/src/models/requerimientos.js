@@ -1,12 +1,17 @@
 import pool from '../config/db.js';
 
 /**
- * Genera el consecutivo siguiente con formato REQ-YYYY-NNNN.
- * Ejemplo: REQ-2024-0001
+ * Genera el consecutivo siguiente con formato REQ-YYYYT-NNN.
+ * Ejemplo: REQ-2025S-001
+ * - REQ: prefijo fijo
+ * - YYYY: año en curso
+ * - T: primera letra del tipo (S=Servicios, P=Partes, F=Fletes)
+ * - NNN: secuencial de 3 dígitos (001, 002, ...), reinicia por año y por tipo
  */
-async function generarConsecutivo(conn) {
+async function generarConsecutivo(conn, tipo) {
   const anio = new Date().getFullYear();
-  const prefijo = `REQ-${anio}-`;
+  const letra = (tipo || '').charAt(0).toUpperCase();
+  const prefijo = `REQ-${anio}${letra}-`;
 
   const [rows] = await conn.query(
     `SELECT consecutivo FROM requerimientos
@@ -15,10 +20,11 @@ async function generarConsecutivo(conn) {
     [`${prefijo}%`]
   );
 
-  if (rows.length === 0) return `${prefijo}0001`;
+  if (rows.length === 0) return `${prefijo}001`;
 
-  const ultimo = parseInt(rows[0].consecutivo.split('-')[2], 10);
-  return `${prefijo}${String(ultimo + 1).padStart(4, '0')}`;
+  const parts = rows[0].consecutivo.split('-');
+  const ultimo = parseInt(parts[parts.length - 1], 10) || 0;
+  return `${prefijo}${String(ultimo + 1).padStart(3, '0')}`;
 }
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
@@ -126,7 +132,7 @@ async function crear(datos, solicitante_id) {
   try {
     await conn.beginTransaction();
 
-    const consecutivo = await generarConsecutivo(conn);
+    const consecutivo = await generarConsecutivo(conn, datos.tipo);
   
     const [result] = await conn.query(
       `INSERT INTO requerimientos
@@ -139,7 +145,7 @@ async function crear(datos, solicitante_id) {
         datos.area,
         datos.departamento,
         datos.tipo,
-        datos.notas || datos.descripcion || '', // retrocompatibilidad temporal
+        datos.notas || datos.descripcion || '', // legacy 'descripcion'
         datos.requiere_cotizacion ? 1 : 0,
       ]
     );
@@ -188,7 +194,7 @@ async function actualizar(id, datos) {
   if (datos.departamento            !== undefined) campos.departamento            = datos.departamento;
   if (datos.tipo        !== undefined) campos.tipo        = datos.tipo;
   if (datos.notas !== undefined) campos.notas = datos.notas;
-  if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // retrocompatibilidad temporal - eliminar en futuro
+  if (datos.descripcion !== undefined) campos.notas = datos.descripcion; // legacy 'descripcion' → notas
   if (datos.requiere_cotizacion !== undefined)
     campos.requiere_cotizacion = datos.requiere_cotizacion ? 1 : 0;
   if (datos.datatextnow_id !== undefined) campos.datatextnow_id = datos.datatextnow_id; // PO de DataTextNow (de reportes Excel)

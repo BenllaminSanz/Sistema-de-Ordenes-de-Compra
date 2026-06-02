@@ -1,6 +1,6 @@
 /**
  * proveedores.js
- * Lógica de la página de Proveedores (extraída de proveedores.html)
+ * Lógica de la página de Proveedores
  */
 
 Auth.requiereAuth();

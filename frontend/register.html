@@ -30,12 +30,24 @@
 
       <div class="form-group">
         <label class="form-label">Contraseña *</label>
-        <input type="password" id="password" class="form-control" placeholder="Mínimo 8 caracteres" minlength="8" required>
+        <div style="position:relative;">
+          <input type="password" id="password" class="form-control" placeholder="Mínimo 8 caracteres" minlength="8" required style="padding-right:40px;">
+          <button type="button" id="toggle-password"
+                  style="position:absolute; right:8px; top:50%; transform:translateY(-50%);
+                         background:none; border:none; cursor:pointer; padding:4px; color:#64748b;"
+                  aria-label="Mostrar contraseña">👁️</button>
+        </div>
       </div>
 
       <div class="form-group">
         <label class="form-label">Confirmar contraseña *</label>
-        <input type="password" id="password2" class="form-control" placeholder="Repite tu contraseña" minlength="8" required>
+        <div style="position:relative;">
+          <input type="password" id="password2" class="form-control" placeholder="Repite tu contraseña" minlength="8" required style="padding-right:40px;">
+          <button type="button" id="toggle-password2"
+                  style="position:absolute; right:8px; top:50%; transform:translateY(-50%);
+                         background:none; border:none; cursor:pointer; padding:4px; color:#64748b;"
+                  aria-label="Mostrar contraseña">👁️</button>
+        </div>
       </div>
 
       <div id="registro-error" style="display:none; color:#A32D2D; font-size:13px; background:#FCEBEB; border-radius:7px; padding:10px 14px; margin-bottom:14px;"></div>
@@ -114,6 +126,33 @@
       btn.textContent = 'Crear mi cuenta';
     }
   });
-</script>
+
+  // Toggle mostrar/ocultar contraseña en registro
+  function setupPasswordToggle(inputId, btnId) {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    if (input && btn) {
+      btn.addEventListener('click', () => {
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.textContent = showing ? '👁️' : '🙈';
+        btn.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
+      });
+    }
+  }
+  setupPasswordToggle('password', 'toggle-password');
+  setupPasswordToggle('password2', 'toggle-password2');
+
+  // Soporte para teclado en los toggles
+  ['toggle-password', 'toggle-password2'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.setAttribute('type', 'button');
+  });
+
+  const help = document.createElement('div');
+  help.style.cssText = 'margin-top:12px; font-size:12px; text-align:center;';
+  help.innerHTML = `<button type="button" style="font-size:11px; color:#64748b; background:none; border:1px solid #e5e7eb; padding:3px 6px; border-radius:3px; cursor:pointer;">Limpiar datos de sesión anterior</button>`;
+  help.querySelector('button').onclick = () => { localStorage.clear(); location.reload(); };
+  document.querySelector('.login-card').appendChild(help);</script>
 </body>
 </html>

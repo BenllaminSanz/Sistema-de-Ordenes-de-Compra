@@ -1,6 +1,6 @@
 /**
  * usuarios.js
- * Lógica de la página de Usuarios (extraída de usuarios.html)
+ * Lógica de la página de Usuarios
  */
 
 Auth.requiereAuth();

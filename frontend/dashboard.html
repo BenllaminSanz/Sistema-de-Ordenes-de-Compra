@@ -16,6 +16,27 @@
     <main id="main-content">
       <div class="metrics-grid" id="metrics"></div>
 
+      <!-- Reporte principal visible a primera vista (solo contabilidad/admin) -->
+      <div class="card" id="reporte-status-card" style="display:none; border-left: 5px solid #185FA5;">
+        <div class="card-title">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+          </svg>
+          Reporte STATUS 2025 POS HILOS
+        </div>
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:240px;">
+            <p style="margin:0; font-size:13px; color:#475569; line-height:1.4;">
+              Reporte consolidado por línea (el utilizado en contabilidad). Incluye estado de recepciones, montos, proveedores y STATUS.
+            </p>
+          </div>
+          <button id="btn-descargar-status" class="btn btn-primary" style="white-space:nowrap; padding:10px 18px;">
+            📊 Descargar STATUS 2025 POS HILOS (Excel)
+          </button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title" id="titulo-req">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
@@ -35,53 +56,6 @@
         <div id="tabla-oc"></div>
       </div>
 
-      <!-- Reporte de Órdenes de Compra (solo contabilidad y admin) -->
-      <div class="card" id="reporte-card" style="display:none;">
-        <div class="card-title">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-          </svg>
-          Reporte de Órdenes de Compra
-        </div>
-
-        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
-          <div>
-            <label class="form-label">Tipo de período</label>
-            <select id="rep-tipo" class="form-control" style="width:auto;">
-              <option value="anual">Anual</option>
-              <option value="mensual">Mensual</option>
-              <option value="semanal">Semanal</option>
-            </select>
-          </div>
-
-          <div id="rep-anio-container">
-            <label class="form-label">Año</label>
-            <input type="number" id="rep-anio" class="form-control" value="2025" style="width:100px;">
-          </div>
-
-          <div id="rep-mes-container" style="display:none;">
-            <label class="form-label">Mes</label>
-            <select id="rep-mes" class="form-control" style="width:auto;">
-              <option value="1">Enero</option><option value="2">Febrero</option>
-              <option value="3">Marzo</option><option value="4">Abril</option>
-              <option value="5">Mayo</option><option value="6">Junio</option>
-              <option value="7">Julio</option><option value="8">Agosto</option>
-              <option value="9">Septiembre</option><option value="10">Octubre</option>
-              <option value="11">Noviembre</option><option value="12">Diciembre</option>
-            </select>
-          </div>
-
-          <div id="rep-semana-container" style="display:none;">
-            <label class="form-label">Semana</label>
-            <input type="number" id="rep-semana" class="form-control" value="1" min="1" max="53" style="width:80px;">
-          </div>
-
-          <div style="margin-top:22px;">
-            <button id="btn-generar-reporte" class="btn btn-primary">Descargar Excel</button>
-          </div>
-        </div>
-      </div>
     </main>
   </div>
 </div>

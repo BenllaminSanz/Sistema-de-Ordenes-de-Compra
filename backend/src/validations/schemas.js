@@ -1,4 +1,3 @@
-// backend/src/validations/schemas.js
 import { z } from 'zod';
 
 // ============================================================

@@ -23,15 +23,26 @@
         <label class="form-label">Correo electrónico</label>
         <input type="email" id="email" class="form-control"
                placeholder="usuario@empresa.com" required autocomplete="username">
+        <small id="email-error" style="display:none; color:#A32D2D; font-size:12px; margin-top:4px;"></small>
       </div>
       <div class="form-group">
         <label class="form-label">Contraseña</label>
-        <input type="password" id="password" class="form-control"
-               placeholder="••••••••" required autocomplete="current-password">
+        <div style="position:relative;">
+          <input type="password" id="password" class="form-control"
+                 placeholder="••••••••" required autocomplete="current-password"
+                 style="padding-right:40px;">
+          <button type="button" id="toggle-password"
+                  style="position:absolute; right:8px; top:50%; transform:translateY(-50%);
+                         background:none; border:none; cursor:pointer; padding:4px; color:#64748b;"
+                  aria-label="Mostrar contraseña">
+            👁️
+          </button>
+        </div>
+        <small id="password-error" style="display:none; color:#A32D2D; font-size:12px; margin-top:4px;"></small>
       </div>
 
       <div id="login-error" style="display:none; color:#A32D2D; font-size:13px;
-           background:#FCEBEB; border-radius:7px; padding:10px 14px; margin-bottom:14px;">
+           background:#FCEBEB; border-radius:7px; padding:10px 14px; margin-bottom:14px; border-left: 4px solid #A32D2D;">
       </div>
 
       <button type="submit" id="btn-login" class="btn btn-primary w-100"
@@ -49,31 +60,178 @@
 <div id="toast-container"></div>
 <script src="js/app.js"></script>
 <script>
-  // Si ya tiene token, redirigir al dashboard
-  if (Auth.getToken()) window.location.href = 'dashboard.html';
+  // Si ya tiene token válido, redirigir al dashboard
+  if (Auth.getToken()) {
+    window.location.href = 'dashboard.html';
+  }
 
-  document.getElementById('form-login').addEventListener('submit', async e => {
+  const form = document.getElementById('form-login');
+  const btn = document.getElementById('btn-login');
+  const errDiv = document.getElementById('login-error');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const emailError = document.getElementById('email-error');
+  const passwordError = document.getElementById('password-error');
+
+  function showFieldError(el, msg) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = 'block';
+    // Buscar input por ID derivado (ej. password-error → password). Funciona aunque haya wrapper del toggle.
+    const inputId = el.id.replace('-error', '');
+    let input = document.getElementById(inputId);
+    if (!input && el.previousElementSibling) {
+      const prev = el.previousElementSibling;
+      if (prev && prev.tagName === 'INPUT') input = prev;
+      else if (prev && prev.querySelector) input = prev.querySelector('input');
+    }
+    if (input) input.style.borderColor = '#A32D2D';
+  }
+
+  function clearFieldError(el) {
+    if (!el) return;
+    el.textContent = '';
+    el.style.display = 'none';
+    const inputId = el.id.replace('-error', '');
+    let input = document.getElementById(inputId);
+    if (!input && el.previousElementSibling) {
+      const prev = el.previousElementSibling;
+      if (prev && prev.tagName === 'INPUT') input = prev;
+      else if (prev && prev.querySelector) input = prev.querySelector('input');
+    }
+    if (input) input.style.borderColor = '';
+  }
+
+  function validateEmailField() {
+    const val = emailInput.value.trim();
+    clearFieldError(emailError);
+    if (!val) {
+      showFieldError(emailError, 'El correo es requerido');
+      return false;
+    }
+    if (!val.includes('@') || !val.includes('.')) {
+      showFieldError(emailError, 'Ingresa un correo electrónico válido');
+      return false;
+    }
+    return true;
+  }
+
+  function validatePasswordField() {
+    const val = passwordInput.value;
+    clearFieldError(passwordError);
+    if (!val) {
+      showFieldError(passwordError, 'La contraseña es requerida');
+      return false;
+    }
+    return true;
+  }
+
+  // Validación en tiempo real
+  emailInput.addEventListener('blur', validateEmailField);
+  emailInput.addEventListener('input', () => {
+    if (emailError.style.display === 'block') clearFieldError(emailError);
+    // Al cambiar email limpiamos error global del servidor (cambió el identificador)
+    if (errDiv.style.display === 'block') {
+      errDiv.style.display = 'none';
+      errDiv.textContent = '';
+      // Quitar bordes rojos al corregir
+      emailInput.style.borderColor = '';
+      passwordInput.style.borderColor = '';
+    }
+  });
+
+  // Contraseña: no validar en blur (evita mensajes que aparecen/desaparecen). Solo en submit.
+  // El listener solo limpia su propio error de campo. Mantenemos el error global de credenciales
+  // mientras el usuario corrige la contraseña.
+  passwordInput.addEventListener('input', () => {
+    if (passwordError.style.display === 'block') clearFieldError(passwordError);
+  });
+
+  form.setAttribute('novalidate', 'true');
+
+  form.addEventListener('submit', async e => {
     e.preventDefault();
-    const btn = document.getElementById('btn-login');
-    const errDiv = document.getElementById('login-error');
     errDiv.style.display = 'none';
+    clearFieldError(emailError);
+    clearFieldError(passwordError);
+
+    const emailVal = emailInput.value.trim();
+    const passwordVal = passwordInput.value;
+
+    let valid = true;
+    if (!validateEmailField()) valid = false;
+    if (!validatePasswordField()) valid = false;
+
+    if (!valid) return;
+
     btn.disabled = true;
     btn.textContent = 'Ingresando...';
 
     try {
       const { token, usuario } = await Api.post('/auth/login', {
-        email:    document.getElementById('email').value,
-        password: document.getElementById('password').value,
+        email: emailVal.toLowerCase(),
+        password: passwordVal,
       });
       Auth.guardar(token, usuario);
       window.location.href = 'dashboard.html';
     } catch (err) {
-      errDiv.textContent    = err.mensaje || 'Error al iniciar sesión';
-      errDiv.style.display  = 'block';
-      btn.disabled          = false;
-      btn.textContent       = 'Iniciar sesión';
+      btn.disabled = false;
+      btn.textContent = 'Iniciar sesión';
+
+      // Errores por campo desde backend (Zod 400) → mostrar en los campos específicos
+      const errores = err.errores || (err.data && err.data.errores);
+      if (errores && Array.isArray(errores) && errores.length > 0) {
+        let mapped = false;
+        for (const e of errores) {
+          const campo = String(e.campo || '').toLowerCase();
+          const msg = e.mensaje || 'Valor inválido';
+          if (campo.includes('email')) {
+            showFieldError(emailError, msg);
+            emailInput.style.borderColor = '#A32D2D';
+            mapped = true;
+          } else if (campo.includes('password')) {
+            showFieldError(passwordError, msg);
+            passwordInput.style.borderColor = '#A32D2D';
+            mapped = true;
+          }
+        }
+        if (!mapped) {
+          errDiv.textContent = err.mensaje || 'Error de validación';
+          errDiv.style.display = 'block';
+        }
+      } else {
+        // Errores de credenciales (401/403 etc.): mensaje global + bordes rojos en ambos campos
+        const mensaje = err.mensaje || 'Error al iniciar sesión';
+        errDiv.textContent = mensaje;
+        errDiv.style.display = 'block';
+
+        emailInput.style.borderColor = '#A32D2D';
+        passwordInput.style.borderColor = '#A32D2D';
+
+        if (
+          mensaje.toLowerCase().includes('correo') ||
+          mensaje.toLowerCase().includes('contraseña') ||
+          mensaje.toLowerCase().includes('credencial')
+        ) {
+          passwordInput.focus();
+          passwordInput.select();
+        }
+      }
     }
   });
+
+  // Toggle mostrar contraseña
+  const toggleBtn = document.getElementById('toggle-password');
+  const pwdInput = document.getElementById('password');
+  if (toggleBtn && pwdInput) {
+    toggleBtn.addEventListener('click', () => {
+      const isPassword = pwdInput.type === 'password';
+      pwdInput.type = isPassword ? 'text' : 'password';
+      toggleBtn.textContent = isPassword ? '🙈' : '👁️';
+      toggleBtn.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    });
+    toggleBtn.setAttribute('type', 'button');
+  }
 </script>
 </body>
 </html>

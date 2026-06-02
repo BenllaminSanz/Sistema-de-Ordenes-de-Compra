@@ -96,7 +96,7 @@ DROP TABLE IF EXISTS `requerimientos`;
 
 CREATE TABLE `requerimientos` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `consecutivo` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Folio único generado por contabilidad',
+  `consecutivo` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Folio único: REQ-YYYYT-NNN (REQ-2025S-001). T=primera letra del tipo',
   `solicitante_id` int unsigned NOT NULL,
   `titulo_solicitud` text COLLATE utf8mb4_unicode_ci NOT NULL,
   `area` enum('ADMINISTRACION','PRODUCCION') COLLATE utf8mb4_unicode_ci NOT NULL,

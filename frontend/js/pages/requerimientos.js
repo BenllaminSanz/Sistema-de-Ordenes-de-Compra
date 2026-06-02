@@ -1,7 +1,6 @@
 /**
  * requerimientos.js
- * Lógica de la página de Requerimientos (extraída de requerimientos.html)
- *
+ * Lógica de la página de Requerimientos
  */
 
 Auth.requiereAuth();
@@ -160,7 +159,7 @@ function abrirEditorRequerimiento(req = null) {
     document.getElementById('req-departamento').value = req.departamento || '';
     document.getElementById('req-notas').value = req.notas || req.descripcion || '';
 
-    // Cargar ítems del catálogo si existen (Paso 5)
+    // Cargar ítems del catálogo si existen
     window.requerimientoItemsSeleccionados = (req.items || []).map(i => ({
       catalogo_id: i.catalogo_id,
       codigo: i.codigo,
@@ -227,7 +226,7 @@ function renderDetalle(req) {
       <p style="margin:0;line-height:1.6">${req.notas || req.descripcion || '—'}</p>
     </div>
 
-    <!-- Ítems del Catálogo (Paso 5) -->
+    <!-- Ítems del Catálogo -->
     ${req.items && req.items.length > 0 ? `
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
       <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Ítems solicitados del Catálogo</div>
@@ -515,7 +514,7 @@ async function generarOC() {
   }
 }
 
-// ── COTIZACIONES (MEJORADO) ─────────────────────────────────────
+// ── COTIZACIONES ──────────────────────────────────────────────────────────────
 async function cargarCotizaciones(reqId) {
   
   const contenedor = document.getElementById('lista-cotizaciones');
@@ -1014,7 +1013,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     items:               (window.requerimientoItemsSeleccionados || []).map(i => ({
                        catalogo_id: i.catalogo_id,
                        cantidad: i.cantidad
-                     })), // del Paso 5 - only needed fields
+                     })),
   };
 
   try {
@@ -1050,7 +1049,7 @@ if (busquedaInput) {
   }, 350));
 }
 
-// ── Integración Catálogo con Requerimientos (Paso 5) ──────────────────────────
+// ── Integración Catálogo con Requerimientos ───────────────────────────────────
 window.requerimientoItemsSeleccionados = [];
 
 const reqTipoSelect = document.getElementById('req-tipo');
@@ -1186,7 +1185,6 @@ window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo
   if (cont) cont.innerHTML = '';
 };
 
-// Mantener la función antigua por compatibilidad (por si se usa en otro lado)
 window.agregarItemDesdeCatalogo = window.agregarItemConCantidad;
 
 // ── FUNCIONES DEL MODAL DE COTIZACIÓN ─────────────────────────────
@@ -1224,8 +1222,7 @@ function prepararModalCotizacion(req) {
   // El comportamiento (enviar o no enviar correo) se maneja en el modal de confirmación.
 }
 
-// ── GUARDAR COTIZACIÓN (MEJORADO CON ITEMS + EDICIÓN) ─────────────────────────────
-// Versión original (usada después de la confirmación)
+// ── GUARDAR COTIZACIÓN ──────────────────────────────────────────────────────────
 async function guardarCotizacionOriginal() {
   if (!puedeGestionarCotizaciones()) {
     return Toast.error('No tienes permisos para guardar cotizaciones');
@@ -1350,7 +1347,7 @@ function cerrarModalCotizacion() {
   if (modalTitle) modalTitle.textContent = 'Nueva Cotización';
 }
 
-// ── Confirmación de envío de cotización (Fase 1) ─────────────────
+// ── Confirmación de envío de cotización ───────────────────────────────────────
 let datosCotizacionPendiente = null;
 
 function prepararConfirmacionEnvioCotizacion() {
@@ -1477,15 +1474,12 @@ async function confirmarProgramarEnvioFuturo() {
   await ejecutarGuardadoCotizacion();
 }
 
-// Función que prepara y llama al guardado real, incluyendo hora si existe
 async function ejecutarGuardadoCotizacion() {
-  // Si tenemos hora programada, la dejamos en el objeto para que guardarCotizacionOriginal la use
   await guardarCotizacionOriginal();
 }
 
-// Función antigua renombrada para compatibilidad con botones existentes (si los hay)
+// Alias por compatibilidad (por si hay botones que llaman a guardarCotizacion directamente)
 async function guardarCotizacion() {
-  // Ahora redirigimos al nuevo flujo de confirmación
   prepararConfirmacionEnvioCotizacion();
 }
 

@@ -40,10 +40,21 @@ const Api = {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    if (res.status === 401) { Auth.cerrar(); return; }
+    if (res.status === 401 && !path.includes('/auth/login')) {
+      Auth.cerrar();
+      return;
+    }
 
     const data = res.status === 204 ? null : await res.json();
-    if (!res.ok) throw { status: res.status, mensaje: data?.mensaje || 'Error desconocido' };
+    if (!res.ok) {
+      const errorObj = {
+        status: res.status,
+        mensaje: data?.mensaje || data?.message || 'Error desconocido',
+      };
+      if (data?.errores) errorObj.errores = data.errores;
+      if (data) errorObj.data = data;
+      throw errorObj;
+    }
     return data;
   },
 
@@ -246,7 +257,7 @@ function renderSidebar() {
   marcarNavActivo();
 }
 
-// ─── UTILIDADES COMPARTIDAS (AÑADIDAS EN REFACTOR LIGERO) ─────────────────────
+// ─── UTILIDADES COMPARTIDAS ────────────────────────────────────────────────────
 /**
  * Debounce para inputs (búsquedas, etc.)
  */
@@ -310,3 +321,44 @@ window.debounce = debounce;
 window.setButtonLoading = setButtonLoading;
 window.delegate = delegate;
 window.confirmAction = confirmAction;
+
+// ─── REPORTES (descargas Excel protegidas) ───────────────────────────────────
+const Reportes = {
+  async descargarStatusPOS() {
+    try {
+      const token = Auth.getToken();
+      if (!token) {
+        Toast.error('Debes iniciar sesión como contabilidad o admin');
+        return;
+      }
+
+      const res = await fetch(API_BASE + '/reportes/status-pos-hilos', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.mensaje || 'Error al descargar el reporte');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `STATUS_2025_POS_HILOS_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      Toast.success('Reporte STATUS POS HILOS descargado');
+    } catch (err) {
+      Toast.error(err.message || 'Error al descargar el reporte STATUS');
+    }
+  }
+};
+
+window.Reportes = Reportes;

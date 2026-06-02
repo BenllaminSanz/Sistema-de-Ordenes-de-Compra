@@ -60,12 +60,12 @@ async function crear(req, res) {
       area, 
       departamento, 
       notas, 
-      descripcion,           // retrocompatibilidad temporal - eliminar cuando frontend esté 100% en 'notas'
+      descripcion,           // legacy: soporte para campo antiguo 'descripcion'
       requiere_cotizacion,
       items                  // nuevos ítems del catálogo [{catalogo_id, cantidad}]
     } = req.body;
 
-    const notasFinal = (notas || descripcion || '').trim(); // retrocompatibilidad temporal
+    const notasFinal = (notas || descripcion || '').trim(); // soporta campo legacy 'descripcion'
 
     // Validaciones básicas
     if (!titulo_solicitud || titulo_solicitud.trim().length < 10) {
@@ -127,7 +127,7 @@ async function actualizar(req, res) {
       area,
       departamento,
       tipo,
-      notas: (notas || descripcion)?.trim(), // retrocompatibilidad temporal
+      notas: (notas || descripcion)?.trim(), // legacy 'descripcion'
       requiere_cotizacion,
       datatextnow_id,
     });

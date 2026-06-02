@@ -1,16 +1,21 @@
 /**
  * seed-demo-data.js
  * 
- * Script para poblar la base de datos con datos de demostración realistas.
- * Úsalo para presentaciones o pruebas.
+ * Script para poblar la base de datos con datos ficticios de demostración.
+ * Incluye:
+ *  - Usuarios (admin, contabilidad, solicitantes)
+ *  - Proveedores
+ *  - Catálogo con PARTES / SERVICIOS / FLETES + items ficticios
+ *  - Requerimientos en todos los estados (muchos con items del catálogo y el nuevo formato REQ-YYYYT-NNN)
+ *  - Cotizaciones (algunas seleccionadas)
+ *  - Órdenes de Compra en varios estados (ligadas a cotizaciones cuando aplica)
+ *  - Recepciones
+ *  - Historial completo
  * 
- * Uso:
+ * Uso (después de schema.sql y seed-admin.js):
  *   node backend/scripts/seed-demo-data.js
  * 
- * IMPORTANTE:
- * - Primero ejecuta: node backend/scripts/seed-admin.js (para crear el admin)
- * - La base de datos debe estar creada (corre database/schema.sql primero)
- * - Usa contraseña común para todos los usuarios de demo: Demo2025!
+ * Credenciales demo: Demo2025!
  */
 
 import { hash } from 'bcryptjs';
@@ -81,23 +86,134 @@ async function main() {
     console.log(`   ✓ ${proveedores.length} proveedores creados`);
 
     // ============================================
-    // 3. REQUERIMIENTOS (con variedad de estados)
+    // 3. CATÁLOGO (ítems ficticios para probar integración con requerimientos)
     // ============================================
-    console.log('📋 Creando requerimientos...');
+    console.log('📦 Creando catálogo de partes, servicios y fletes...');
+
+    await conn.query(`
+      INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, proveedor_id, activo) VALUES
+      -- PARTES
+      ('PARTES', 'COT-DRAW-38/160', 'COMPONENT -COT -DRAW -38/160 -CPL -75SH -BLACK', 245.50, 1, 1),
+      ('PARTES', '5UEM3', 'BLOWER BACKPACK BR600 - REPUESTOS', 1250.00, 5, 1),
+      ('PARTES', 'SERVICE-REPAIR-LABOR', 'Servicio técnico especializado para ventiladores', 3200.00, 8, 1),
+      ('PARTES', 'DUCTO-10X90', 'Ducto galvanizado 10" x 90cm + adaptador y codo', 890.75, 3, 1),
+      ('PARTES', 'STARLET-C1MM', 'Starlet Plus C1MM UDR No.13 / No.14 + Travelers', 1875.00, 2, 1),
+      -- SERVICIOS
+      ('SERVICIOS', 'REP-VENT-GBRA', 'Reparación completa de ventilador de reclaim / GBRA', 13500.00, 0, 1),
+      ('SERVICIOS', 'MANT-LONA-OE', 'Mantenimiento y reparación de lona divisoria área OE y RS', 7500.00, 8, 1),
+      ('SERVICIOS', 'CAL-PURG-LOEPFE', 'Calibración y ajuste de purgadores LOEPFE', 5700.00, 2, 1),
+      ('SERVICIOS', 'FLETES-LOCAL', 'Flete local de materiales y refacciones (varios viajes)', 3200.00, 6, 1),
+      -- FLETES
+      ('FLETES', 'FLETE-MTY-GDL', 'Flete Monterrey - Guadalajara (carga mixta)', 18500.00, 0, 1),
+      ('FLETES', 'FLETE-INTL-LRD', 'Importación Laredo - Monterrey (contenedor 40ft)', 45200.00, 6, 1)
+    `);
+
+    const [catalogoItems] = await conn.query(`SELECT id, codigo, tipo FROM catalogo ORDER BY id`);
+    console.log(`   ✓ ${catalogoItems.length} ítems de catálogo creados`);
+
+    // ============================================
+    // 4. REQUERIMIENTOS (con variedad de estados + items de catálogo)
+    // ============================================
+    console.log('📋 Creando requerimientos con items de catálogo...');
 
     const requerimientosData = [
-      // Aprobados con cotización (SERVICIOS)
-      { solicitante: solicitanteIds[0], titulo: 'Servicio de reparación de ventilador de reclaim', area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', descripcion: 'Cambio de codo de 10" galvanizado de salida de ventilador de GBRA + materiales', requiere_cot: 1, estado: 'aprobado', datatext: '0310005905', notas: null },
-      { solicitante: solicitanteIds[1], titulo: 'Mantenimiento a lona divisoria área OE y RS', area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', descripcion: 'Servicio de mantenimiento y reparación de lona divisoria', requiere_cot: 1, estado: 'aprobado', datatext: '0310005896', notas: null },
-      { solicitante: solicitanteIds[2], titulo: 'Calibración de purgadores LOEPFE', area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', descripcion: 'Ajuste y calibración de purgadores LOEPFE - REQ 2025S-1235', requiere_cot: 1, estado: 'aprobado', datatext: '0310005897', notas: null },
+      // Aprobados con cotización (SERVICIOS) + items de catálogo
+      { 
+        solicitante: solicitanteIds[0], 
+        titulo: 'Servicio de reparación de ventilador de reclaim', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', 
+        descripcion: 'Cambio de codo de 10" galvanizado de salida de ventilador de GBRA + materiales', 
+        requiere_cot: 1, estado: 'aprobado', datatext: '0310005905', notas: null,
+        items: [ { catIndex: 5, cantidad: 1 } ]
+      },
+      { 
+        solicitante: solicitanteIds[1], 
+        titulo: 'Mantenimiento a lona divisoria área OE y RS', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', 
+        descripcion: 'Servicio de mantenimiento y reparación de lona divisoria', 
+        requiere_cot: 1, estado: 'aprobado', datatext: '0310005896', notas: null,
+        items: [ { catIndex: 6, cantidad: 1 } ]
+      },
+      { 
+        solicitante: solicitanteIds[2], 
+        titulo: 'Calibración de purgadores LOEPFE', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', 
+        descripcion: 'Ajuste y calibración de purgadores LOEPFE', 
+        requiere_cot: 1, estado: 'aprobado', datatext: '0310005897', notas: null,
+        items: [ { catIndex: 7, cantidad: 2 } ]
+      },
       
-      // Aprobados PARTES
-      { solicitante: solicitanteIds[0], titulo: 'Componentes para Draw Frame - COT DRAW 38/160', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'COMPONENT -COT -DRAW -38/160 -CPL -75SH -BLACK', requiere_cot: 0, estado: 'aprobado', datatext: '0310005788', notas: null },
-      { solicitante: solicitanteIds[3], titulo: 'Blower Backpack BR600 y refacciones', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'Blower Backpack BR600 + repuestos varios para área de limpieza', requiere_cot: 1, estado: 'aprobado', datatext: '0310005895', notas: null },
+      // Aprobados PARTES (con items)
+      { 
+        solicitante: solicitanteIds[0], 
+        titulo: 'Componentes para Draw Frame - COT DRAW 38/160', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', 
+        descripcion: 'COMPONENT -COT -DRAW -38/160 -CPL -75SH -BLACK', 
+        requiere_cot: 0, estado: 'aprobado', datatext: '0310005788', notas: null,
+        items: [ { catIndex: 0, cantidad: 4 } ]
+      },
+      { 
+        solicitante: solicitanteIds[3], 
+        titulo: 'Blower Backpack BR600 y refacciones', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', 
+        descripcion: 'Blower Backpack BR600 + repuestos varios para área de limpieza', 
+        requiere_cot: 1, estado: 'aprobado', datatext: '0310005895', notas: null,
+        items: [ { catIndex: 1, cantidad: 1 }, { catIndex: 2, cantidad: 3 } ]
+      },
       
-      // En revisión
-      { solicitante: solicitanteIds[1], titulo: 'Materiales para reparación de ventilador de GBRA', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'Ducto de 10"x90cm + adaptador y codo galvanizado', requiere_cot: 1, estado: 'en_revision', datatext: null, notas: null },
-      { solicitante: solicitanteIds[4], titulo: 'Refacciones para máquina de hilatura', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'Starlet Plus C1MM UDR No.13 y No.14 + Travelers', requiere_cot: 1, estado: 'en_revision', datatext: null, notas: null },
+      // En revisión (con items de catálogo)
+      { 
+        solicitante: solicitanteIds[1], 
+        titulo: 'Materiales para reparación de ventilador de GBRA', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', 
+        descripcion: 'Ducto de 10"x90cm + adaptador y codo galvanizado', 
+        requiere_cot: 1, estado: 'en_revision', datatext: null, notas: null,
+        items: [ { catIndex: 3, cantidad: 2 } ]
+      },
+      { 
+        solicitante: solicitanteIds[4], 
+        titulo: 'Refacciones para máquina de hilatura', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', 
+        descripcion: 'Starlet Plus C1MM UDR No.13 y No.14 + Travelers', 
+        requiere_cot: 1, estado: 'en_revision', datatext: null, notas: null,
+        items: [ { catIndex: 4, cantidad: 8 } ]
+      },
+      
+      // Borrador (para probar edición y flujo de solicitante)
+      { 
+        solicitante: solicitanteIds[2], 
+        titulo: 'Flete de refacciones urgentes desde Laredo', 
+        area: 'ADMINISTRACION', depto: 'ALMACEN', tipo: 'FLETES', 
+        descripcion: 'Flete internacional de componentes críticos para línea de producción', 
+        requiere_cot: 0, estado: 'borrador', datatext: null, notas: null,
+        items: [ { catIndex: 10, cantidad: 1 } ]
+      },
+      
+      // Rechazado
+      { 
+        solicitante: solicitanteIds[3], 
+        titulo: 'Compra de montacargas eléctrico', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', 
+        descripcion: 'Montacargas 3 toneladas con batería de litio', 
+        requiere_cot: 1, estado: 'rechazado', datatext: null, notas: 'Presupuesto fuera de rango para el ejercicio actual' 
+      },
+      
+      // Incompleto
+      { 
+        solicitante: solicitanteIds[0], 
+        titulo: 'Refacciones varias para mantenimiento preventivo', 
+        area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', 
+        descripcion: 'Rodamientos, sellos y lubricantes para equipo de hilatura', 
+        requiere_cot: 1, estado: 'incompleto', datatext: null, notas: 'Falta especificar cantidades exactas y proveedor preferido' 
+      },
+      
+      // Más variedad
+      { solicitante: solicitanteIds[2], titulo: 'Servicio de maquinado de partes especiales', area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', descripcion: 'Soporte para rieles del blower', requiere_cot: 1, estado: 'incompleto', datatext: null, notas: 'Falta especificar medidas exactas.' },
+      { solicitante: solicitanteIds[0], titulo: 'Compra de repuestos para bomba hidráulica', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'Kit de sellos y rodamientos para bomba principal', requiere_cot: 0, estado: 'borrador', datatext: null, notas: null },
+      { solicitante: solicitanteIds[3], titulo: 'Flete de retorno de plástico', area: 'ADMINISTRACION', depto: 'ALMACEN', tipo: 'FLETES', descripcion: 'Flete de retorno de material plástico', requiere_cot: 0, estado: 'borrador', datatext: null, notas: null },
+      { solicitante: solicitanteIds[1], titulo: 'Cilindros neumáticos para Drawframes', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'Cilindro neumático para Drawframes', requiere_cot: 0, estado: 'cerrado', datatext: '0310005630', notas: null },
+      { solicitante: solicitanteIds[4], titulo: 'Componentes varios para mantenimiento', area: 'PRODUCCION', depto: 'MTTO', tipo: 'PARTES', descripcion: 'Rodamientos, bujes y conectores', requiere_cot: 1, estado: 'cerrado', datatext: '0310005698', notas: null }
+    ];
       
       // Incompleto (para demostrar flujo de corrección)
       { solicitante: solicitanteIds[2], titulo: 'Servicio de maquinado de partes especiales', area: 'PRODUCCION', depto: 'MTTO', tipo: 'SERVICIOS', descripcion: 'Soporte para rieles del blower - medidas incompletas', requiere_cot: 1, estado: 'incompleto', datatext: null, notas: 'Falta especificar medidas exactas y material requerido. Por favor completar información.' },
@@ -115,17 +231,31 @@ async function main() {
     for (const req of requerimientosData) {
       const [result] = await conn.query(`
         INSERT INTO requerimientos 
-          (consecutivo, solicitante_id, titulo_solicitud, area, departamento, tipo, descripcion, requiere_cotizacion, estado, notas_rechazo, datatextnow_id, created_at)
+          (consecutivo, solicitante_id, titulo_solicitud, area, departamento, tipo, notas, requiere_cotizacion, estado, notas_rechazo, datatextnow_id, created_at)
         VALUES 
-          (CONCAT('REQ-2025-', LPAD(FLOOR(RAND()*9000)+1000, 4, '0')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL FLOOR(RAND()*90) DAY))
+          (CONCAT('REQ-2025', LEFT(?,1), '-', LPAD(FLOOR(RAND()*900)+1, 3, '0')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL FLOOR(RAND()*90) DAY))
       `, [
-        req.solicitante, req.titulo, req.area, req.depto, req.tipo, req.descripcion, 
+        req.tipo, req.solicitante, req.titulo, req.area, req.depto, req.tipo, (req.descripcion || req.notas || ''), 
         req.requiere_cot, req.estado, req.notas, req.datatext
       ]);
-      reqIds.push(result.insertId);
+      const reqId = result.insertId;
+      reqIds.push(reqId);
+
+      // Insertar items del catálogo (para probar la nueva integración)
+      if (Array.isArray(req.items) && req.items.length > 0) {
+        for (const it of req.items) {
+          const cat = catalogoItems[it.catIndex];
+          if (cat) {
+            await conn.query(`
+              INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
+              VALUES (?, ?, ?)
+            `, [reqId, cat.id, it.cantidad || 1]);
+          }
+        }
+      }
     }
 
-    console.log(`   ✓ ${reqIds.length} requerimientos creados con diferentes estados`);
+    console.log(`   ✓ ${reqIds.length} requerimientos creados con diferentes estados (muchos con ítems de catálogo)`);
 
     // ============================================
     // 4. HISTORIAL DE ESTADOS (para realismo)
@@ -174,6 +304,7 @@ async function main() {
       { reqIndex: 6, provIndex: 3, monto: 24500, seleccionada: 0 },   // En revisión
     ];
 
+    const selectedCotByReq = {};
     for (const c of cotizacionesToCreate) {
       const reqId = reqIds[c.reqIndex];
       const provId = proveedores[c.provIndex].id;
@@ -198,6 +329,7 @@ async function main() {
       `, [cotId, Math.round(c.monto * 0.7)]);
 
       if (c.seleccionada) {
+        selectedCotByReq[reqId] = cotId;
         // Marcar como seleccionada y crear historial
         await conn.query(`
           INSERT INTO historial_estados (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
@@ -222,6 +354,8 @@ async function main() {
       { reqIndex: 5, estado: 'generada', datatext: null },
       { reqIndex: 10, estado: 'cerrada', datatext: '0310005630' },
       { reqIndex: 11, estado: 'cerrada', datatext: '0310005698' },
+      { reqIndex: 6, estado: 'generada', datatext: null },   // borrador req
+      { reqIndex: 8, estado: 'en_proceso', datatext: null },
     ];
 
     for (let i = 0; i < ocData.length; i++) {
@@ -233,14 +367,16 @@ async function main() {
         continue;
       }
 
+      const cotIdForOc = selectedCotByReq[reqId] || null;
       const [ocResult] = await conn.query(`
         INSERT INTO ordenes_compra 
           (numero_oc, requerimiento_id, cotizacion_id, autorizado_por, estado, datatextnow_id, fecha_autorizacion, created_at)
         VALUES 
-          (CONCAT('OC-2025-', LPAD(?, 4, '0')), ?, NULL, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY), DATE_SUB(NOW(), INTERVAL ? DAY))
+          (CONCAT('OC-2025-', LPAD(?, 4, '0')), ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY), DATE_SUB(NOW(), INTERVAL ? DAY))
       `, [
         100 + i,
         reqId,
+        cotIdForOc,
         contabilidadId,
         d.estado,
         d.datatext,

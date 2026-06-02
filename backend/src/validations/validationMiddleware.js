@@ -1,4 +1,3 @@
-// backend/src/validations/validationMiddleware.js
 import { ZodError } from 'zod';
 import logger from '../utils/logger.js';
 

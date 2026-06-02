@@ -1,8 +1,6 @@
 /**
  * ordenes.js
- * Lógica de la página de Órdenes de Compra (extraída de ordenes.html)
- * 
- * Extracción del refactor ligero.
+ * Lógica de la página de Órdenes de Compra
  */
 
 Auth.requiereAuth();
@@ -390,3 +388,5 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
     Toast.error(err.mensaje || 'Error al registrar recepción');
   }
 });
+
+

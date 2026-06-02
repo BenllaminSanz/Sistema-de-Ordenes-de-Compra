@@ -454,7 +454,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Helpers de Layout (Refactor Ligero) ───────────────────── */
+/* ── Helpers de Layout ───────────────────────────────────────── */
 .two-column-layout {
   display: grid;
   grid-template-columns: 1fr 300px;

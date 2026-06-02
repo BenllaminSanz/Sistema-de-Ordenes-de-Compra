@@ -29,7 +29,7 @@ async function login(req, res) {
     const usuario = await buscarPorEmail(email.toLowerCase().trim());
 
     if (!usuario) {
-      return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
+      return res.status(401).json({ mensaje: 'El correo electrónico o la contraseña son incorrectos' });
     }
 
     if (!usuario.activo) {
@@ -38,7 +38,7 @@ async function login(req, res) {
 
     const passwordValida = await compare(password, usuario.password_hash);
     if (!passwordValida) {
-      return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
+      return res.status(401).json({ mensaje: 'El correo electrónico o la contraseña son incorrectos' });
     }
 
     // Bloquear login si el correo no ha sido verificado
