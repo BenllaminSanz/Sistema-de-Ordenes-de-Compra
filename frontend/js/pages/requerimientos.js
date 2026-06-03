@@ -502,8 +502,8 @@ async function imprimirRequerimiento() {
                             </thead>
                             <tbody>
                                 ${seleccionada.items.map(item => {
-                                    const cantidad = Math.round(item.cantidad || 1);
-                                    const precio = redondear2(item.precio_unitario || 0);
+                                    const cantidad = Math.round( parseFloat(item.cantidad) || 1 );
+                                    const precio = redondear2( parseFloat(item.precio_unitario) || 0 );
                                     const sub = redondear2(cantidad * precio).toLocaleString('es-MX');
                                     return `
                                         <tr>
@@ -785,8 +785,8 @@ function toggleDesgloseCotizacion(btn, cotizacionId) {
 
       let granTotal = 0;
       items.forEach(it => {
-        const cantidad = Math.round(it.cantidad || 0);
-        const precio = redondear2(it.precio_unitario || 0);
+        const cantidad = Math.round( parseFloat(it.cantidad) || 0 );
+        const precio = redondear2( parseFloat(it.precio_unitario) || 0 );
         const sub = redondear2(cantidad * precio);
         granTotal += sub;
         itemsHtml += `
@@ -799,6 +799,7 @@ function toggleDesgloseCotizacion(btn, cotizacionId) {
           </tr>`;
       });
 
+      granTotal = redondear2(granTotal);
       itemsHtml += `
           </tbody>
           <tfoot>
@@ -2101,7 +2102,7 @@ function crearFilaItem(itemData = {}) {
         <option value="m">m</option>
       </select>
     </td>
-    <td><input type="number" class="form-control item-precio text-end" step="0.01" placeholder="0.00" value="${itemData.precio_unitario || 0}"></td>
+    <td><input type="number" class="form-control item-precio text-end" step="0.01" placeholder="0.00" value="${redondear2(itemData.precio_unitario)}"></td>
     <td class="item-subtotal text-end fw-600">0.00</td>
     <td class="text-center">
       <button class="btn btn-sm btn-danger" data-action="eliminar-item">×</button>
@@ -2245,7 +2246,9 @@ function eliminarItem(btn) {
 
 function redondear2(n) {
   // Redondeo seguro para dinero (evita problemas de punto flotante)
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  // parseFloat para soportar strings que vienen de DECIMAL de MySQL vía JSON
+  const num = parseFloat(n) || 0;
+  return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
 function obtenerIvaPorcentaje() {

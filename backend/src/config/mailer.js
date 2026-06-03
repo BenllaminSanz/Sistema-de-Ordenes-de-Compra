@@ -56,6 +56,7 @@ export const enviarCorreo = async ({ to, subject, html, text }) => {
 
 /**
  * Mantener compatibilidad con función anterior
+ * Validar logica si aun es util para la nueva función del catalogo
  */
 export const enviarCorreoCotizacion = async (correoDestino, idCotizacion) => {
   return enviarCorreo({

@@ -81,9 +81,13 @@ async function cambiarEstado(req, res) {
 
 async function actualizarDatatextnow(req, res) {
   try {
-    const { datatextnow_id } = req.body;
-    if (!datatextnow_id) return res.status(400).json({ mensaje: 'datatextnow_id (número de PO de DataTextNow) es requerido' });
-    await _actualizarDatatextnow(req.params.id, datatextnow_id);
+    const { datatextnow_id } = req.body || {};
+    if (datatextnow_id === undefined) {
+      return res.status(400).json({ mensaje: 'datatextnow_id (número de PO de DataTextNow) es requerido' });
+    }
+    // Permitir null o vacío para limpiar el PO registrado en DTN
+    const val = (datatextnow_id == null || datatextnow_id === '') ? null : String(datatextnow_id).trim();
+    await _actualizarDatatextnow(req.params.id, val);
     res.json(await obtenerPorId(req.params.id));
   } catch (err) {
     console.error('[actualizar datatextnow OC]', err);

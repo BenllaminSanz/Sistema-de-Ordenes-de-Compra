@@ -43,13 +43,14 @@ async function cargarOrdenes(pagina) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Número OC</th><th>Requerimiento</th><th>Tipo</th>
+            <th>Número OC</th><th>PO DTN</th><th>Requerimiento</th><th>Tipo</th>
             <th>Proveedor</th><th>Monto</th><th>Autorizado por</th>
             <th>Estado</th><th>Fecha</th><th></th>
           </tr></thead>
           <tbody>${datos.map(o => `
             <tr>
               <td class="fw-600">${o.numero_oc}</td>
+              <td class="text-muted small">${o.datatextnow_id || '—'}</td>
               <td>${o.consecutivo}</td>
               <td>${o.tipo}</td>
               <td>${o.proveedor_nombre || '—'}</td>
@@ -106,11 +107,12 @@ async function editarDataTextNowOC(ocId, valorActual) {
   if (nuevo === null) return;
 
   try {
-    await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, {
+    const updated = await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, {
       datatextnow_id: nuevo.trim() || null
     });
     Toast.success('PO de DataTextNow actualizado');
-    abrirDetalle(ocId);
+    ocActual = updated;
+    renderDetalle(updated);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al actualizar el PO de DataTextNow');
   }
@@ -149,8 +151,11 @@ function renderDetalle(oc) {
           <td>
             ${oc.datatextnow_id || '—'}
             ${Auth.puedeHacer(['contabilidad','admin']) 
-              ? `<button onclick="editarDataTextNowOC(${oc.id}, '${oc.datatextnow_id || ''}')" 
-                         class="btn btn-sm btn-outline" style="margin-left:8px;padding:2px 6px;font-size:11px">✏️ Editar</button>` 
+              ? (() => {
+                  const safe = String(oc.datatextnow_id || '').replace(/'/g, "\\'");
+                  return `<button onclick="editarDataTextNowOC(${oc.id}, '${safe}')" 
+                             class="btn btn-sm btn-outline" style="margin-left:8px;padding:2px 6px;font-size:11px">✏️ Editar</button>`;
+                })()
               : ''}
           </td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">PDF de Cotización</td>

@@ -9,6 +9,7 @@
  * - error
  * - debug (solo en desarrollo)
  * 
+ * Recomendación de IA:
  * En producción recomienda enviar logs a un servicio (ej. Loki, ELK, Datadog, etc.)
  */
 
