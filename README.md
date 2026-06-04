@@ -140,6 +140,7 @@ Dentro de la carpeta `backend/`:
 | `node scripts/seed-demo-data.js` | Datos completos de demostración (usuarios, proveedores, catálogo, requerimientos, cotizaciones, OCs...) |
 | `database/seed-test-requerimientos.sql` | SQL puro: muchos requerimientos SOLO catálogo + SOLO libres (puros, sin mezclar). Ideal para probar el nuevo selector de modo al final del form, los dos modales, edición de catálogo vs libres, y la regla de no mezclar. Incluye borradores, incompletos, en revisión, etc. |
 | `database/migrations/add-requerimiento-items-libres.sql` | Migración para agregar soporte de ítems en texto libre (libres para cotización y formalización a catálogo) |
+| `database/migrations/add-requerimiento-orden-compra-id.sql` | Nueva migración: agrega `orden_compra_id` (FK) al requerimiento. Permite vista de solicitante de la OC nacida del req aprobado, enlace bidireccional y trazabilidad. |
 
 ## Variables de Entorno
 
@@ -172,15 +173,17 @@ Las más importantes son:
   Refs: models crear ~151-152 y actualizar consistency; controller ~90-91.
 - **Email / RFQ solo para SERVICIOS o libres**: Catálogo puro (no servicio) → cotización como "registro interno" (no se envía correo al proveedor). Centralizado en `emailService`. Llama asíncrona + manejo `no_requiere_segun_condicion` (marca procesada sin envío). Botón manual ✉ visible solo en casos permitidos. Email body minimal (solo pide items, sin precios propuestos).  
   Refs: [backend/src/utils/emailService.js:33-43] (decisión + "Regla de envío..."), controller crearCotizacion ~193-202 y enviarCorreo handler, UI `mostrarBotonEnviar` y `permiteOpcionesEnvio` en [frontend/js/pages/requerimientos.js:656-660,1908-1913].
-- **Formalización (libres → catálogo)**: Al `seleccionar` cot (principal) **y** safety net al crear OC. Dedup por `tipo + LOWER(descripcion)`. Nuevo registro en `catalogo` con `costo_referencia = precio_unitario` (de la cot) + `proveedor_id` recomendado. **Nunca muta los libres originales del req** (se preservan como histórico/audit trail para "qué se pidió originalmente").  
-  Refs: [backend/src/models/cotizaciones.js:331-383] (JSDoc explícito: "Llamado desde seleccionar() y desde creación de OC. Dedup... Preserva histórico de libres en req."), llamado en seleccionar ~276 y ordenes.crear ~197-199; `generarCodigoUnico` en [catalogo.js:86-110].
-- **OC "congela" términos + items**: Si `cotizacion_id`, hereda `proveedor_id / monto_total / moneda` de la cot. Items de la OC: prefieren `cotizacion_items` (precios reales); fallback a req (catalog o libres) si no hay cot. Auto-marca req como aprobado.  
-  Refs: [backend/src/models/ordenes.js:155-199] (comentarios "Heredar... congela", formalize safety), controller guards ~51-56, obtenerPorId items resolution.
+- **Formalización (libres → catálogo)**: **Exclusivamente al crear la OC** (después de generar la OC, una vez elegido el proveedor vía cotización). Dedup por `tipo + LOWER(descripcion)`. Al formalizar (o re-formalizar) se asocia/actualiza `proveedor_id` + `costo_referencia` con los de la cot/OC seleccionada ("relacionado con el proveedor seleccionado"). **Nunca muta los libres originales del req** (se preservan como histórico/audit trail).  
+  Refs: [backend/src/models/cotizaciones.js:331-383] (JSDoc actualizado), llamado solo en ordenes.crear (después del link `orden_compra_id`); `generarCodigoUnico` en [catalogo.js:86-110]. Seleccionar ya no llama formalizar (cambio para cumplir "cargar después de generar la OC").
+- **OC "congela" términos + items**: Si `cotizacion_id`, hereda `proveedor_id / monto_total / moneda` de la cot. Items de la OC: prefieren `cotizacion_items` (precios reales); fallback a req (catalog o libres) si no hay cot. Auto-marca req como aprobado. Además setea `requerimientos.orden_compra_id` (enlace bidireccional para vista de solicitante de OCs nacidas de reqs aprobados + "total de la cotización en OC" y cierre revisado).  
+  Refs: [backend/src/models/ordenes.js:155-199] (comentarios "Heredar... congela", formalize safety + UPDATE link), controller guards ~51-56, obtenerPorId items resolution. En frontend: total row en tabla de ítems de OC (cot) y columna "OC" + bloque en detalle de req.
 - **Guards de negocio**:
   - Approve ('aprobado'): si `requiere_cotizacion` → exige cot seleccionada **+** `archivo_url` (PDF respaldo).  
     Ref: [requerimientosController.js:208-225].
   - Crear OC: req debe estar 'aprobado'; si requiere_cot → exige `cotizacion_id`.  
     Ref: [ordenesController.js:51-56].
+  - Cerrar OC (manual o auto por confirmación de solicitante): exige `datatextnow_id` (PO DTN) registrado + todas las recepciones en 'entregado_solicitante'. Auto-close en marcarEntregado ahora condicional (revisión del flujo DTN + recepciones).  
+    Refs: ordenes model cambiarEstado + recepciones marcarEntregado; UI resumen-avance muestra bloqueos.
 - **Estados estrictos + historial**: Tablas `TRANSICIONES` (req) y `TRANSICIONES_OC`. FOR UPDATE + checks en models. Historial en req/cot/OC/recepciones. Recepciones completas avanzan OC a 'recibida'.
 - **Otros**: Cantidades enteras + precios 2 decimales (HTML step/blur + JS `redondear2` + backend `Math.round *100/100`). Área/Depto persistidos, mostrados en lista/detalle y filtrables. PDF upload solo para cotizaciones (multer, /uploads). Deselect permitido (con confirm). "Alta en catálogo" anima req separado vía botón/UI.
 

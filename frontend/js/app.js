@@ -204,6 +204,8 @@ function renderSidebar() {
 
   // Menús visibles por rol
   const esContabilidad = ['contabilidad','admin'].includes(u.rol);
+  // Nota: "Órdenes de Compra" ahora es visible para TODOS (incluyendo solicitantes),
+  // pero el backend limita a los solicitantes para que solo vean las OCs de sus propios requerimientos.
 
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-brand">
@@ -236,13 +238,18 @@ function renderSidebar() {
         Catálogo
       </a>
 
-      ${esContabilidad ? `
+      <!-- Órdenes de Compra es visible para todos los roles:
+           - Admin y Contabilidad: ven todas las OCs.
+           - Solicitantes: ven solo las OCs generadas a partir de sus propios requerimientos aprobados
+             (el backend filtra automáticamente por solicitante_id del requerimiento). -->
       <a href="ordenes.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
              viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5
              9z"/></svg>
         Órdenes de Compra
       </a>
+
+      ${esContabilidad ? `
       <a href="proveedores.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
              viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10

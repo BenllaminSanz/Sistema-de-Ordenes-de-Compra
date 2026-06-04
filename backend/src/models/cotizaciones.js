@@ -273,8 +273,9 @@ async function seleccionar(id, requerimiento_id) {
           fecha_seleccion = NOW()
       WHERE id = ?`, [id]);
 
-    // Formalizar ítems (de libres) en catálogo vía helper compartido
-    await formalizarCotizacionEnCatalogo(id, conn);
+    // NOTA: la formalización de ítems libres en catálogo (con proveedor de la cot)
+    // se realiza exclusivamente al generar la OC (ver ordenes.js crear + formalizarCotizacionEnCatalogo).
+    // Esto cumple con "cargar después de generar la OC".
 
     await conn.commit();
     return true;
@@ -329,8 +330,10 @@ async function eliminar(id) {
 
 /**
  * Formaliza ítems de una cotización (provenientes de libres) en el catálogo.
- * Llamado desde seleccionar() y desde creación de OC.
+ * Llamado EXCLUSIVAMENTE desde creación de OC (después de generar la OC).
  * Dedup por tipo+descripción. Preserva histórico de libres en req.
+ * Al generar la OC se asocia/actualiza el proveedor seleccionado y el costo de referencia
+ * (cumple "items libres se carguen al catalogo ... relacionado con el proveedor seleccionado").
  */
 async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
   const [[cot]] = await conn.query(
@@ -359,6 +362,13 @@ async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
       [cot.req_tipo || 'PARTES', item.descripcion]
     );
     if (existing.length > 0) {
+      // Actualizar asociación al proveedor de ESTA cot/OC (última selección confirmada por la OC)
+      await conn.query(
+        `UPDATE catalogo
+         SET proveedor_id = ?, costo_referencia = COALESCE(?, costo_referencia)
+         WHERE id = ?`,
+        [cot.proveedor_id || null, item.precio_unitario || null, existing[0].id]
+      );
       continue;
     }
 

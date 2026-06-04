@@ -30,6 +30,29 @@ async function cargarOrdenes(pagina) {
   const contenedor = document.getElementById('tabla-oc');
   UI.spinner(contenedor);
 
+  const usuario = Auth.getUsuario();
+  const esSolicitante = usuario?.rol === 'solicitante';
+  const esAdminOContab = !esSolicitante;
+
+  // Ajustar título y subtítulo según rol (vista de solicitante)
+  const cardTitle = document.querySelector('#vista-lista .card-title');
+  const subtitle = document.getElementById('oc-subtitle');
+
+  if (cardTitle) {
+    cardTitle.textContent = 'Órdenes de Compra';
+  }
+
+  if (subtitle) {
+    if (esSolicitante) {
+      subtitle.innerHTML = 'Solo se muestran las Órdenes de Compra que nacen de <strong>tus requerimientos aprobados</strong>.';
+      subtitle.style.cssText = 'font-size:13px;color:#64748b;margin-top:-4px;margin-bottom:10px;padding:6px 10px;background:#f1f5f9;border-radius:6px;';
+      subtitle.style.display = '';
+    } else {
+      subtitle.textContent = '';
+      subtitle.style.display = 'none';
+    }
+  }
+
   const estado = document.getElementById('fil-estado').value;
   let qs = `?pagina=${pagina}&limite=15`;
   if (estado) qs += `&estado=${estado}`;
@@ -37,14 +60,27 @@ async function cargarOrdenes(pagina) {
   try {
     const { datos, total, limite } = await Api.get('/ordenes-compra' + qs);
 
-    if (!datos.length) { UI.empty(contenedor, 'No hay órdenes de compra'); return; }
+    if (!datos.length) {
+      UI.empty(contenedor, esSolicitante 
+        ? 'No tienes órdenes de compra generadas a partir de tus requerimientos.' 
+        : 'No hay órdenes de compra');
+      return;
+    }
+
+    // Columna dinámica según rol:
+    // - Admin/Contabilidad: mostrar "Solicitante" (quien lo pidió)
+    // - Solicitante: mostrar "Autorizado por" (quien autorizó la OC)
+    const columnaHeader = esAdminOContab ? 'Solicitante' : 'Autorizado por';
+    const getColumnaValor = (o) => esAdminOContab 
+      ? (o.solicitante_nombre || '—') 
+      : (o.autorizado_por_nombre || '—');
 
     contenedor.innerHTML = `
       <div class="table-wrap">
         <table>
           <thead><tr>
             <th>Número OC</th><th>PO DTN</th><th>Requerimiento</th><th>Tipo</th>
-            <th>Proveedor</th><th>Monto</th><th>Autorizado por</th>
+            <th>Proveedor</th><th>Monto</th><th>${columnaHeader}</th>
             <th>Estado</th><th>Fecha</th><th></th>
           </tr></thead>
           <tbody>${datos.map(o => `
@@ -57,7 +93,7 @@ async function cargarOrdenes(pagina) {
               <td>${o.monto_total
                     ? '$' + Number(o.monto_total).toLocaleString('es-MX') + ' ' + o.moneda
                     : '—'}</td>
-              <td>${o.autorizado_por_nombre}</td>
+              <td>${getColumnaValor(o)}</td>
               <td>${UI.badge(o.estado)}</td>
               <td class="text-muted text-sm">${UI.fecha(o.created_at)}</td>
               <td>
@@ -121,6 +157,14 @@ async function editarDataTextNowOC(ocId, valorActual) {
 function renderDetalle(oc) {
   document.getElementById('detalle-titulo').textContent = oc.numero_oc;
 
+  // En el detalle de OC (según rol):
+  // - Admin/Contabilidad: mostrar "Solicitante" (quién lo solicitó)  [en vez de Autorizado por]
+  // - Solicitante: mostrar "Autorizado por" (quién autorizó)
+  const u = Auth.getUsuario();
+  const esSol = u?.rol === 'solicitante';
+  const mostrarSolicitanteRow = !esSol;
+  const mostrarAutorizadoRow = esSol;   // solo para solicitantes (admins ven al solicitante en su lugar)
+
   document.getElementById('detalle-info').innerHTML = `
     <div class="card-title">Información de la OC</div>
     <table style="width:100%;border-collapse:collapse">
@@ -133,8 +177,9 @@ function renderDetalle(oc) {
             <a href="requerimientos.html?id=${oc.requerimiento_id}"
                style="color:var(--primary)">${oc.consecutivo}</a>
           </td></tr>
+      ${mostrarSolicitanteRow ? `
       <tr><td style="padding:6px 0;color:#6b7280">Solicitante</td>
-          <td><strong>${oc.solicitante_nombre || '—'}</strong></td></tr>
+          <td><strong>${oc.solicitante_nombre || '—'}</strong></td></tr>` : ''}
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${oc.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
@@ -143,8 +188,9 @@ function renderDetalle(oc) {
           <td>${oc.monto_total
                 ? '$' + Number(oc.monto_total).toLocaleString('es-MX') + ' ' + oc.moneda
                 : '—'}</td></tr>
+      ${mostrarAutorizadoRow ? `
       <tr><td style="padding:6px 0;color:#6b7280">Autorizado por</td>
-          <td>${oc.autorizado_por_nombre}</td></tr>
+          <td>${oc.autorizado_por_nombre}</td></tr>` : ''}
       <tr><td style="padding:6px 0;color:#6b7280">Fecha autorización</td>
           <td>${UI.fecha(oc.fecha_autorizacion)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">PO en DataTextNow</td>
@@ -197,8 +243,28 @@ function renderDetalle(oc) {
             </tr>`;
           }).join('')}
         </tbody>
+        ${(() => {
+            const total = oc.items.reduce((sum, it) => {
+              const c = parseFloat(it.cantidad || 0);
+              let p = 0;
+              if (it.precio_unitario != null) {
+                p = parseFloat(it.precio_unitario);
+              } else if (it.precio_unitario_referencia != null) {
+                p = parseFloat(it.precio_unitario_referencia);
+              }
+              return sum + (c * p);
+            }, 0);
+            const moneda = oc.moneda || 'MXN';
+            const label = oc.cotizacion_id 
+              ? 'Total cotización / OC' 
+              : 'Total (precios de referencia del catálogo)';
+            return `<tfoot><tr style="font-weight:600; border-top:2px solid #ccc;">
+              <td colspan="2" style="padding:4px 4px; text-align:right;">${label}</td>
+              <td style="padding:4px 4px; text-align:right;">$${total.toLocaleString('es-MX')} ${moneda}</td>
+            </tr></tfoot>`;
+          })()}
       </table>
-      <div style="font-size:11px; color:#64748b; margin-top:4px;">${oc.cotizacion_id ? 'Precios según la cotización elegida.' : 'Precios de referencia del catálogo (el precio real puede variar). Para fijar proveedor y precios use el flujo de cotización.'}</div>
+      <div style="font-size:11px; color:#64748b; margin-top:4px;">${oc.cotizacion_id ? 'Precios según la cotización elegida. Total calculado de líneas.' : 'Precios de referencia del catálogo (el precio real puede variar). Para fijar proveedor y precios use el flujo de cotización.'}</div>
     </div>` : '' }`;
 
   // Historial
@@ -370,9 +436,17 @@ function renderResumenAvance(recepciones) {
   let mensaje = '';
   let color = '#166534';
 
+  const tienePO = !!(ocActual && ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim());
+  const puedeCerrar = (confirmadas === total) && tienePO;
+
   if (confirmadas === total) {
-    mensaje = '✅ Todas las recepciones han sido confirmadas por el solicitante. La OC puede cerrarse.';
-    color = '#166534';
+    if (tienePO) {
+      mensaje = '✅ Todas las recepciones han sido confirmadas por el solicitante. La OC puede cerrarse.';
+      color = '#166534';
+    } else {
+      mensaje = '✅ Confirmaciones completas, pero <strong>falta registrar el PO de DataTextNow</strong> para poder cerrar la OC.';
+      color = '#854d0e';
+    }
   } else {
     mensaje = `Faltan <strong>${total - confirmadas}</strong> confirmación(es) del solicitante para poder cerrar la OC.`;
     color = '#854d0e';
@@ -395,6 +469,7 @@ function renderResumenAvance(recepciones) {
     <div style="margin-top:6px; font-size:11px; color:#64748b;">
       Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong><br>
       Responsable de confirmar: <strong>${ocActual.solicitante_nombre || '—'}</strong>
+      ${!tienePO ? '<br><span style="color:#b45309">⚠️ Falta PO de DataTextNow (Contabilidad debe registrarlo para permitir cierre)</span>' : ''}
     </div>
   `;
 }

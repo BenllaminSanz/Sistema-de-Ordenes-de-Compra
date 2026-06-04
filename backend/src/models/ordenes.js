@@ -27,6 +27,8 @@ async function listar(filtros = {}) {
   }
 
   if (solicitante_id) {
+    // Filtrado para solicitantes: solo OCs que nacen de sus requerimientos
+    // (usando la relación requerimiento -> orden_compra)
     where.push('r.solicitante_id = ?');
     params.push(solicitante_id);
   }
@@ -51,6 +53,7 @@ async function listar(filtros = {}) {
        oc.created_at,
        r.consecutivo, r.tipo, r.notas AS descripcion, r.solicitante_id,
        u.nombre AS autorizado_por_nombre,
+       sol.nombre AS solicitante_nombre,
        p.nombre AS proveedor_nombre,
        COALESCE(oc.monto_total, c.monto_total) AS monto_total,
        COALESCE(oc.moneda, c.moneda, 'MXN') AS moneda,
@@ -59,6 +62,7 @@ async function listar(filtros = {}) {
      FROM ordenes_compra oc
      JOIN requerimientos r ON r.id = oc.requerimiento_id
      JOIN usuarios u       ON u.id = oc.autorizado_por
+     LEFT JOIN usuarios sol ON sol.id = r.solicitante_id
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
      LEFT JOIN proveedores  p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)
      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
@@ -186,6 +190,13 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
       [requerimiento_id]
     );
 
+    // Enlazar la OC generada de vuelta al requerimiento (para vista de solicitante + trazabilidad)
+    await conn.query(
+      `UPDATE requerimientos SET orden_compra_id = ?
+       WHERE id = ?`,
+      [ocId, requerimiento_id]
+    );
+
     await conn.query(
       `INSERT INTO historial_estados
          (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
@@ -223,13 +234,29 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
     await conn.beginTransaction();
 
     const [[oc]] = await conn.query(
-      'SELECT estado FROM ordenes_compra WHERE id = ? FOR UPDATE', [id]
+      'SELECT id, estado, datatextnow_id FROM ordenes_compra WHERE id = ? FOR UPDATE', [id]
     );
     if (!oc) throw { status: 404, mensaje: 'Orden de compra no encontrada' };
 
     const permitidos = TRANSICIONES_OC[oc.estado] || [];
     if (!permitidos.includes(nuevoEstado)) {
       throw { status: 422, mensaje: `No se puede pasar de '${oc.estado}' a '${nuevoEstado}'` };
+    }
+
+    // Guard para cierre: exige PO de DTN registrado + todas las recepciones confirmadas por solicitante
+    if (nuevoEstado === 'cerrada') {
+      const tienePO = oc.datatextnow_id && String(oc.datatextnow_id).trim() !== '';
+      if (!tienePO) {
+        throw { status: 422, mensaje: 'No se puede cerrar la OC sin el número de PO de DataTextNow registrado.' };
+      }
+      const [pend] = await conn.query(
+        `SELECT COUNT(*) AS cnt FROM recepciones
+         WHERE orden_compra_id = ? AND estado <> 'entregado_solicitante'`,
+        [id]
+      );
+      if ((pend.cnt || 0) > 0) {
+        throw { status: 422, mensaje: 'No se puede cerrar la OC: faltan confirmaciones de entrega del solicitante en una o más recepciones.' };
+      }
     }
 
     await conn.query(

@@ -282,6 +282,15 @@ function renderDetalle(req) {
           <td>${req.departamento || '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
           <td>${UI.badge(req.estado)}</td></tr>
+      ${req.oc_id || req.oc_numero ? `
+      <tr><td style="padding:6px 0;color:#6b7280">OC Relacionada</td>
+          <td>
+            <a href="ordenes.html?id=${req.oc_id}" style="color:var(--primary);font-weight:600;text-decoration:none">${req.oc_numero}</a>
+            ${UI.badge(req.oc_estado)}
+            <button class="btn btn-sm btn-outline" style="margin-left:6px;padding:1px 6px;font-size:11px" onclick="window.location='ordenes.html?id=${req.oc_id}'">Ver OC</button>
+          </td></tr>` : (req.estado === 'aprobado' ? `
+      <tr><td style="padding:6px 0;color:#6b7280">OC Relacionada</td>
+          <td><span class="text-muted">Pendiente de generación (Contabilidad)</span></td></tr>` : '')}
       <tr><td style="padding:6px 0;color:#6b7280">Solicitante</td>
           <td>${req.solicitante_nombre}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Requiere cotización</td>

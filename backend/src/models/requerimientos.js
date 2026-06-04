@@ -55,11 +55,16 @@ async function listar(filtros = {}) {
        r.id, r.consecutivo, r.titulo_solicitud, r.area, r.departamento, r.tipo, r.estado,
        r.requiere_cotizacion, r.notas,
        r.datatextnow_id, r.notas_rechazo,
+       r.orden_compra_id,
+       oc.numero_oc AS oc_numero,
+       oc.estado    AS oc_estado,
+       oc.id        AS oc_id,
        r.created_at, r.updated_at,
        u.nombre AS solicitante_nombre,
        u.email  AS solicitante_email
      FROM requerimientos r
      JOIN usuarios u ON u.id = r.solicitante_id
+     LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
      ${clausulaWhere}
      ORDER BY r.created_at DESC
      LIMIT ? OFFSET ?`,
@@ -82,9 +87,16 @@ async function obtenerPorId(id) {
     `SELECT
        r.*,
        u.nombre AS solicitante_nombre,
-       u.email  AS solicitante_email
+       u.email  AS solicitante_email,
+       oc.numero_oc AS oc_numero,
+       oc.estado    AS oc_estado,
+       oc.id        AS oc_id,
+       oc.monto_total AS oc_monto_total,
+       oc.moneda      AS oc_moneda,
+       oc.datatextnow_id AS oc_datatextnow_id
      FROM requerimientos r
      JOIN usuarios u ON u.id = r.solicitante_id
+     LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
      WHERE r.id = ?`,
     [id]
   );

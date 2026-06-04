@@ -84,18 +84,35 @@ async function marcarEntregado(id, usuarioId) {
       'SELECT orden_compra_id FROM recepciones WHERE id = ?', [id]
     );
 
-    // Cerrar la OC automáticamente al entregar
-    await conn.query(
-      `UPDATE ordenes_compra SET estado = 'cerrada'
-       WHERE id = ? AND estado = 'recibida'`,
+    // Revisión de cierre: solo cerrar automáticamente si:
+    // 1. Todas las recepciones de la OC están confirmadas por el solicitante.
+    // 2. La OC tiene registrado el PO de DataTextNow (datatextnow_id).
+    // Esto corrige el cierre incondicional previo y ata el cierre al PO de DTN + recepciones.
+    const [[ocInfo]] = await conn.query(
+      'SELECT datatextnow_id FROM ordenes_compra WHERE id = ?',
       [rec.orden_compra_id]
     );
-    await conn.query(
-      `INSERT INTO historial_estados
-         (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
-       VALUES ('orden_compra', ?, 'recibida', 'cerrada', ?, 'Entregado al solicitante')`,
-      [rec.orden_compra_id, usuarioId]
+    const [pendientes] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM recepciones
+       WHERE orden_compra_id = ? AND estado <> 'entregado_solicitante'`,
+      [rec.orden_compra_id]
     );
+    const tienePO = ocInfo && ocInfo.datatextnow_id && String(ocInfo.datatextnow_id).trim() !== '';
+    const todasConfirmadas = (pendientes.cnt || 0) === 0;
+
+    if (todasConfirmadas && tienePO) {
+      await conn.query(
+        `UPDATE ordenes_compra SET estado = 'cerrada'
+         WHERE id = ? AND estado = 'recibida'`,
+        [rec.orden_compra_id]
+      );
+      await conn.query(
+        `INSERT INTO historial_estados
+           (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
+         VALUES ('orden_compra', ?, 'recibida', 'cerrada', ?, 'Entregado al solicitante')`,
+        [rec.orden_compra_id, usuarioId]
+      );
+    }
 
     await conn.commit();
     return result.affectedRows;

@@ -312,7 +312,7 @@ export const seleccionarCotizacion = async (req, res) => {
 
       res.json({
         success: true,
-        message: 'Cotización seleccionada correctamente. Las demás han sido rechazadas. Los ítems libres de la cotización han sido agregados automáticamente como nuevos registros en el catálogo (con el precio acordado y proveedor recomendado) para que estén disponibles en futuros requerimientos.'
+        message: 'Cotización seleccionada correctamente. Las demás han sido rechazadas. Los ítems libres se formalizarán en el catálogo (con el precio acordado y el proveedor seleccionado) al generar la OC.'
       });
     } else {
       res.status(400).json({
