@@ -137,8 +137,8 @@ Dentro de la carpeta `backend/`:
 | `npm run dev`     | Inicia el servidor con nodemon      |
 | `npm start`       | Inicia el servidor en modo normal   |
 | `node scripts/seed-admin.js` | Crea/actualiza el usuario administrador |
-| `node scripts/seed-demo-data.js` | Datos completos de demostración (usuarios, proveedores, catálogo, requerimientos, cotizaciones, OCs...) |
-| `database/seed-test-requerimientos.sql` | SQL puro: muchos requerimientos SOLO catálogo + SOLO libres (puros, sin mezclar). Ideal para probar el nuevo selector de modo al final del form, los dos modales, edición de catálogo vs libres, y la regla de no mezclar. Incluye borradores, incompletos, en revisión, etc. |
+| `database/seed_clean_test_data.sql` | Seed limpio base (proveedores + catálogo + algunos requerimientos + OCs de ejemplo) |
+| `database/seed-demo-requerimientos.sql` | **Spool extenso de requerimientos para demo/pruebas**: 15+ requerimientos variados (PARTES catálogo puros, SERVICIOS/FLETES libres), todos los estados (borrador/en_revision/aprobado/incompleto/rechazado), múltiples cotizaciones comparables, seleccionadas, OCs en diferentes estados (generada/distribuida/en_proceso/recibida), historial completo y trazabilidad req↔OC. Ideal para "muestra de cómo funciona el sistema". |
 | `database/migrations/add-requerimiento-items-libres.sql` | Migración para agregar soporte de ítems en texto libre (libres para cotización y formalización a catálogo) |
 | `database/migrations/add-requerimiento-orden-compra-id.sql` | Nueva migración: agrega `orden_compra_id` (FK) al requerimiento. Permite vista de solicitante de la OC nacida del req aprobado, enlace bidireccional y trazabilidad. |
 
@@ -274,12 +274,14 @@ flowchart TD
 - **Fletes**: Tratados como "libres por ahora" en la lógica de email/cot (ver historial de chat).
 
 ### Cómo Verificar / "Jugar" con el Flujo (usando seeds existentes)
-1. DB limpia + `node backend/scripts/seed-admin.js` + `node backend/scripts/seed-demo-data.js` + `mysql ... < database/seed-test-requerimientos.sql`.
-2. `cd backend && npm run dev`.
-3. Login (demo: juan.perez@empresa.com / Demo2025! como solicitante; admin@empresa.com / Admin1234! como contab).
-4. Requerimientos: crear uno catálogo, uno con checkbox libres. Ver panel cot condicional, prefill, confirm envío, etc.
-5. Como contab: cot → select → approve → OC. Inspeccionar catálogo (nuevos items aparecieron), detalle req (libres siguen ahí), OC (heredó datos + nota de origen).
-6. Revisar este mismo README (diagrama + reglas) vs lo que ves en la app.
+1. DB limpia + `node backend/scripts/seed-admin.js`.
+2. (Recomendado) `mysql -u root -p ordenes_compra < database/seed_clean_test_data.sql`.
+3. (Para spool rico de demo) `mysql -u root -p ordenes_compra < database/seed-demo-requerimientos.sql` (agrega 15+ reqs variados con cotizaciones, OCs en varios estados, etc.).
+4. `cd backend && npm run dev`.
+5. Login (demo: juan.perez@empresa.com / Demo2025! como solicitante; admin@empresa.com / Admin1234! como contab).
+6. Requerimientos: ver lista con variedad de estados, áreas y tipos. Abrir detalle de uno de catálogo vs uno de libres. Como contab: agregar/ comparar cotizaciones, seleccionar + subir PDF, aprobar, generar OC.
+7. Inspeccionar: catálogo (formalización de libres), historial de estados, enlace OC desde el req aprobado, flujo de recepciones.
+8. Revisar este mismo README (diagrama + reglas) vs lo que ves en la app.
 
 Este análisis se generó explorando el código actual (post-cleanup). El diagrama y textos están alineados con la implementación real.
 

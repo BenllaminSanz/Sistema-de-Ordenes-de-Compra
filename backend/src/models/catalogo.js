@@ -4,7 +4,7 @@ import pool from '../config/db.js';
  * Listar elementos del catálogo con filtros
  */
 async function listar(filtros = {}) {
-  const { tipo, busqueda, soloActivos = false } = filtros;
+  const { tipo, busqueda, proveedor_id, soloActivos = false } = filtros;
 
   let sql = `
     SELECT 
@@ -13,6 +13,7 @@ async function listar(filtros = {}) {
       c.codigo, 
       c.descripcion, 
       c.costo_referencia, 
+      'MXN' AS moneda,
       c.proveedor_id,
       p.nombre as proveedor_nombre,
       c.activo, 
@@ -39,6 +40,11 @@ async function listar(filtros = {}) {
     params.push(like, like);
   }
 
+  if (proveedor_id) {
+    sql += ' AND c.proveedor_id = ?';
+    params.push(proveedor_id);
+  }
+
   sql += ' ORDER BY c.codigo ASC';
 
   const [rows] = await pool.query(sql, params);
@@ -50,6 +56,7 @@ async function obtenerPorId(id) {
     `
     SELECT 
       c.*, 
+      'MXN' AS moneda,
       p.nombre as proveedor_nombre
     FROM catalogo c
     LEFT JOIN proveedores p ON p.id = c.proveedor_id

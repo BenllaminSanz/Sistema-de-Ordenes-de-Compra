@@ -414,6 +414,21 @@ async function cargarRecepciones(ocId) {
       if (recId) marcarEntregado(recId);
     });
   }
+
+  // Controlar visibilidad y estado del botón "Cerrar OC" según confirmaciones
+  if (ocActual && ocActual.estado === 'recibida') {
+    const closeBtn = document.querySelector('#panel-acciones button[data-estado="cerrada"]');
+    const allConfirmed = recs.length > 0 && recs.every(r => r.estado === 'entregado_solicitante');
+    if (closeBtn) {
+      if (!allConfirmed) {
+        closeBtn.disabled = true;
+        closeBtn.title = 'Deben confirmarse todas las recepciones por el solicitante antes de poder cerrar la OC';
+      } else {
+        closeBtn.disabled = false;
+        closeBtn.title = 'Cerrar la OC (todas las recepciones confirmadas)';
+      }
+    }
+  }
 }
 
 // ── Resumen de Avance para Cierre de OC ───────────────────────

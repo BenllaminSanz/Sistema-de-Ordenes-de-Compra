@@ -243,12 +243,32 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
       throw { status: 422, mensaje: `No se puede pasar de '${oc.estado}' a '${nuevoEstado}'` };
     }
 
+    // Guard para marcar como 'recibida': debe existir al menos una recepción registrada
+    if (nuevoEstado === 'recibida') {
+      const [recCount] = await conn.query(
+        `SELECT COUNT(*) AS cnt FROM recepciones WHERE orden_compra_id = ?`,
+        [id]
+      );
+      if ((recCount.cnt || 0) === 0) {
+        throw { status: 422, mensaje: 'Para marcar la OC como recibida debe registrar al menos una recepción.' };
+      }
+    }
+
     // Guard para cierre: exige PO de DTN registrado + todas las recepciones confirmadas por solicitante
     if (nuevoEstado === 'cerrada') {
       const tienePO = oc.datatextnow_id && String(oc.datatextnow_id).trim() !== '';
       if (!tienePO) {
         throw { status: 422, mensaje: 'No se puede cerrar la OC sin el número de PO de DataTextNow registrado.' };
       }
+
+      const [totalRec] = await conn.query(
+        `SELECT COUNT(*) AS cnt FROM recepciones WHERE orden_compra_id = ?`,
+        [id]
+      );
+      if ((totalRec.cnt || 0) === 0) {
+        throw { status: 422, mensaje: 'No se puede cerrar la OC sin haber registrado al menos una recepción.' };
+      }
+
       const [pend] = await conn.query(
         `SELECT COUNT(*) AS cnt FROM recepciones
          WHERE orden_compra_id = ? AND estado <> 'entregado_solicitante'`,

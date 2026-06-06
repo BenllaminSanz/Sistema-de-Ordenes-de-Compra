@@ -39,7 +39,16 @@ async function listar(filtros = {}) {
   let where = [];
   let params = [];
 
-  if (estado)         { where.push('r.estado = ?');                     params.push(estado); }
+  if (estado) {
+    const estados = String(estado).split(',').map(s => s.trim()).filter(Boolean);
+    if (estados.length === 1) {
+      where.push('r.estado = ?');
+      params.push(estados[0]);
+    } else if (estados.length > 1) {
+      where.push(`r.estado IN (${estados.map(() => '?').join(',')})`);
+      params.push(...estados);
+    }
+  }
   if (area)           { where.push('r.area = ?');                       params.push(area); }
   if (departamento)   { where.push('r.departamento = ?');               params.push(departamento); }
   if (tipo)           { where.push('r.tipo = ?');                       params.push(tipo); }
@@ -124,7 +133,8 @@ async function obtenerPorId(id) {
        c.codigo,
        c.descripcion,
        c.tipo,
-       c.costo_referencia
+       c.costo_referencia,
+       'MXN' AS moneda
      FROM requerimiento_items ri
      JOIN catalogo c ON c.id = ri.catalogo_id
      WHERE ri.requerimiento_id = ?

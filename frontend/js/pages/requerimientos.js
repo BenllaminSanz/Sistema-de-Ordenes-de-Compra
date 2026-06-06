@@ -170,6 +170,8 @@ function abrirEditorRequerimiento(req = null) {
       catalogo_id: i.catalogo_id,
       codigo: i.codigo,
       descripcion: i.descripcion,
+      costo_referencia: i.costo_referencia != null ? parseFloat(i.costo_referencia) : null,
+      moneda: i.moneda || 'MXN',
       cantidad: Math.round(i.cantidad) || 1
     }));
     renderItemsSeleccionados();
@@ -249,6 +251,19 @@ function abrirEditorRequerimiento(req = null) {
     actions.style.display = 'none';
   }
 
+  // Manejar filtro de proveedor (disponible para PARTES, SERVICIOS y FLETES)
+  const provWrapper2 = document.getElementById('filtro-proveedor-wrapper');
+  const provSel2 = document.getElementById('filtro-proveedor-catalogo');
+  if (provWrapper2) {
+    provWrapper2.style.display = tipoVal ? '' : 'none';
+  }
+  if (provSel2 && !tipoVal) {
+    provSel2.value = '';
+  }
+  if (tipoVal) {
+    cargarFiltroProveedoresParaCatalogo();
+  }
+
   UI.abrirModal('modal-req');
 }
 
@@ -315,16 +330,21 @@ function renderDetalle(req) {
             <th style="text-align:left; padding:4px 6px;">Código</th>
             <th style="text-align:left; padding:4px 6px;">Descripción</th>
             <th style="text-align:right; padding:4px 6px;">Cantidad</th>
+            <th style="text-align:right; padding:4px 6px;">Precio ref.</th>
           </tr>
         </thead>
         <tbody>
-          ${req.items.map(item => `
+          ${req.items.map(item => {
+            const p = (item.costo_referencia != null) ? parseFloat(item.costo_referencia).toFixed(2) : '—';
+            const m = item.moneda || 'MXN';
+            return `
             <tr>
               <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${item.codigo}</strong></td>
               <td style="padding:4px 6px; border-bottom:1px solid #eee;">${item.descripcion}</td>
               <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${parseFloat(item.cantidad).toLocaleString('es-MX')}</td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; color:#0d6efd; font-weight:500;">${p} ${m}</td>
             </tr>
-          `).join('')}
+          `}).join('')}
         </tbody>
       </table>
     </div>` : ''}
@@ -1205,17 +1225,30 @@ if (busquedaInput) {
 window.requerimientoItemsSeleccionados = [];
 window.requerimientoItemsLibres = [];
 
+// Cache de proveedores para el filtro del catálogo (evita múltiples llamadas)
+let _proveedoresCatalogoCache = null;
+
 const reqTipoSelect = document.getElementById('req-tipo');
 if (reqTipoSelect) {
   reqTipoSelect.addEventListener('change', () => {
     const seccion = document.getElementById('seccion-items-catalogo');
     const selector = document.getElementById('selector-items-nuevos');
+    const provWrapper = document.getElementById('filtro-proveedor-wrapper');
+    const provSelect = document.getElementById('filtro-proveedor-catalogo');
 
     if (seccion) {
       seccion.style.display = reqTipoSelect.value ? 'block' : 'none';
     }
     if (selector) {
       selector.style.display = reqTipoSelect.value ? 'block' : 'none';
+    }
+
+    // Mostrar filtro de proveedor para todos los tipos (PARTES, SERVICIOS y FLETES)
+    if (provWrapper) {
+      provWrapper.style.display = reqTipoSelect.value ? '' : 'none';
+    }
+    if (provSelect && !reqTipoSelect.value) {
+      provSelect.value = '';
     }
 
     // Limpiar selecciones previas al cambiar tipo de requerimiento
@@ -1232,6 +1265,11 @@ if (reqTipoSelect) {
       const seccion2 = document.getElementById('seccion-items-catalogo');
       if (seccion2) seccion2.style.opacity = '1';
     }
+
+    // Cargar proveedores para el filtro (disponible para todos los tipos)
+    if (reqTipoSelect.value) {
+      cargarFiltroProveedoresParaCatalogo();
+    }
   });
 }
 
@@ -1246,9 +1284,17 @@ function renderItemsSeleccionados() {
 
   let html = '';
   window.requerimientoItemsSeleccionados.forEach((item, index) => {
+    const precio = (item.costo_referencia != null && !isNaN(item.costo_referencia))
+      ? parseFloat(item.costo_referencia).toFixed(2)
+      : null;
+    const moneda = item.moneda || 'MXN';
+    const precioHtml = precio != null
+      ? `<span style="color:#555; font-size:11px; margin-left:6px; white-space:nowrap;">${precio} ${moneda}</span>`
+      : '';
+
     html += `
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px; background:#e6f4ea; padding:3px 6px; border-radius:4px; border:1px solid #a3d9b1;">
-        <span style="flex:1; font-size:12px;">${item.codigo} — ${item.descripcion}</span>
+        <span style="flex:1; font-size:12px;">${item.codigo} — ${item.descripcion}${precioHtml}</span>
         <input type="number" value="${Math.round(item.cantidad)}" min="1" step="1" 
                style="width:60px; font-size:11px;" 
                onchange="actualizarCantidadItem(${index}, this.value)">
@@ -1311,7 +1357,7 @@ window.agregarItemLibre = function() {
   const tieneCatalogo = window.requerimientoItemsSeleccionados && window.requerimientoItemsSeleccionados.length > 0;
 
   if (tieneCatalogo) {
-    if (!confirm('Este requerimiento tiene ítems del catálogo.\n\nNo se permite mezclar. ¿Quieres limpiar los ítems del catálogo para agregar solo ítems libres (nuevos) en este requerimiento?')) {
+    if (!confirm('Ya tienes ítems del catálogo.\n\nNo se permite mezclar. ¿Limpiar catálogo y pasar a ítems nuevos?')) {
       return;
     }
     window.requerimientoItemsSeleccionados = [];
@@ -1368,7 +1414,7 @@ window.abrirModalItemsLibres = function() {
   const tieneCatalogo = window.requerimientoItemsSeleccionados && window.requerimientoItemsSeleccionados.length > 0;
 
   if (tieneCatalogo) {
-    if (!confirm('Este requerimiento ya tiene ítems del catálogo.\n\nSi agregas ítems libres, se recomienda crear un REQUERIMIENTO SEPARADO (los ítems del catálogo no necesitan cotización, los libres sí).\n\n¿Quieres limpiar los ítems del catálogo y trabajar solo con ítems nuevos/libres en este requerimiento?')) {
+    if (!confirm('Ya tienes ítems del catálogo.\n\n¿Limpiarlos y trabajar solo con ítems nuevos (libres)?')) {
       return;
     }
     // Limpiar catálogo para pasar a modo "solo libres"
@@ -1399,7 +1445,7 @@ window.toggleModoItemsNuevos = function(checked) {
     const tieneCatalogo = window.requerimientoItemsSeleccionados && window.requerimientoItemsSeleccionados.length > 0;
 
     if (tieneCatalogo) {
-      if (!confirm('Ya tienes ítems del catálogo seleccionados.\n\nNo se permite mezclar. Si continúas se limpiarán los ítems del catálogo para trabajar solo con ítems nuevos (que requieren cotización para alta en el catálogo).\n\n¿Continuar?')) {
+      if (!confirm('Ya tienes ítems del catálogo.\n\nNo se permite mezclar. ¿Limpiar catálogo y continuar con ítems nuevos?')) {
         checkbox.checked = false;
         return;
       }
@@ -1494,6 +1540,7 @@ async function buscarEnCatalogo() {
 
   const busqueda = input.value.trim();
   const tipo = document.getElementById('req-tipo')?.value;
+  const provSelect = document.getElementById('filtro-proveedor-catalogo');
 
   if (!tipo) {
     Toast.info('Primero selecciona el Tipo de requerimiento');
@@ -1504,19 +1551,23 @@ async function buscarEnCatalogo() {
 
   try {
     const params = new URLSearchParams({ tipo, busqueda, soloActivos: 'true' });
+    if (provSelect && provSelect.value) {
+      params.set('proveedor_id', provSelect.value);
+    }
     const resultados = await Api.get(`/catalogo?${params.toString()}`);
 
     if (!resultados.length) {
       contenedor.innerHTML = `
-        <div style="padding:8px; font-size:11px; color:#7c3f00; background:#fff3cd; border:1px solid #f0ad4e; border-radius:4px;">
-          <strong>No existe en el catálogo.</strong><br>
-          <span>Al final del formulario marca la casilla <strong>"Los ítems que necesito no se encuentran en el catálogo"</strong> para abrir el formulario de ítems nuevos.</span>
-          <div style="margin-top:4px;">
-            <button type="button" class="btn btn-sm btn-warning" style="font-size:10px; font-weight:600;" 
-                    onclick="crearRequerimientoParaAltaCatalogoFromCurrent()">
-              O crear un REQUERIMIENTO SEPARADO
-            </button>
-          </div>
+        <div style="padding:8px; font-size:11px; color:#7c3f00; background:#fefce8; border:1px solid #facc15; border-radius:4px;">
+          <strong>No se encontró en el catálogo.</strong><br>
+          <button type="button" class="btn btn-sm btn-outline-warning mt-1" style="font-size:10px;" 
+                  onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true);">
+            Agregar como ítem nuevo (libre)
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" style="font-size:10px; margin-left:4px;"
+                  onclick="crearRequerimientoParaAltaCatalogoFromCurrent()">
+            Crear req separado
+          </button>
         </div>`;
       return;
     }
@@ -1530,7 +1581,8 @@ async function buscarEnCatalogo() {
         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #eee; font-size:12px; gap:6px;">
           <div style="flex:1; min-width:0;">
             <strong>${item.codigo}</strong> — ${item.descripcion}
-            <span style="color:#888; font-size:11px;">${(item.costo_referencia != null) ? '($' + parseFloat(item.costo_referencia).toFixed(2) + ')' : ''}</span>
+            ${(item.costo_referencia != null) ? `<span style="color:#0d6efd; font-size:11px; font-weight:600; margin-left:4px;">${parseFloat(item.costo_referencia).toFixed(2)} ${item.moneda || 'MXN'}</span>` : ''}
+            ${item.proveedor_nombre ? `<span style="color:#888; font-size:10px; margin-left:6px;">(${item.proveedor_nombre})</span>` : ''}
           </div>
 
           ${!yaSeleccionado ? `
@@ -1538,7 +1590,7 @@ async function buscarEnCatalogo() {
               <input type="number" id="qty-${item.id}" value="1" min="1" step="1" 
                      style="width:58px; font-size:11px; padding:2px 4px;">
               <button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px; font-size:11px;"
-                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0})">
+                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}')">
                 + Agregar
               </button>
             </div>
@@ -1552,8 +1604,10 @@ async function buscarEnCatalogo() {
     // Enlace sutil pero siempre visible para recordar el flujo de nuevo ítem
     html += `
       <div style="padding:3px 4px; font-size:9.5px; color:#854d0e; background:#fffbeb; margin-top:3px; border-radius:3px; border:1px solid #fde047;">
-        ¿Ninguno coincide? Marca al final del formulario <strong>"Los ítems que necesito no se encuentran en el catálogo"</strong> o 
-        <a href="#" onclick="crearRequerimientoParaAltaCatalogoFromCurrent(); return false;" style="font-weight:600; color:#b45309; text-decoration:underline;">crea un req separado</a>.
+        ¿Ninguno coincide? 
+        <a href="#" onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true); return false;" style="font-weight:600; color:#b45309; text-decoration:underline;">Agregar como ítem nuevo</a>
+        o 
+        <a href="#" onclick="crearRequerimientoParaAltaCatalogoFromCurrent(); return false;" style="font-weight:600; color:#b45309; text-decoration:underline;">crear req separado</a>.
       </div>
     `;
 
@@ -1563,18 +1617,18 @@ async function buscarEnCatalogo() {
     // Esto anima a buscar primero (evita duplicados) pero hace obvio el camino para libres.
     const addNewHint = document.createElement('div');
     addNewHint.style.cssText = 'margin-top:4px; font-size:10px;';
-    addNewHint.innerHTML = ` <button type="button" class="btn btn-sm btn-outline" style="font-size:10px;" onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true);">+ Agregar este ítem como nuevo (libre)</button>`;
+    addNewHint.innerHTML = ` <button type="button" class="btn btn-sm btn-outline" style="font-size:10px;" onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true);">+ No está en catálogo (agregar como nuevo)</button>`;
     contenedor.appendChild(addNewHint);
   } catch (err) {
     contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#c00;">Error al buscar.</div>';
   }
 }
 
-window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo) {
+window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo, moneda = 'MXN') {
   const tieneLibres = window.requerimientoItemsLibres && window.requerimientoItemsLibres.length > 0;
 
   if (tieneLibres) {
-    if (!confirm('Este requerimiento ya tiene ítems en texto libre (nuevos).\n\nLos ítems del catálogo no necesitan cotización, mientras que los libres sí la requieren para darlos de alta.\n\n¿Quieres limpiar los ítems libres y agregar solo ítems del catálogo en este requerimiento?')) {
+    if (!confirm('Ya tienes ítems nuevos/libres.\n\n¿Limpiarlos y volver a usar solo catálogo?')) {
       return;
     }
     window.requerimientoItemsLibres = [];
@@ -1601,7 +1655,8 @@ window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo
     catalogo_id,
     codigo,
     descripcion,
-    costo_referencia: costo,
+    costo_referencia: costo != null ? parseFloat(costo) : null,
+    moneda: moneda || 'MXN',
     cantidad: Math.max(1, Math.round(cantidad))   // Forzamos a entero
   });
 
@@ -1634,6 +1689,49 @@ window.agregarComoLibreDesdeBusqueda = function() {
   // Limpiar resultados
   if (contenedor) contenedor.innerHTML = '';
 };
+
+/**
+ * Carga (con cache) la lista de proveedores activos en el filtro de catálogo.
+ * Disponible para PARTES, SERVICIOS y FLETES.
+ */
+async function cargarFiltroProveedoresParaCatalogo() {
+  const select = document.getElementById('filtro-proveedor-catalogo');
+  if (!select) return;
+
+  try {
+    if (!_proveedoresCatalogoCache) {
+      _proveedoresCatalogoCache = await Api.get('/proveedores?activos=true');
+    }
+
+    const previo = select.value; // preservar selección actual si ya había
+    select.innerHTML = '<option value="">Todos los proveedores</option>';
+
+    _proveedoresCatalogoCache.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nombre;
+      select.appendChild(opt);
+    });
+
+    // Restaurar selección previa si el proveedor sigue en la lista
+    if (previo && Array.from(select.options).some(o => String(o.value) === String(previo))) {
+      select.value = previo;
+    }
+
+    // UX mejorada: al cambiar proveedor, re-buscar automáticamente (si ya hay resultados)
+    if (!select.dataset.autoSearchBound) {
+      select.dataset.autoSearchBound = 'true';
+      select.addEventListener('change', () => {
+        const cont = document.getElementById('resultados-catalogo');
+        if (cont && cont.innerHTML.trim() !== '' && cont.innerHTML.indexOf('Buscando') === -1) {
+          buscarEnCatalogo();
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Error cargando proveedores para filtro de catálogo:', e);
+  }
+}
 
 /**
  * Abre el editor de requerimiento prellenado para el flujo de "alta en catálogo".

@@ -5,6 +5,7 @@ async function listar(req, res) {
     const filtros = {
       tipo: req.query.tipo || null,
       busqueda: req.query.busqueda || null,
+      proveedor_id: req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null,
       soloActivos: req.query.soloActivos === 'true'
     };
 

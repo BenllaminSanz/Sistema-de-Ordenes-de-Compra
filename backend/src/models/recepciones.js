@@ -42,6 +42,15 @@ async function crear(datos, recibido_por) {
     );
     const recepcionId = result.insertId;
 
+    // Si se proporcionó datatextnow_id en la recepción, registrarlo en la OC
+    // (el PO principal de DataTextNow se asocia al registrar la recepción)
+    if (datos.datatextnow_id) {
+      await conn.query(
+        `UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?`,
+        [datos.datatextnow_id, datos.orden_compra_id]
+      );
+    }
+
     // Si es recepción completa, avanzar la OC a estado 'recibida'
     if (datos.estado !== 'recibido_parcial') {
       await conn.query(
@@ -49,6 +58,7 @@ async function crear(datos, recibido_por) {
          WHERE id = ? AND estado IN ('distribuida','en_proceso')`,
         [datos.orden_compra_id]
       );
+
       await conn.query(
         `INSERT INTO historial_estados
            (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
@@ -85,11 +95,15 @@ async function marcarEntregado(id, usuarioId) {
     );
 
     // Revisión de cierre: solo cerrar automáticamente si:
-    // 1. Todas las recepciones de la OC están confirmadas por el solicitante.
-    // 2. La OC tiene registrado el PO de DataTextNow (datatextnow_id).
-    // Esto corrige el cierre incondicional previo y ata el cierre al PO de DTN + recepciones.
+    // 1. Hay al menos una recepción registrada.
+    // 2. Todas las recepciones de la OC están confirmadas por el solicitante.
+    // 3. La OC tiene registrado el PO de DataTextNow (datatextnow_id).
     const [[ocInfo]] = await conn.query(
       'SELECT datatextnow_id FROM ordenes_compra WHERE id = ?',
+      [rec.orden_compra_id]
+    );
+    const [totalRec] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM recepciones WHERE orden_compra_id = ?`,
       [rec.orden_compra_id]
     );
     const [pendientes] = await conn.query(
@@ -98,9 +112,10 @@ async function marcarEntregado(id, usuarioId) {
       [rec.orden_compra_id]
     );
     const tienePO = ocInfo && ocInfo.datatextnow_id && String(ocInfo.datatextnow_id).trim() !== '';
+    const tieneRecepciones = (totalRec.cnt || 0) > 0;
     const todasConfirmadas = (pendientes.cnt || 0) === 0;
 
-    if (todasConfirmadas && tienePO) {
+    if (tieneRecepciones && todasConfirmadas && tienePO) {
       await conn.query(
         `UPDATE ordenes_compra SET estado = 'cerrada'
          WHERE id = ? AND estado = 'recibida'`,
