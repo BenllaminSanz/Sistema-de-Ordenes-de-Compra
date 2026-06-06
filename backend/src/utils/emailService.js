@@ -71,7 +71,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
           <h2 style="color: #1e3a8a; margin: 0 0 8px; font-size: 22px;">Solicitud de Cotización</h2>
           <!-- Cuerpo simple estilo cliente: solo pedir los items -->
           <p style="color: #334155; font-size: 15px; margin: 16px 0 8px;">
-            Buenas tardes <strong>${cot.proveedor_nombre || 'Proveedor'}</strong>,
+            Buenas tardes <strong>${cot.proveedor_num ? `${cot.proveedor_num} — ` : ''}${cot.proveedor_nombre || 'Proveedor'}</strong>,
           </p>
 
           <p style="color: #334155; font-size: 15px; line-height: 1.55; margin-bottom: 8px;">
@@ -131,7 +131,9 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       }).join('\n\n');
     }
 
-    const proveedorNombre = cot.proveedor_nombre || 'Proveedor';
+    const proveedorNombre = cot.proveedor_num
+      ? `${cot.proveedor_num} — ${cot.proveedor_nombre || 'Proveedor'}`
+      : (cot.proveedor_nombre || 'Proveedor');
 
     const textoPlano = `Buenas tardes ${proveedorNombre}
 

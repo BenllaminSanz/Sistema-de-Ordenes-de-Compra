@@ -1,0 +1,447 @@
+// ── COTIZACIONES ──────────────────────────────────────────────
+
+async function cargarCotizaciones(reqId) {
+  const contenedor = document.getElementById('lista-cotizaciones');
+  UI.spinner(contenedor);
+
+  try {
+    const response     = await Api.get(`/cotizaciones/${reqId}`);
+    const cotizaciones = Array.isArray(response) ? response :
+                         (response.data && Array.isArray(response.data) ? response.data : []);
+
+    if (cotizaciones.length === 0) {
+      contenedor.innerHTML = `
+        <p class="text-muted text-center py-4">
+          Aún no hay cotizaciones registradas para este requerimiento.
+        </p>`;
+      return;
+    }
+
+    let html = `
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th class="text-end">Monto Total</th>
+            <th>Estado</th>
+            <th>Fecha Envio</th>
+            <th>PDF</th>
+            <th class="text-center">Acción</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    cotizaciones.forEach(c => {
+      const monto    = parseFloat(c.monto_total || 0).toLocaleString('es-MX');
+      const tieneIva = c.iva && parseFloat(c.iva) > 0;
+      const estado   = c.seleccionada === 1 || c.estado === 'seleccionada'
+        ? `<span class="badge bg-success">Seleccionada</span>`
+        : (c.estado
+            ? `<span class="badge bg-secondary">${c.estado}</span>`
+            : `<span class="badge bg-warning">Pendiente</span>`);
+
+      const tieneItems = c.items && c.items.length > 0;
+      const desgloseBtn = tieneItems
+        ? `<button class="btn btn-sm btn-link p-0 ms-2" data-cot-action="toggle-desglose" data-cot-id="${c.id}" title="Ver desglose de conceptos">▼ Desglose</button>`
+        : '';
+
+      const esGestor          = puedeGestionarCotizaciones();
+      const reqParaCot        = requerimientoActual || {};
+      const esLibresParaCot   = reqParaCot.items_libres && reqParaCot.items_libres.length > 0;
+      const esServicioParaCot = (reqParaCot.tipo || '').toUpperCase() === 'SERVICIOS';
+      const mostrarBotonEnviar = esGestor && (esLibresParaCot || esServicioParaCot);
+
+      html += `
+        <tr data-cot-id="${c.id}">
+          <td><strong>${UI.labelProveedor(c) || 'Sin proveedor'}</strong></td>
+          <td class="text-end fw-600">
+            $${monto} ${c.moneda || 'MXN'}
+            ${tieneIva ? '<span class="text-xs text-muted">(con IVA)</span>' : ''}
+            ${desgloseBtn}
+          </td>
+          <td>${estado}</td>
+          <td class="text-muted">${c.fecha_envio ? UI.fecha(c.fecha_envio) : '—'}</td>
+          <td>
+            ${c.archivo_url
+              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline" title="Ver PDF adjunto">📄 Ver PDF</a>`
+              : `<span class="text-muted small">—</span>`}
+          </td>
+          <td class="text-center">
+            ${c.seleccionada !== 1 && esGestor ? `
+              <div class="d-flex gap-1 justify-content-center flex-wrap" style="font-size:0.75rem;">
+                <button class="btn btn-success btn-sm px-1 py-0" data-cot-action="seleccionar" data-cot-id="${c.id}" title="Seleccionar esta cotización">✓</button>
+                <button class="btn btn-outline btn-sm px-1 py-0" data-cot-action="editar" data-cot-id="${c.id}" title="Editar cotización">✎</button>
+                ${mostrarBotonEnviar ? `<button class="btn btn-primary btn-sm px-1 py-0" data-cot-action="enviar-correo" data-cot-id="${c.id}" title="Enviar solicitud por correo">✉</button>` : ''}
+                <button class="btn btn-danger btn-sm px-1 py-0" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar cotización">×</button>
+              </div>`
+            : c.seleccionada === 1 ? `
+              <div style="display:flex; flex-direction:column; align-items:center; gap:3px; font-size:0.72rem;">
+                <span class="text-success fw-600">✓ Seleccionada</span>
+                <div class="d-flex gap-1 justify-content-center flex-wrap">
+                  ${esGestor && !c.archivo_url ? `
+                    <button class="btn btn-warning btn-sm px-1 py-0"
+                            data-cot-action="adjuntar-pdf" data-cot-id="${c.id}"
+                            title="Adjuntar PDF de respaldo">
+                      📎 Adjuntar PDF
+                    </button>` : ''}
+                  ${esGestor ? `
+                    <button class="btn btn-danger btn-sm px-1 py-0"
+                            data-cot-action="deseleccionar" data-cot-id="${c.id}"
+                            title="Quitar selección">
+                      Deseleccionar
+                    </button>` : ''}
+                </div>
+              </div>`
+            : `<span class="text-muted small">—</span>`}
+          </td>
+        </tr>`;
+    });
+
+    html += `</tbody></table>`;
+    contenedor.innerHTML = html;
+
+  } catch (err) {
+    console.error('❌ Error cargando cotizaciones:', err);
+    contenedor.innerHTML = `<p class="text-danger text-center py-4">Error al cargar cotizaciones</p>`;
+    Toast.error('No se pudieron cargar las cotizaciones');
+  }
+}
+
+// Delegación de acciones de cotizaciones (una sola vez)
+const listaCotizaciones = document.getElementById('lista-cotizaciones');
+if (listaCotizaciones && !listaCotizaciones.dataset.delegateAttached) {
+  listaCotizaciones.dataset.delegateAttached = 'true';
+
+  window.delegate(listaCotizaciones, 'button[data-cot-action]', 'click', (e, btn) => {
+    const action = btn.dataset.cotAction;
+    const cotId  = parseInt(btn.dataset.cotId);
+    const reqId  = requerimientoActual?.id;
+
+    if (!cotId || !reqId) return;
+
+    if (action === 'seleccionar')     seleccionarCotizacion(cotId, reqId);
+    if (action === 'editar')          editarCotizacion(cotId);
+    if (action === 'eliminar')        eliminarCotizacion(cotId);
+    if (action === 'adjuntar-pdf')    adjuntarPdfACotizacion(cotId);
+    if (action === 'deseleccionar')   deseleccionarCotizacion(cotId, reqId);
+    if (action === 'enviar-correo')   enviarCorreoCotizacion(cotId);
+    if (action === 'toggle-desglose') toggleDesgloseCotizacion(btn, cotId);
+  });
+}
+
+function toggleDesgloseCotizacion(btn, cotizacionId) {
+  const mainRow      = btn.closest('tr');
+  const existingDetail = mainRow.nextElementSibling;
+
+  if (existingDetail && existingDetail.classList.contains('cot-desglose-row')) {
+    existingDetail.remove();
+    btn.textContent = '▼ Desglose';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Cargando...';
+
+  Api.get(`/cotizaciones/detalle/${cotizacionId}`)
+    .then(resp => {
+      const c     = resp.data || resp;
+      const items = c.items || [];
+
+      if (items.length === 0) {
+        Toast.info('Esta cotización no tiene conceptos desglosados');
+        btn.textContent = '▼ Desglose';
+        return;
+      }
+
+      let itemsHtml = `
+        <table class="table table-sm mb-0" style="background:#f8f9fa">
+          <thead>
+            <tr>
+              <th style="width:45%">Descripción</th>
+              <th style="width:12%" class="text-center">Cantidad</th>
+              <th style="width:12%">Unidad</th>
+              <th style="width:15%" class="text-end">Precio Unit.</th>
+              <th style="width:16%" class="text-end">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+      let granTotal = 0;
+      items.forEach(it => {
+        const cantidad = Math.round(parseFloat(it.cantidad) || 0);
+        const precio   = redondear2(parseFloat(it.precio_unitario) || 0);
+        const sub      = redondear2(cantidad * precio);
+        granTotal += sub;
+        itemsHtml += `
+          <tr>
+            <td>${it.descripcion || '—'}</td>
+            <td class="text-center">${cantidad}</td>
+            <td>${it.unidad || 'pieza'}</td>
+            <td class="text-end">$${precio.toLocaleString('es-MX')}</td>
+            <td class="text-end fw-600">$${sub.toLocaleString('es-MX')}</td>
+          </tr>`;
+      });
+
+      granTotal  = redondear2(granTotal);
+      itemsHtml += `
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" class="text-end"><strong>Total desglosado:</strong></td>
+              <td class="text-end fw-600">$${granTotal.toLocaleString('es-MX')}</td>
+            </tr>
+          </tfoot>
+        </table>`;
+
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'cot-desglose-row';
+      detailRow.innerHTML = `
+        <td colspan="6" style="padding:0 12px 12px 12px; border-top:none">
+          <div style="margin-top:4px; font-size:0.85rem; color:#555">Desglose de conceptos</div>
+          ${itemsHtml}
+        </td>`;
+
+      mainRow.after(detailRow);
+      btn.textContent = '▲ Ocultar';
+    })
+    .catch(err => {
+      console.error(err);
+      Toast.error('No se pudo cargar el desglose');
+      btn.textContent = '▼ Desglose';
+    })
+    .finally(() => { btn.disabled = false; });
+}
+
+async function seleccionarCotizacion(cotizacionId, requerimientoId) {
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para seleccionar cotizaciones');
+  if (!confirm('¿Marcar esta cotización como la seleccionada?\nLas demás se marcarán como rechazadas.')) return;
+
+  try {
+    await Api.post(`/cotizaciones/${cotizacionId}/seleccionar`, { requerimiento_id: requerimientoId });
+    Toast.success('Cotización seleccionada correctamente');
+    cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al seleccionar la cotización');
+  }
+}
+
+async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para deseleccionar cotizaciones');
+  if (!confirm('⚠️ ¿Estás seguro de deseleccionar esta cotización?\n\nEsto quitará la selección actual y permitirá elegir otra cotización.')) return;
+
+  try {
+    await Api.post(`/cotizaciones/${cotizacionId}/deseleccionar`, { requerimiento_id: requerimientoId });
+    Toast.success('Cotización deseleccionada correctamente');
+    cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al deseleccionar la cotización');
+  }
+}
+
+async function enviarCorreoCotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para enviar correos de cotización');
+  if (!confirm('¿Enviar ahora la solicitud de cotización por correo a este proveedor?')) return;
+
+  try {
+    await Api.post(`/cotizaciones/${cotizacionId}/enviar`);
+    Toast.success('Solicitud de cotización enviada por correo');
+    await cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
+  }
+}
+
+async function adjuntarPdfACotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para adjuntar PDFs a cotizaciones');
+  cotizacionParaPdfId = cotizacionId;
+
+  document.getElementById('pdf-file-input').value  = '';
+  document.getElementById('pdf-url-input').value   = '';
+  document.getElementById('pdf-error').style.display = 'none';
+  document.getElementById('pdf-upload-progress').style.display = 'none';
+
+  cambiarTabPdf('subir');
+  document.getElementById('modal-adjuntar-pdf').style.display = 'flex';
+}
+
+function cambiarTabPdf(tab) {
+  const seccionSubir = document.getElementById('seccion-subir');
+  const seccionUrl   = document.getElementById('seccion-url');
+  const tabSubir     = document.getElementById('tab-subir');
+  const tabUrl       = document.getElementById('tab-url');
+
+  if (tab === 'subir') {
+    seccionSubir.style.display = 'block';
+    seccionUrl.style.display   = 'none';
+    tabSubir.style.borderBottom = '3px solid #185FA5';
+    tabUrl.style.borderBottom   = 'none';
+  } else {
+    seccionSubir.style.display = 'none';
+    seccionUrl.style.display   = 'block';
+    tabSubir.style.borderBottom = 'none';
+    tabUrl.style.borderBottom   = '3px solid #185FA5';
+  }
+}
+
+function cerrarModalAdjuntarPdf() {
+  document.getElementById('modal-adjuntar-pdf').style.display = 'none';
+  cotizacionParaPdfId = null;
+}
+
+async function guardarPdfCotizacion() {
+  if (!cotizacionParaPdfId) return;
+
+  const errorDiv = document.getElementById('pdf-error');
+  errorDiv.style.display = 'none';
+
+  const seccionSubirVisible = document.getElementById('seccion-subir').style.display !== 'none';
+
+  try {
+    if (seccionSubirVisible) {
+      const fileInput = document.getElementById('pdf-file-input');
+      if (!fileInput.files.length) {
+        errorDiv.textContent = 'Por favor selecciona un archivo PDF';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (fileInput.files[0].type !== 'application/pdf') {
+        errorDiv.textContent = 'Solo se permiten archivos PDF';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('pdf', fileInput.files[0]);
+
+      const progressContainer = document.getElementById('pdf-upload-progress');
+      const progressBar       = document.getElementById('pdf-progress-bar');
+      const progressText      = document.getElementById('pdf-progress-text');
+
+      progressContainer.style.display = 'block';
+      progressBar.style.width  = '0%';
+      progressText.textContent = 'Subiendo archivo...';
+
+      const token = Auth.getToken();
+      if (!token) {
+        progressContainer.style.display = 'none';
+        Toast.error('Tu sesión ha expirado. Por favor vuelve a iniciar sesión.');
+        Auth.cerrar();
+        return;
+      }
+
+      const response = await fetch(`${API_BASE}/cotizaciones/${cotizacionParaPdfId}/archivo`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+
+      let data = {};
+      try { data = await response.json(); } catch (e) {}
+
+      if (!response.ok) {
+        throw { mensaje: data.message || data.mensaje || 'Error al subir el archivo' };
+      }
+
+      Toast.success('PDF subido correctamente');
+      cerrarModalAdjuntarPdf();
+      cargarCotizaciones(requerimientoActual.id);
+
+    } else {
+      const urlInput = document.getElementById('pdf-url-input').value.trim();
+      if (!urlInput) {
+        errorDiv.textContent = 'Por favor ingresa una URL válida';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      await Api.put(`/cotizaciones/${cotizacionParaPdfId}`, { archivo_url: urlInput });
+      Toast.success('URL del PDF guardada correctamente');
+      cerrarModalAdjuntarPdf();
+      cargarCotizaciones(requerimientoActual.id);
+    }
+
+  } catch (err) {
+    errorDiv.textContent = err.mensaje || err.message || 'Error al guardar el PDF';
+    errorDiv.style.display = 'block';
+  }
+}
+
+async function editarCotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para editar cotizaciones');
+
+  try {
+    const resp = await Api.get(`/cotizaciones/detalle/${cotizacionId}`);
+    const c    = resp.data || resp;
+
+    if (!c) return Toast.error('No se pudo cargar la cotización');
+    if (c.seleccionada === 1 || c.estado === 'seleccionada') {
+      return Toast.error('No se puede editar una cotización ya seleccionada');
+    }
+
+    cotizacionEditandoId = c.id;
+
+    document.getElementById('cot_req_id').value = c.requerimiento_id;
+    document.getElementById('form-cotizacion').reset();
+
+    const modalTitle = document.querySelector('#modal-cotizacion .modal-title');
+    if (modalTitle) modalTitle.textContent = 'Editar Cotización';
+
+    await cargarProveedoresEnModal();
+
+    document.getElementById('cot_proveedor_id').value  = c.proveedor_id || '';
+    document.getElementById('cot_fecha_envio').value   = c.fecha_envio ? c.fecha_envio.substring(0, 10) : '';
+    document.getElementById('cot_moneda').value        = c.moneda || 'MXN';
+    document.getElementById('cot_notas').value         = c.notas || '';
+
+    const simpleDiv = document.getElementById('cotizacion-tipo-simple');
+    const itemsDiv  = document.getElementById('cotizacion-tipo-items');
+    const tbody     = document.querySelector('#tabla-items-cot tbody');
+    tbody.innerHTML = '';
+
+    const tieneItems = c.items && c.items.length > 0;
+
+    if (tieneItems) {
+      simpleDiv.style.display = 'none';
+      itemsDiv.style.display  = 'block';
+
+      c.items.forEach(item => tbody.appendChild(crearFilaItem(item)));
+
+      const ivaSel = document.getElementById('cot-iva-porcentaje');
+      if (ivaSel) {
+        if (c.monto_subtotal > 0 && c.iva !== undefined) {
+          const porcentaje = Math.round((parseFloat(c.iva) / parseFloat(c.monto_subtotal)) * 100);
+          ivaSel.value = [0, 8, 16].includes(porcentaje) ? porcentaje.toString() : '16';
+        } else {
+          ivaSel.value = '16';
+        }
+      }
+
+      calcularTotalItems();
+    } else {
+      simpleDiv.style.display = 'block';
+      itemsDiv.style.display  = 'none';
+      document.getElementById('cot_monto_total').value = c.monto_total || '';
+    }
+
+    configurarToggleDesglose(requerimientoActual, c);
+    document.getElementById('modal-cotizacion').style.display = 'flex';
+
+  } catch (err) {
+    console.error('Error al cargar cotización para editar:', err);
+    Toast.error(err.mensaje || 'Error al cargar la cotización');
+    cotizacionEditandoId = null;
+  }
+}
+
+async function eliminarCotizacion(cotizacionId) {
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para eliminar cotizaciones');
+  if (!confirm('¿Eliminar esta cotización?\nEsta acción no se puede deshacer.')) return;
+
+  try {
+    await Api.delete(`/cotizaciones/${cotizacionId}`);
+    Toast.success('Cotización eliminada');
+    cargarCotizaciones(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo eliminar la cotización (¿está seleccionada?)');
+  }
+}

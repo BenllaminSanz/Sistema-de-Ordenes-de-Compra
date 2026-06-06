@@ -41,9 +41,18 @@
       <button class="modal-close" onclick="UI.cerrarModal('modal-proveedor')">×</button>
     </div>
     <form id="form-proveedor">
-      <div class="form-group">
-        <label class="form-label">Nombre *</label>
-        <input type="text" id="prov-nombre" class="form-control" required>
+      <div style="display:grid;grid-template-columns:140px 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">No. Proveedor *</label>
+          <input type="text" id="prov-numero" class="form-control" required
+                 maxlength="5" inputmode="numeric" pattern="\d{5}"
+                 placeholder="00001" title="5 dígitos numéricos">
+          <small class="text-danger" id="error-prov-numero"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nombre *</label>
+          <input type="text" id="prov-nombre" class="form-control" required>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Correo electrónico *</label>

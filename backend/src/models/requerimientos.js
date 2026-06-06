@@ -134,7 +134,7 @@ async function obtenerPorId(id) {
        c.descripcion,
        c.tipo,
        c.costo_referencia,
-       'MXN' AS moneda
+       c.moneda
      FROM requerimiento_items ri
      JOIN catalogo c ON c.id = ri.catalogo_id
      WHERE ri.requerimiento_id = ?

@@ -13,8 +13,9 @@ async function listar(filtros = {}) {
       c.codigo, 
       c.descripcion, 
       c.costo_referencia, 
-      'MXN' AS moneda,
+      c.moneda,
       c.proveedor_id,
+      p.num_proveedor as proveedor_num,
       p.nombre as proveedor_nombre,
       c.activo, 
       c.created_at, 
@@ -55,8 +56,8 @@ async function obtenerPorId(id) {
   const [[item]] = await pool.query(
     `
     SELECT 
-      c.*, 
-      'MXN' AS moneda,
+      c.*,
+      p.num_proveedor as proveedor_num,
       p.nombre as proveedor_nombre
     FROM catalogo c
     LEFT JOIN proveedores p ON p.id = c.proveedor_id
@@ -71,14 +72,15 @@ async function crear(datos, conn = null) {
   const db = conn || pool;
   const [result] = await db.query(
     `
-    INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, proveedor_id, activo)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, moneda, proveedor_id, activo)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     [
       datos.tipo,
       datos.codigo,
       datos.descripcion,
       datos.costo_referencia != null ? datos.costo_referencia : null,
+      datos.moneda || 'MXN',
       datos.proveedor_id || null,
       datos.activo !== undefined ? datos.activo : 1
     ]
@@ -127,7 +129,7 @@ async function generarCodigoUnico(conn, tipo, baseDescripcion = '') {
 
 async function actualizar(id, datos) {
   const campos = {};
-  ['tipo', 'codigo', 'descripcion', 'costo_referencia', 'proveedor_id'].forEach(c => {
+  ['tipo', 'codigo', 'descripcion', 'costo_referencia', 'moneda', 'proveedor_id'].forEach(c => {
     if (datos[c] !== undefined) campos[c] = datos[c];
   });
 

@@ -46,11 +46,12 @@ async function cargarProveedores() {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Nombre</th><th>Email</th><th>Teléfono</th>
+            <th>No.</th><th>Nombre</th><th>Email</th><th>Teléfono</th>
             <th>RFC</th><th>Estado</th><th>Acciones</th>
           </tr></thead>
           <tbody>${provs.map(p => `
             <tr>
+              <td><code>${p.num_proveedor || '—'}</code></td>
               <td class="fw-600">${p.nombre}</td>
               <td>${p.email}</td>
               <td>${p.telefono || '—'}</td>
@@ -77,15 +78,23 @@ async function cargarProveedores() {
   }
 }
 
+function normalizarNumProveedor(valor) {
+  const limpio = String(valor || '').replace(/\D/g, '');
+  if (!limpio) return '';
+  return limpio.padStart(5, '0').slice(-5);
+}
+
 async function abrirModalProveedor(id = null) {
   editandoId = id;
   document.getElementById('modal-prov-titulo').textContent =
     id ? 'Editar proveedor' : 'Nuevo proveedor';
   document.getElementById('form-proveedor').reset();
+  document.getElementById('error-prov-numero').textContent = '';
 
   if (id) {
     try {
       const p = await Api.get(`/proveedores/${id}`);
+      document.getElementById('prov-numero').value   = p.num_proveedor || '';
       document.getElementById('prov-nombre').value    = p.nombre;
       document.getElementById('prov-email').value     = p.email;
       document.getElementById('prov-telefono').value  = p.telefono || '';
@@ -96,11 +105,26 @@ async function abrirModalProveedor(id = null) {
   UI.abrirModal('modal-proveedor');
 }
 
+document.getElementById('prov-numero')?.addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 5);
+});
+
 document.getElementById('form-proveedor').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = document.getElementById('btn-guardar-prov');
   btn.disabled = true;
+  document.getElementById('error-prov-numero').textContent = '';
+
+  const num_proveedor = normalizarNumProveedor(document.getElementById('prov-numero').value);
+  if (!/^\d{5}$/.test(num_proveedor)) {
+    document.getElementById('error-prov-numero').textContent =
+      'El número de proveedor debe tener exactamente 5 dígitos';
+    btn.disabled = false;
+    return;
+  }
+
   const datos = {
+    num_proveedor,
     nombre:    document.getElementById('prov-nombre').value,
     email:     document.getElementById('prov-email').value,
     telefono:  document.getElementById('prov-telefono').value || null,
@@ -119,7 +143,12 @@ document.getElementById('form-proveedor').addEventListener('submit', async e => 
     UI.cerrarModal('modal-proveedor');
     cargarProveedores();
   } catch (err) {
-    Toast.error(err.mensaje || 'Error al guardar');
+    const msg = err.mensaje || 'Error al guardar';
+    if (msg.toLowerCase().includes('número de proveedor') || msg.toLowerCase().includes('numero de proveedor')) {
+      document.getElementById('error-prov-numero').textContent = msg;
+    } else {
+      Toast.error(msg);
+    }
   } finally {
     btn.disabled = false;
   }

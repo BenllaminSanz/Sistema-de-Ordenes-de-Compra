@@ -84,7 +84,7 @@ async function cargarOCRecientes() {
               <td class="fw-600">${o.numero_oc}</td>
               <td>${o.consecutivo}</td>
               <td>${o.tipo}</td>
-              <td>${o.proveedor_nombre || '—'}</td>
+              <td>${UI.labelProveedor(o)}</td>
               <td>${UI.badge(o.estado)}</td>
               <td class="text-muted">${UI.fecha(o.created_at)}</td>
               <td><a href="ordenes.html?id=${o.id}" class="btn btn-sm btn-outline">Ver</a></td>

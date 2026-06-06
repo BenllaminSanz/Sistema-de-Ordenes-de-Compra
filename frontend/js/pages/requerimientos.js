@@ -552,7 +552,7 @@ async function imprimirRequerimiento() {
                 cotizacionHtml = `
                     <div style="margin-top:30px; border:2px solid #166534; padding:15px; border-radius:6px;">
                         <h3 style="color:#166534; margin:0 0 10px;">✓ Cotización Seleccionada</h3>
-                        <p style="margin:4px 0;"><strong>Proveedor:</strong> ${seleccionada.proveedor_nombre || '—'}</p>
+                        <p style="margin:4px 0;"><strong>Proveedor:</strong> ${UI.labelProveedor(seleccionada)}</p>
                         <p style="margin:4px 0;"><strong>Monto Total:</strong> <span style="font-size:18px; font-weight:700; color:#166534;">$${monto} ${seleccionada.moneda || 'MXN'}</span></p>
                         ${itemsHtml}
                         ${seleccionada.notas ? `<p style="margin-top:10px;"><strong>Notas:</strong> ${seleccionada.notas}</p>` : ''}
@@ -690,7 +690,7 @@ async function cargarCotizaciones(reqId) {
 
       html += `
         <tr data-cot-id="${c.id}">
-          <td><strong>${c.proveedor_nombre || 'Sin proveedor'}</strong></td>
+          <td><strong>${UI.labelProveedor(c) || 'Sin proveedor'}</strong></td>
           <td class="text-end fw-600">
             $${monto} ${c.moneda || 'MXN'}
             ${tieneIva ? '<span class="text-xs text-muted">(con IVA)</span>' : ''}
@@ -1582,7 +1582,7 @@ async function buscarEnCatalogo() {
           <div style="flex:1; min-width:0;">
             <strong>${item.codigo}</strong> — ${item.descripcion}
             ${(item.costo_referencia != null) ? `<span style="color:#0d6efd; font-size:11px; font-weight:600; margin-left:4px;">${parseFloat(item.costo_referencia).toFixed(2)} ${item.moneda || 'MXN'}</span>` : ''}
-            ${item.proveedor_nombre ? `<span style="color:#888; font-size:10px; margin-left:6px;">(${item.proveedor_nombre})</span>` : ''}
+            ${item.proveedor_nombre ? `<span style="color:#888; font-size:10px; margin-left:6px;">(${UI.labelProveedor(item)})</span>` : ''}
           </div>
 
           ${!yaSeleccionado ? `
@@ -1709,7 +1709,7 @@ async function cargarFiltroProveedoresParaCatalogo() {
     _proveedoresCatalogoCache.forEach(p => {
       const opt = document.createElement('option');
       opt.value = p.id;
-      opt.textContent = p.nombre;
+      opt.textContent = UI.labelProveedor(p);
       select.appendChild(opt);
     });
 
@@ -2121,7 +2121,7 @@ async function cargarProveedoresEnModal() {
     proveedores.forEach(p => {
       const opt = document.createElement('option');
       opt.value = p.id;
-      opt.textContent = p.nombre;
+      opt.textContent = UI.labelProveedor(p);
       select.appendChild(opt);
     });
   } catch (e) {

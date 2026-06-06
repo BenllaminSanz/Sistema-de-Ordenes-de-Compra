@@ -52,6 +52,7 @@ async function cargarCatalogo() {
             <th>Descripción</th>
             <th>Tipo</th>
             <th class="text-end">Costo Referencia</th>
+            <th>Moneda</th>
             <th>Estado</th>
             ${esAdminCatalogo ? '<th style="width: 140px;">Acciones</th>' : ''}
           </tr>
@@ -64,6 +65,7 @@ async function cargarCatalogo() {
         ? `<span class="badge bg-success">Activo</span>` 
         : `<span class="badge bg-secondary">Inactivo</span>`;
 
+      const moneda = item.moneda || 'MXN';
       const costo = (item.costo_referencia != null && !isNaN(parseFloat(item.costo_referencia)))
         ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2 })
         : '—';
@@ -84,7 +86,8 @@ async function cargarCatalogo() {
           <td><strong>${item.codigo}</strong></td>
           <td>${item.descripcion || '—'}</td>
           <td><span class="badge bg-light text-dark">${item.tipo}</span></td>
-          <td class="text-end">${costo === '—' ? '—' : '$' + costo}</td>
+          <td class="text-end">${costo === '—' ? '—' : costo}</td>
+          <td><span class="badge bg-light text-dark">${moneda}</span></td>
           <td>${estado}</td>
           ${esAdminCatalogo ? `<td class="d-flex gap-1">${acciones}</td>` : ''}
         </tr>
@@ -115,7 +118,7 @@ async function cargarProveedoresParaSelect() {
       proveedores.forEach(p => {
         const option = document.createElement('option');
         option.value = p.id;
-        option.textContent = p.nombre;
+        option.textContent = UI.labelProveedor(p);
         select.appendChild(option);
       });
     }
@@ -143,9 +146,11 @@ function abrirModalCatalogo(item = null) {
     document.getElementById('cat-codigo').value = item.codigo || '';
     document.getElementById('cat-descripcion').value = item.descripcion || '';
     document.getElementById('cat-costo').value = item.costo_referencia || '';
+    document.getElementById('cat-moneda').value = item.moneda || 'MXN';
     document.getElementById('cat-proveedor').value = item.proveedor_id || '';
   } else {
     titulo.textContent = 'Nuevo elemento del catálogo';
+    document.getElementById('cat-moneda').value = 'MXN';
   }
 
   modal.style.display = 'flex';
@@ -203,6 +208,7 @@ async function guardarCatalogo(e) {
   const codigo = document.getElementById('cat-codigo').value.trim();
   const descripcion = document.getElementById('cat-descripcion').value.trim();
   const costoStr = document.getElementById('cat-costo').value;
+  const moneda = document.getElementById('cat-moneda').value || 'MXN';
   const proveedor_id = document.getElementById('cat-proveedor').value || null;
 
   let tieneErrores = false;
@@ -241,6 +247,7 @@ async function guardarCatalogo(e) {
     codigo,
     descripcion,
     costo_referencia: costo,
+    moneda,
     proveedor_id
   };
 

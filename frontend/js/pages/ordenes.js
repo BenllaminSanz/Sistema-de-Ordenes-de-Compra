@@ -89,7 +89,7 @@ async function cargarOrdenes(pagina) {
               <td class="text-muted small">${o.datatextnow_id || '—'}</td>
               <td>${o.consecutivo}</td>
               <td>${o.tipo}</td>
-              <td>${o.proveedor_nombre || '—'}</td>
+              <td>${UI.labelProveedor(o)}</td>
               <td>${o.monto_total
                     ? '$' + Number(o.monto_total).toLocaleString('es-MX') + ' ' + o.moneda
                     : '—'}</td>
@@ -183,7 +183,7 @@ function renderDetalle(oc) {
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${oc.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
-          <td>${oc.proveedor_nombre || '—'}</td></tr>
+          <td>${UI.labelProveedor(oc)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Monto</td>
           <td>${oc.monto_total
                 ? '$' + Number(oc.monto_total).toLocaleString('es-MX') + ' ' + oc.moneda

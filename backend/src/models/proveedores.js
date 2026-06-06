@@ -1,10 +1,17 @@
 import pool from '../config/db.js';
 
+function normalizarNumProveedor(valor) {
+  if (valor == null || valor === '') return null;
+  const limpio = String(valor).replace(/\D/g, '');
+  if (!limpio) return null;
+  return limpio.padStart(5, '0').slice(-5);
+}
+
 async function listar(soloActivos = false) {
   const where = soloActivos ? 'WHERE activo = 1' : '';
   const [rows] = await pool.query(
-    `SELECT id, nombre, email, telefono, rfc, direccion, activo, created_at
-     FROM proveedores ${where} ORDER BY nombre ASC`
+    `SELECT id, num_proveedor, nombre, email, telefono, rfc, direccion, activo, created_at
+     FROM proveedores ${where} ORDER BY num_proveedor ASC, nombre ASC`
   );
   return rows;
 }
@@ -18,18 +25,26 @@ async function obtenerPorId(id) {
 
 async function crear(datos) {
   const [result] = await pool.query(
-    `INSERT INTO proveedores (nombre, email, telefono, rfc, direccion)
-     VALUES (?, ?, ?, ?, ?)`,
-    [datos.nombre, datos.email, datos.telefono || null,
-     datos.rfc || null, datos.direccion || null]
+    `INSERT INTO proveedores (num_proveedor, nombre, email, telefono, rfc, direccion)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      normalizarNumProveedor(datos.num_proveedor),
+      datos.nombre,
+      datos.email,
+      datos.telefono || null,
+      datos.rfc || null,
+      datos.direccion || null
+    ]
   );
   return result.insertId;
 }
 
 async function actualizar(id, datos) {
   const campos = {};
-  ['nombre','email','telefono','rfc','direccion'].forEach(c => {
-    if (datos[c] !== undefined) campos[c] = datos[c];
+  ['num_proveedor', 'nombre', 'email', 'telefono', 'rfc', 'direccion'].forEach(c => {
+    if (datos[c] !== undefined) {
+      campos[c] = c === 'num_proveedor' ? normalizarNumProveedor(datos[c]) : datos[c];
+    }
   });
   if (!Object.keys(campos).length) return 0;
   const sets = Object.keys(campos).map(c => `${c} = ?`).join(', ');
@@ -47,4 +62,4 @@ async function cambiarEstado(id, activo) {
   return r.affectedRows;
 }
 
-export { listar, obtenerPorId, crear, actualizar, cambiarEstado };
+export { listar, obtenerPorId, crear, actualizar, cambiarEstado, normalizarNumProveedor };

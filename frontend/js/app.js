@@ -120,6 +120,13 @@ const UI = {
     });
   },
 
+  labelProveedor(proveedor) {
+    if (!proveedor) return '—';
+    const nombre = proveedor.nombre || proveedor.proveedor_nombre || '';
+    const num = proveedor.num_proveedor || proveedor.proveedor_num;
+    return num ? `${num} — ${nombre}` : nombre;
+  },
+
   // Muestra/oculta spinner dentro de un contenedor
   spinner(contenedor) {
     contenedor.innerHTML = '<div class="spinner"></div>';

@@ -30,10 +30,14 @@ async function obtener(req, res) {
 
 async function crear(req, res) {
   try {
-    const { tipo, codigo, descripcion, costo_referencia, proveedor_id } = req.body;
+    const { tipo, codigo, descripcion, costo_referencia, moneda, proveedor_id } = req.body;
 
     if (!tipo || !codigo || !descripcion) {
       return res.status(400).json({ mensaje: 'Tipo, código y descripción son obligatorios' });
+    }
+
+    if (moneda && !['MXN', 'USD'].includes(moneda)) {
+      return res.status(400).json({ mensaje: 'Moneda inválida. Use MXN o USD' });
     }
 
     const id = await CatalogoModel.crear({
@@ -41,6 +45,7 @@ async function crear(req, res) {
       codigo,
       descripcion,
       costo_referencia,
+      moneda,
       proveedor_id
     });
 
@@ -56,6 +61,10 @@ async function crear(req, res) {
 
 async function actualizar(req, res) {
   try {
+    if (req.body.moneda && !['MXN', 'USD'].includes(req.body.moneda)) {
+      return res.status(400).json({ mensaje: 'Moneda inválida. Use MXN o USD' });
+    }
+
     const afectados = await CatalogoModel.actualizar(req.params.id, req.body);
     if (!afectados) return res.status(404).json({ mensaje: 'Elemento no encontrado en el catálogo' });
 

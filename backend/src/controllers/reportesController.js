@@ -49,7 +49,7 @@ export async function generarReporteOrdenesCompra(req, res) {
       'Fecha OC': oc.created_at ? new Date(oc.created_at).toISOString().split('T')[0] : '',
       'Consecutivo Req': oc.consecutivo || '',
       'Tipo': oc.tipo || '',
-      'Proveedor': oc.proveedor_nombre || '',
+      'Proveedor': oc.proveedor_num ? `${oc.proveedor_num} — ${oc.proveedor_nombre || ''}` : (oc.proveedor_nombre || ''),
       'Estado OC': oc.estado,
       'Fecha Autorización': oc.fecha_autorizacion ? new Date(oc.fecha_autorizacion).toISOString().split('T')[0] : '',
       'Costo Total': oc.monto_total || 0,
