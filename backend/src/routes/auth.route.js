@@ -4,7 +4,9 @@ import { validate } from '../validations/validationMiddleware.js';
 import { 
   loginSchema, 
   cambiarPasswordSchema, 
-  registroSolicitanteSchema 
+  registroSolicitanteSchema,
+  actualizarUsuarioSchema,
+  restablecerPasswordUsuarioSchema,
 } from '../validations/schemas.js';
 
 const router = Router();
@@ -14,11 +16,15 @@ import {
   perfil, 
   cambiarPassword, 
   registro, 
-  listarUsuarios, 
+  listarUsuarios,
+  actualizarUsuario,
+  restablecerPasswordUsuario,
   cambiarEstadoUsuario,
   registroSolicitante,
   verificarEmail
 } from '../controllers/authController.js';
+
+const gestionarUsuarios = autorizar('contabilidad', 'admin');
 
 // ─── Rutas públicas (sin token) ───────────────────────────────────────────────
 router.post('/login', validate(loginSchema), login);
@@ -33,22 +39,36 @@ router.get('/verificar-email', verificarEmail);
 router.get('/me',               autenticar, perfil);
 router.post('/cambiar-password', autenticar, validate(cambiarPasswordSchema), cambiarPassword);
 
-// ─── Rutas solo admin (superusuario) ──────────────────────────────────────────
+// ─── Gestión de usuarios (contabilidad / admin) ───────────────────────────────
 router.post('/registro',
   autenticar,
-  autorizar('admin'),
+  gestionarUsuarios,
   registro
 );
 
 router.get('/usuarios',
   autenticar,
-  autorizar('admin'),
+  gestionarUsuarios,
   listarUsuarios
+);
+
+router.patch('/usuarios/:id',
+  autenticar,
+  gestionarUsuarios,
+  validate(actualizarUsuarioSchema),
+  actualizarUsuario
+);
+
+router.patch('/usuarios/:id/password',
+  autenticar,
+  gestionarUsuarios,
+  validate(restablecerPasswordUsuarioSchema),
+  restablecerPasswordUsuario
 );
 
 router.patch('/usuarios/:id/estado',
   autenticar,
-  autorizar('admin'),
+  gestionarUsuarios,
   cambiarEstadoUsuario
 );
 

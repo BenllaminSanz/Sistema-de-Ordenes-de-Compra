@@ -74,6 +74,40 @@ const Api = {
   put(path, body)    { return this._fetch('PUT',    path, body); },
   patch(path, body)  { return this._fetch('PATCH',  path, body); },
   delete(path)       { return this._fetch('DELETE', path); },
+
+  async uploadForm(path, fields = {}) {
+    const token = Auth.getToken();
+    const fd = new FormData();
+    Object.entries(fields).forEach(([key, value]) => {
+      if (value != null) fd.append(key, value);
+    });
+
+    const res = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+
+    if (res.status === 401) {
+      Auth.cerrar();
+      return;
+    }
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_) {
+      data = { mensaje: 'Error al subir archivo' };
+    }
+
+    if (!res.ok) {
+      throw {
+        status: res.status,
+        mensaje: data?.mensaje || data?.message || 'Error al subir archivo',
+      };
+    }
+    return data;
+  },
 };
 
 // ─── TOAST ────────────────────────────────────────────────────────────────────
@@ -125,6 +159,34 @@ const UI = {
     const nombre = proveedor.nombre || proveedor.proveedor_nombre || '';
     const num = proveedor.num_proveedor || proveedor.proveedor_num;
     return num ? `${num} — ${nombre}` : nombre;
+  },
+
+  urlArchivo(ruta) {
+    if (!ruta) return null;
+    if (/^https?:\/\//i.test(ruta)) return ruta;
+    const base = API_BASE.replace(/\/api\/?$/, '');
+    return `${base}${ruta.startsWith('/') ? ruta : `/${ruta}`}`;
+  },
+
+  referenciaItemHtml(item, compact = false) {
+    if (!item?.referencia_url) return '';
+
+    const estilo = compact
+      ? 'font-size:10px; margin-top:2px;'
+      : 'font-size:11px; margin-top:3px;';
+
+    if (item.referencia_tipo === 'link') {
+      const url = item.referencia_url;
+      return `<div style="${estilo}">
+        <a href="${url}" target="_blank" rel="noopener" style="color:#185FA5;">🔗 Ver referencia del producto</a>
+      </div>`;
+    }
+
+    const href = UI.urlArchivo(item.referencia_url);
+    const nombre = item.referencia_nombre || 'Documento de referencia';
+    return `<div style="${estilo}">
+      <a href="${href}" target="_blank" rel="noopener" style="color:#185FA5;">📎 ${nombre}</a>
+    </div>`;
   },
 
   // Muestra/oculta spinner dentro de un contenedor
@@ -265,7 +327,7 @@ function renderSidebar() {
         Proveedores
       </a>` : ''}
 
-      ${u.rol === 'admin' ? `
+      ${esContabilidad ? `
       <span class="nav-section">Administración</span>
       <a href="usuarios.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"

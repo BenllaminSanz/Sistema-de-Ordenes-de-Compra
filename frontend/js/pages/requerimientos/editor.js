@@ -34,7 +34,10 @@ function abrirEditorRequerimiento(req = null) {
       descripcion: i.descripcion,
       cantidad:    Math.max(1, Math.round(parseFloat(i.cantidad) || 1)),
       unidad:      i.unidad || '',
-      notas:       i.notas || ''
+      notas:       i.notas || '',
+      referencia_tipo: i.referencia_tipo || null,
+      referencia_url: i.referencia_url || null,
+      referencia_nombre: i.referencia_nombre || null,
     }));
     renderLibresResumen();
 
@@ -143,7 +146,10 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       descripcion: i.descripcion,
       cantidad:    i.cantidad,
       unidad:      i.unidad || null,
-      notas:       i.notas  || null
+      notas:       i.notas  || null,
+      referencia_tipo: i.referencia_tipo || null,
+      referencia_url: i.referencia_url || null,
+      referencia_nombre: i.referencia_nombre || null,
     })),
   };
 

@@ -8,6 +8,7 @@ import * as Cotizacion from '../models/cotizaciones.js';
  * Importante: el correo lista únicamente los ítems (descripción, cantidad, unidad).
  * NO incluye precios propuestos por nosotros. Los proveedores responden con sus precios,
  * y luego los registramos/editamos en la cotización.
+ * Si la cotización tiene notas, se incluyen como mensaje personalizado para el proveedor.
  * 
  * Se usa principalmente para ítems libres (no en catálogo) o servicios.
  */
@@ -64,6 +65,11 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       `;
     }
 
+    const notasCotizacion = (cot.notas || '').trim();
+    const notasHtml = notasCotizacion
+      ? `<p style="color: #334155; font-size: 15px; line-height: 1.55; margin-top: 16px; white-space: pre-line;">${notasCotizacion}</p>`
+      : '';
+
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; background:#f8fafc; padding: 24px;">
         <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
@@ -79,6 +85,8 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
           </p>
 
           ${conceptosHtml || '<p style="margin:0; color:#334155;">- (sin conceptos detallados)</p>'}
+
+          ${notasHtml}
 
           <p style="color: #334155; font-size: 15px; margin-top: 20px;">
             Saludos
@@ -135,11 +143,13 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       ? `${cot.proveedor_num} — ${cot.proveedor_nombre || 'Proveedor'}`
       : (cot.proveedor_nombre || 'Proveedor');
 
+    const notasTextoPlano = notasCotizacion ? `\n\n${notasCotizacion}` : '';
+
     const textoPlano = `Buenas tardes ${proveedorNombre}
 
 Por favor su ayuda para cotizar lo siguiente
 
-${itemsTextoPlano}
+${itemsTextoPlano}${notasTextoPlano}
 
 Saludos`;
 

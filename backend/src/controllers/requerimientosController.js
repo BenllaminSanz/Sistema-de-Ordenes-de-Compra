@@ -270,4 +270,21 @@ async function eliminar(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, cambiarEstado, eliminar };
+async function subirReferenciaItem(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ mensaje: 'No se recibió ningún archivo de referencia' });
+    }
+
+    res.status(201).json({
+      referencia_tipo: 'archivo',
+      referencia_url: `/uploads/items-referencia/${req.file.filename}`,
+      referencia_nombre: req.file.originalname,
+    });
+  } catch (err) {
+    console.error('[subirReferenciaItem]', err);
+    res.status(500).json({ mensaje: 'Error al subir el archivo de referencia' });
+  }
+}
+
+export { listar, obtener, crear, actualizar, cambiarEstado, eliminar, subirReferenciaItem };

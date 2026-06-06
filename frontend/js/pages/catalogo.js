@@ -53,6 +53,7 @@ async function cargarCatalogo() {
             <th>Tipo</th>
             <th class="text-end">Costo Referencia</th>
             <th>Moneda</th>
+            <th>Proveedor</th>
             <th>Estado</th>
             ${esAdminCatalogo ? '<th style="width: 140px;">Acciones</th>' : ''}
           </tr>
@@ -69,6 +70,12 @@ async function cargarCatalogo() {
       const costo = (item.costo_referencia != null && !isNaN(parseFloat(item.costo_referencia)))
         ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2 })
         : '—';
+
+      const provNum = item.proveedor_num || '';
+      const provNombre = (item.proveedor_nombre || '').replace(/"/g, '&quot;');
+      const proveedorCell = provNum
+        ? `<code title="${provNombre}" style="cursor:help; font-size:12px;">${provNum}</code>`
+        : '<span class="text-muted">—</span>';
 
       let acciones = '';
       if (esAdminCatalogo) {
@@ -88,6 +95,7 @@ async function cargarCatalogo() {
           <td><span class="badge bg-light text-dark">${item.tipo}</span></td>
           <td class="text-end">${costo === '—' ? '—' : costo}</td>
           <td><span class="badge bg-light text-dark">${moneda}</span></td>
+          <td>${proveedorCell}</td>
           <td>${estado}</td>
           ${esAdminCatalogo ? `<td class="d-flex gap-1">${acciones}</td>` : ''}
         </tr>

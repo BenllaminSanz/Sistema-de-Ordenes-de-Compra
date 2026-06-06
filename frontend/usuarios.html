@@ -15,10 +15,15 @@
 
     <main id="main-content">
       <div class="card">
-        <div class="d-flex align-center justify-between" style="margin-bottom:16px">
+        <div class="d-flex align-center justify-between" style="margin-bottom:16px; flex-wrap:wrap; gap:10px">
           <div class="card-title mb-0">Usuarios del sistema</div>
-          <button class="btn btn-primary btn-sm"
-                  onclick="UI.abrirModal('modal-usuario')">+ Nuevo usuario</button>
+          <div class="d-flex align-center gap-2" style="flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="chk-activos" checked onchange="cargarUsuarios()">
+              Solo activos
+            </label>
+            <button class="btn btn-primary btn-sm" onclick="abrirModalNuevo()">+ Nuevo usuario</button>
+          </div>
         </div>
         <div id="tabla-usuarios"></div>
       </div>
@@ -26,7 +31,7 @@
   </div>
 </div>
 
-<!-- ── Modal: Usuario ─────────────────────────────────────────── -->
+<!-- ── Modal: Nuevo usuario ───────────────────────────────────── -->
 <div class="modal-backdrop" id="modal-usuario">
   <div class="modal-box">
     <div class="modal-header">
@@ -58,6 +63,72 @@
         <button type="button" class="btn btn-outline"
                 onclick="UI.cerrarModal('modal-usuario')">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="btn-guardar-usr">Crear usuario</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal: Editar usuario ──────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-editar-usuario">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title">Editar usuario</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-editar-usuario')">×</button>
+    </div>
+    <form id="form-editar-usuario">
+      <input type="hidden" id="edit-usr-id">
+      <div class="form-group">
+        <label class="form-label">Nombre completo *</label>
+        <input type="text" id="edit-usr-nombre" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Correo electrónico *</label>
+        <input type="email" id="edit-usr-email" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rol *</label>
+        <select id="edit-usr-rol" class="form-control" required>
+          <option value="solicitante">Solicitante</option>
+          <option value="contabilidad">Contabilidad</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+      <p class="text-muted" style="font-size:12px; margin:0 0 12px;">
+        La contraseña no se edita aquí. Usa <strong>Nueva contraseña</strong> para asignar una.
+      </p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline"
+                onclick="UI.cerrarModal('modal-editar-usuario')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-edit-usr">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal: Nueva contraseña ────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-password-usuario">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Nueva contraseña</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-password-usuario')">×</button>
+    </div>
+    <form id="form-password-usuario">
+      <input type="hidden" id="pwd-usr-id">
+      <p style="font-size:14px; margin:0 0 12px;">
+        Usuario: <strong id="pwd-usr-nombre"></strong>
+      </p>
+      <div class="form-group">
+        <label class="form-label">Nueva contraseña * (mín. 8 caracteres)</label>
+        <input type="password" id="pwd-nueva" class="form-control" minlength="8" required autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirmar contraseña *</label>
+        <input type="password" id="pwd-nueva2" class="form-control" minlength="8" required autocomplete="new-password">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline"
+                onclick="UI.cerrarModal('modal-password-usuario')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-pwd-usr">Asignar contraseña</button>
       </div>
     </form>
   </div>

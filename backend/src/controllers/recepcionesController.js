@@ -19,11 +19,16 @@ async function crear(req, res) {
       return res.status(400).json({ mensaje: `Estado inválido. Opciones: ${estados_validos.join(', ')}` });
     }
 
-    const id = await _crear(
+    const resultado = await _crear(
       { orden_compra_id: req.params.orden_id, estado, notas, datatextnow_id },
       req.usuario.id
     );
-    res.status(201).json(await obtenerPorId(id));
+    const recepcion = await obtenerPorId(resultado.id);
+    res.status(201).json({
+      ...recepcion,
+      oc_cerrada: resultado.cerrada,
+      pendiente_po: resultado.pendientePo,
+    });
   } catch (err) {
     console.error('[crear recepcion]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });

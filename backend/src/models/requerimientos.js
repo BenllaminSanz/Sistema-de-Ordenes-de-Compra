@@ -149,7 +149,10 @@ async function obtenerPorId(id) {
        descripcion,
        cantidad,
        unidad,
-       notas
+       notas,
+       referencia_tipo,
+       referencia_url,
+       referencia_nombre
      FROM requerimiento_items_libres
      WHERE requerimiento_id = ?
      ORDER BY id ASC`,
@@ -226,14 +229,18 @@ async function crear(datos, solicitante_id) {
         if (item && item.descripcion && (item.cantidad || 0) > 0) {
           const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
           await conn.query(
-            `INSERT INTO requerimiento_items_libres (requerimiento_id, descripcion, cantidad, unidad, notas)
-             VALUES (?, ?, ?, ?, ?)`,
+            `INSERT INTO requerimiento_items_libres
+               (requerimiento_id, descripcion, cantidad, unidad, notas, referencia_tipo, referencia_url, referencia_nombre)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               requerimientoId,
               item.descripcion,
               cantidad,
               item.unidad || null,
-              item.notas || null
+              item.notas || null,
+              item.referencia_tipo || null,
+              item.referencia_url || null,
+              item.referencia_nombre || null
             ]
           );
         }
@@ -332,14 +339,18 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
         if (item && item.descripcion && (item.cantidad || 0) > 0) {
           const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
           await conn.query(
-            `INSERT INTO requerimiento_items_libres (requerimiento_id, descripcion, cantidad, unidad, notas)
-             VALUES (?, ?, ?, ?, ?)`,
+            `INSERT INTO requerimiento_items_libres
+               (requerimiento_id, descripcion, cantidad, unidad, notas, referencia_tipo, referencia_url, referencia_nombre)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               id,
               item.descripcion,
               cantidad,
               item.unidad || null,
-              item.notas || null
+              item.notas || null,
+              item.referencia_tipo || null,
+              item.referencia_url || null,
+              item.referencia_nombre || null
             ]
           );
         }

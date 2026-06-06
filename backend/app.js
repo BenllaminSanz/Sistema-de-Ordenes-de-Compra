@@ -60,11 +60,16 @@ app.use((req, res, next) => {
 });
 
 // Crear carpetas de uploads si no existen
-const uploadsDir = path.join(__dirname, 'uploads', 'cotizaciones');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log('📁 Carpeta de uploads creada:', uploadsDir);
-}
+const uploadsDirs = [
+  path.join(__dirname, 'uploads', 'cotizaciones'),
+  path.join(__dirname, 'uploads', 'items-referencia'),
+];
+uploadsDirs.forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log('📁 Carpeta de uploads creada:', dir);
+  }
+});
 
 // ─── CORS ──────────────────────────────────────────────────
 app.use((req, res, next) => {

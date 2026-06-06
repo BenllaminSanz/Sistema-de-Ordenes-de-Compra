@@ -20,6 +20,18 @@ export const registroSolicitanteSchema = z.object({
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
 });
 
+export const actualizarUsuarioSchema = z.object({
+  nombre: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').trim(),
+  email: z.string().email('El email no es válido').toLowerCase().trim(),
+  rol: z.enum(['solicitante', 'contabilidad', 'admin'], {
+    errorMap: () => ({ message: 'Rol inválido' }),
+  }),
+});
+
+export const restablecerPasswordUsuarioSchema = z.object({
+  password_nuevo: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres'),
+});
+
 // ============================================================
 // ESQUEMAS DE REQUERIMIENTOS
 // ============================================================
@@ -44,6 +56,9 @@ export const crearRequerimientoSchema = z.object({
       cantidad: z.number().positive(),
       unidad: z.string().trim().optional().nullable(),
       notas: z.string().trim().optional().nullable(),
+      referencia_tipo: z.enum(['link', 'archivo']).optional().nullable(),
+      referencia_url: z.string().max(500).optional().nullable(),
+      referencia_nombre: z.string().max(255).optional().nullable(),
     })
   ).optional().default([]),
 }).refine((data) => {
@@ -77,6 +92,9 @@ export const actualizarRequerimientoSchema = z.object({
       cantidad: z.number().positive(),
       unidad: z.string().trim().optional().nullable(),
       notas: z.string().trim().optional().nullable(),
+      referencia_tipo: z.enum(['link', 'archivo']).optional().nullable(),
+      referencia_url: z.string().max(500).optional().nullable(),
+      referencia_nombre: z.string().max(255).optional().nullable(),
     })
   ).optional(),
 }).refine((data) => {

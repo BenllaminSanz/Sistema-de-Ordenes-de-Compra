@@ -7,12 +7,29 @@ import {
   actualizarPassword, 
   crear, 
   listar, 
+  actualizar,
+  emailEnUsoPorOtro,
   cambiarEstado,
   crearSolicitante,
   guardarTokenVerificacion,
   buscarPorTokenVerificacion,
   marcarEmailVerificado
 } from '../models/usuario.js';
+
+const ROLES_VALIDOS = ['solicitante', 'contabilidad', 'admin'];
+
+function puedeGestionarUsuario(actor, target) {
+  if (!actor || !target) return false;
+  if (actor.rol === 'admin') return true;
+  if (actor.rol === 'contabilidad' && target.rol !== 'admin') return true;
+  return false;
+}
+
+function puedeAsignarRol(actor, rol) {
+  if (!ROLES_VALIDOS.includes(rol)) return false;
+  if (actor.rol === 'admin') return true;
+  return actor.rol === 'contabilidad' && rol !== 'admin';
+}
 import { enviarCorreoVerificacion } from '../utils/emailService.js';
 import logger from '../utils/logger.js';
 import { enviarCotizacionesPendientesOportunista } from './cotizacionesController.js';
@@ -131,9 +148,12 @@ async function registro(req, res) {
       return res.status(400).json({ mensaje: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
-    const roles_validos = ['solicitante', 'contabilidad', 'admin'];
-    if (rol && !roles_validos.includes(rol)) {
-      return res.status(400).json({ mensaje: `Rol inválido. Opciones: ${roles_validos.join(', ')}` });
+    const rolFinal = rol || 'solicitante';
+    if (!ROLES_VALIDOS.includes(rolFinal)) {
+      return res.status(400).json({ mensaje: `Rol inválido. Opciones: ${ROLES_VALIDOS.join(', ')}` });
+    }
+    if (!puedeAsignarRol(req.usuario, rolFinal)) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para crear usuarios con rol administrador' });
     }
 
     const existe = await buscarPorEmail(email.toLowerCase().trim());
@@ -146,7 +166,7 @@ async function registro(req, res) {
       nombre:        nombre.trim(),
       email:         email.toLowerCase().trim(),
       password_hash,
-      rol:           rol || 'solicitante',
+      rol:           rolFinal,
     });
 
     const nuevo = await buscarPorId(id);
@@ -157,10 +177,11 @@ async function registro(req, res) {
   }
 }
 
-// ─── GET /api/auth/usuarios  (solo admin) ─────────────────────────────────────
+// ─── GET /api/auth/usuarios  (contabilidad / admin) ───────────────────────────
 async function listarUsuarios(req, res) {
   try {
-    const usuarios = await listar();
+    const { activo } = req.query;
+    const usuarios = await listar({ activo });
     res.json(usuarios);
   } catch (err) {
     console.error('[listarUsuarios]', err);
@@ -168,7 +189,73 @@ async function listarUsuarios(req, res) {
   }
 }
 
-// ─── PATCH /api/auth/usuarios/:id/estado  (solo admin) ────────────────────────
+// ─── PATCH /api/auth/usuarios/:id  (contabilidad / admin) ─────────────────────
+async function actualizarUsuario(req, res) {
+  try {
+    const id = Number(req.params.id);
+    const { nombre, email, rol } = req.body;
+
+    const existente = await buscarPorId(id);
+    if (!existente) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+
+    if (!puedeGestionarUsuario(req.usuario, existente)) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para editar este usuario' });
+    }
+
+    if (!puedeAsignarRol(req.usuario, rol)) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para asignar el rol administrador' });
+    }
+
+    const emailLimpio = email.toLowerCase().trim();
+    if (await emailEnUsoPorOtro(emailLimpio, id)) {
+      return res.status(409).json({ mensaje: 'Ya existe otro usuario con ese correo electrónico' });
+    }
+
+    const afectados = await actualizar(id, {
+      nombre: nombre.trim(),
+      email: emailLimpio,
+      rol,
+    });
+
+    if (!afectados) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+
+    res.json(await buscarPorId(id));
+  } catch (err) {
+    console.error('[actualizarUsuario]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+// ─── PATCH /api/auth/usuarios/:id/password  (contabilidad / admin) ─────────────
+async function restablecerPasswordUsuario(req, res) {
+  try {
+    const id = Number(req.params.id);
+    const { password_nuevo } = req.body;
+
+    const existente = await buscarPorId(id);
+    if (!existente) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+
+    if (!puedeGestionarUsuario(req.usuario, existente)) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para cambiar la contraseña de este usuario' });
+    }
+
+    const hash = await _hash(password_nuevo, 12);
+    await actualizarPassword(id, hash);
+
+    res.json({ mensaje: 'Contraseña actualizada correctamente' });
+  } catch (err) {
+    console.error('[restablecerPasswordUsuario]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+// ─── PATCH /api/auth/usuarios/:id/estado  (contabilidad / admin) ───────────────
 async function cambiarEstadoUsuario(req, res) {
   try {
     const { activo } = req.body;
@@ -177,6 +264,15 @@ async function cambiarEstadoUsuario(req, res) {
     }
     if (Number(req.params.id) === req.usuario.id) {
       return res.status(400).json({ mensaje: 'No puedes desactivar tu propio usuario' });
+    }
+
+    const existente = await buscarPorId(req.params.id);
+    if (!existente) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+
+    if (!puedeGestionarUsuario(req.usuario, existente)) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para cambiar el estado de este usuario' });
     }
 
     const afectados = await cambiarEstado(req.params.id, activo);
@@ -278,7 +374,9 @@ export {
   perfil, 
   cambiarPassword, 
   registro, 
-  listarUsuarios, 
+  listarUsuarios,
+  actualizarUsuario,
+  restablecerPasswordUsuario,
   cambiarEstadoUsuario,
   registroSolicitante,
   verificarEmail

@@ -8,6 +8,118 @@ renderSidebar();
 renderTopbar('Órdenes de Compra');
 
 let ocActual = null;
+let recepcionesActuales = [];
+
+const ESTADOS_RECEPCION_LISTOS_CIERRE = ['entregado_solicitante', 'recibido_completo'];
+
+function resolverPoOrden(oc, recepciones, poNuevo) {
+  if (poNuevo != null && String(poNuevo).trim()) return String(poNuevo).trim();
+  if (oc?.datatextnow_id && String(oc.datatextnow_id).trim()) return String(oc.datatextnow_id).trim();
+  const rec = (recepciones || []).find(r => r.datatextnow_id && String(r.datatextnow_id).trim());
+  return rec ? String(rec.datatextnow_id).trim() : null;
+}
+
+function evaluarCierreOc(oc, recepciones, { poNuevo } = {}) {
+  if (!oc || oc.estado === 'cerrada') {
+    return { ok: false, motivo: 'ya_cerrada' };
+  }
+
+  const recs = recepciones || [];
+  if (!recs.length) {
+    return { ok: false, motivo: 'sin_recepciones' };
+  }
+
+  const pendientes = recs.filter(r => !ESTADOS_RECEPCION_LISTOS_CIERRE.includes(r.estado));
+  if (pendientes.length) {
+    return { ok: false, motivo: 'recepciones_pendientes' };
+  }
+
+  const po = resolverPoOrden(oc, recs, poNuevo);
+  if (!po) {
+    return { ok: false, motivo: 'sin_po' };
+  }
+
+  return { ok: true, po };
+}
+
+function mensajeConfirmacionCierreRecepcion(evaluacion) {
+  if (evaluacion.ok) {
+    return 'Se cumplen los requisitos para cerrar la Orden de Compra.\n\n'
+      + 'Al confirmar esta recepción completa, la OC se cerrará automáticamente.\n\n'
+      + '¿Deseas continuar?';
+  }
+  if (evaluacion.motivo === 'sin_po') {
+    return 'La recepción se registrará, pero la OC no se cerrará hasta que exista '
+      + 'el PO de DataTextNow.\n\n¿Deseas continuar?';
+  }
+  return null;
+}
+
+function mensajeConfirmacionEntregaSolicitante(evaluacion) {
+  if (evaluacion.ok) {
+    return 'Al confirmar que ya recibiste el material, das por cerrada tu Orden de Compra.\n\n'
+      + 'Esta acción es definitiva y no se puede deshacer.\n\n'
+      + '¿Confirmas que ya recibiste y deseas cerrar la OC?';
+  }
+  if (evaluacion.motivo === 'sin_po') {
+    return 'Al confirmar que ya recibiste el material, registras tu conformidad con la entrega.\n\n'
+      + 'La OC se cerrará cuando Contabilidad registre el PO de DataTextNow.\n\n'
+      + '¿Confirmas que ya recibiste?';
+  }
+  return 'Al confirmar que ya recibiste el material, registras tu conformidad con esta entrega.\n\n'
+    + '¿Confirmas que ya recibiste?';
+}
+
+function mensajeConfirmacionEntregaContabilidad(evaluacion) {
+  if (evaluacion.ok) {
+    return 'Se cumplen los requisitos para cerrar la Orden de Compra.\n\n'
+      + 'Al marcar como entregado al solicitante, la OC se cerrará automáticamente.\n\n'
+      + '¿Deseas continuar?';
+  }
+  return '¿Marcar esta recepción como entregada al solicitante?';
+}
+
+function actualizarAvisoCierreRecepcion() {
+  const aviso = document.getElementById('rec-aviso-cierre');
+  if (!aviso || !ocActual) return;
+
+  const estado = document.getElementById('rec-estado')?.value;
+  const poNuevo = document.getElementById('rec-datatextnow')?.value || null;
+
+  if (estado === 'recibido_parcial' || ocActual.estado === 'cerrada') {
+    aviso.style.display = 'none';
+    return;
+  }
+
+  const recsProyectadas = [
+    ...(recepcionesActuales || []),
+    { estado: 'recibido_completo', datatextnow_id: poNuevo },
+  ];
+  const evaluacion = evaluarCierreOc(ocActual, recsProyectadas, { poNuevo });
+
+  if (evaluacion.ok) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = '<strong>Atención:</strong> Al confirmar esta recepción completa, '
+      + 'la Orden de Compra <strong>se cerrará automáticamente</strong>.';
+    return;
+  }
+
+  if (evaluacion.motivo === 'sin_po') {
+    aviso.style.display = 'block';
+    aviso.innerHTML = 'La recepción se registrará, pero la OC <strong>no se cerrará</strong> '
+      + 'hasta registrar el PO de DataTextNow (en este formulario o en la OC).';
+    return;
+  }
+
+  if (evaluacion.motivo === 'recepciones_pendientes') {
+    aviso.style.display = 'block';
+    aviso.innerHTML = 'Hay recepciones parciales pendientes. La OC <strong>no se cerrará</strong> '
+      + 'hasta completar todas las recepciones y contar con el PO de DataTextNow.';
+    return;
+  }
+
+  aviso.style.display = 'none';
+}
 
 const params = new URLSearchParams(window.location.search);
 if (params.get('id')) {
@@ -133,6 +245,7 @@ function volverLista() {
   document.getElementById('vista-lista').style.display   = 'block';
   document.getElementById('vista-detalle').style.display = 'none';
   ocActual = null;
+  recepcionesActuales = [];
   cargarOrdenes(1);
   history.replaceState(null, '', window.location.pathname);
 }
@@ -344,6 +457,11 @@ function renderAcciones(oc) {
 }
 
 function abrirRecepcion() {
+  const poInput = document.getElementById('rec-datatextnow');
+  if (poInput && ocActual?.datatextnow_id && !poInput.value) {
+    poInput.value = ocActual.datatextnow_id;
+  }
+  actualizarAvisoCierreRecepcion();
   UI.abrirModal('modal-recepcion');
 }
 
@@ -373,11 +491,29 @@ async function cargarRecepciones(ocId) {
 
   try {
     recs = await Api.get(`/ordenes-compra/${ocId}/recepciones`);
+    recepcionesActuales = recs;
 
     if (!recs.length) {
       contenedor.innerHTML = '<p class="text-muted text-sm">Sin recepciones registradas</p>';
     } else {
-      contenedor.innerHTML = recs.map(r => `
+      contenedor.innerHTML = recs.map(r => {
+        const puedeConfirmar = r.estado !== 'entregado_solicitante'
+          && (Auth.puedeHacer(['contabilidad', 'admin'])
+            || (Auth.getUsuario()?.id === ocActual?.solicitante_id));
+        const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
+        const recsProyectadas = recs.map(x =>
+          x.id === r.id ? { ...x, estado: 'entregado_solicitante' } : x
+        );
+        const evalEntrega = evaluarCierreOc(ocActual, recsProyectadas);
+        const avisoSolicitante = esSolicitante && puedeConfirmar
+          ? (evalEntrega.ok
+            ? '<p class="text-sm mt-2" style="font-size:11px;color:#b45309;margin-bottom:0;">'
+              + '⚠️ Al confirmar, das por <strong>recibida y cerrada</strong> tu Orden de Compra.</p>'
+            : '<p class="text-sm mt-2" style="font-size:11px;color:#64748b;margin-bottom:0;">'
+              + 'Al confirmar, registras que ya recibiste este material.</p>')
+          : '';
+
+        return `
         <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px">
           <div class="d-flex align-center justify-between">
             ${UI.badge(r.estado)}
@@ -388,15 +524,14 @@ async function cargarRecepciones(ocId) {
             ${r.datatextnow_id ? ' · Trans. DataTextNow: ' + r.datatextnow_id : ''}
           </div>
           ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
-          ${r.estado !== 'entregado_solicitante' && 
-            (Auth.puedeHacer(['contabilidad','admin']) || 
-             (Auth.getUsuario()?.id === ocActual?.solicitante_id))
+          ${puedeConfirmar
             ? `<button class="btn btn-sm btn-outline mt-2"
                        data-action="marcar-entregado" data-rec-id="${r.id}">
-                ${Auth.getUsuario()?.rol === 'solicitante' ? 'Confirmar que recibí' : 'Marcar entregado al solicitante'}
-              </button>`
+                ${esSolicitante ? 'Confirmar que recibí' : 'Marcar entregado al solicitante'}
+              </button>${avisoSolicitante}`
             : ''}
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
   } catch {
     contenedor.innerHTML = '<p class="text-muted text-sm">Error al cargar recepciones</p>';
@@ -415,17 +550,25 @@ async function cargarRecepciones(ocId) {
     });
   }
 
-  // Controlar visibilidad y estado del botón "Cerrar OC" según confirmaciones
   if (ocActual && ocActual.estado === 'recibida') {
     const closeBtn = document.querySelector('#panel-acciones button[data-estado="cerrada"]');
-    const allConfirmed = recs.length > 0 && recs.every(r => r.estado === 'entregado_solicitante');
+    const tienePO = !!(ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
+      || recs.some(r => r.datatextnow_id && String(r.datatextnow_id).trim());
+    const listasParaCierre = recs.length > 0 && recs.every(r =>
+      r.estado === 'entregado_solicitante' || r.estado === 'recibido_completo'
+    );
+
     if (closeBtn) {
-      if (!allConfirmed) {
+      if (!listasParaCierre || !tienePO) {
         closeBtn.disabled = true;
-        closeBtn.title = 'Deben confirmarse todas las recepciones por el solicitante antes de poder cerrar la OC';
+        closeBtn.title = !recs.length
+          ? 'Registra al menos una recepción antes de cerrar la OC'
+          : !tienePO
+            ? 'Falta registrar el PO de DataTextNow para cerrar la OC'
+            : 'Hay recepciones parciales pendientes de completar';
       } else {
         closeBtn.disabled = false;
-        closeBtn.title = 'Cerrar la OC (todas las recepciones confirmadas)';
+        closeBtn.title = 'Cerrar la OC';
       }
     }
   }
@@ -445,32 +588,38 @@ function renderResumenAvance(recepciones) {
     return;
   }
 
-  const confirmadas = recepciones.filter(r => r.estado === 'entregado_solicitante').length;
-  const porcentaje = Math.round((confirmadas / total) * 100);
+  const listas = recepciones.filter(r =>
+    r.estado === 'entregado_solicitante' || r.estado === 'recibido_completo'
+  ).length;
+  const porcentaje = Math.round((listas / total) * 100);
 
   let mensaje = '';
   let color = '#166534';
 
-  const tienePO = !!(ocActual && ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim());
-  const puedeCerrar = (confirmadas === total) && tienePO;
+  const tienePO = !!(ocActual && ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
+    || recepciones.some(r => r.datatextnow_id && String(r.datatextnow_id).trim());
+  const puedeCerrar = (listas === total) && tienePO;
 
-  if (confirmadas === total) {
+  if (ocActual.estado === 'cerrada') {
+    mensaje = '✅ La OC está cerrada.';
+    color = '#166534';
+  } else if (listas === total) {
     if (tienePO) {
-      mensaje = '✅ Todas las recepciones han sido confirmadas por el solicitante. La OC puede cerrarse.';
+      mensaje = '✅ Recepciones completas. La OC puede cerrarse (o se cerrará automáticamente al registrar recibido completo).';
       color = '#166534';
     } else {
-      mensaje = '✅ Confirmaciones completas, pero <strong>falta registrar el PO de DataTextNow</strong> para poder cerrar la OC.';
+      mensaje = '✅ Recepciones registradas, pero <strong>falta el PO de DataTextNow</strong> para poder cerrar la OC.';
       color = '#854d0e';
     }
   } else {
-    mensaje = `Faltan <strong>${total - confirmadas}</strong> confirmación(es) del solicitante para poder cerrar la OC.`;
+    mensaje = `Hay <strong>${total - listas}</strong> recepción(es) parcial(es) pendientes de completar.`;
     color = '#854d0e';
   }
 
   contenedor.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-      <div style="font-weight:600;">Avance de confirmación por el solicitante</div>
-      <div style="font-weight:700; color:#185FA5;">${confirmadas} / ${total}</div>
+      <div style="font-weight:600;">Avance para cierre de OC</div>
+      <div style="font-weight:700; color:#185FA5;">${listas} / ${total}</div>
     </div>
 
     <div style="background:#e2e8f0; height:10px; border-radius:5px; overflow:hidden; margin-bottom:8px;">
@@ -490,9 +639,26 @@ function renderResumenAvance(recepciones) {
 }
 
 async function marcarEntregado(recId) {
+  const recsProyectadas = (recepcionesActuales || []).map(r =>
+    r.id === recId ? { ...r, estado: 'entregado_solicitante' } : r
+  );
+  const evaluacion = evaluarCierreOc(ocActual, recsProyectadas);
+  const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
+  const mensaje = esSolicitante
+    ? mensajeConfirmacionEntregaSolicitante(evaluacion)
+    : mensajeConfirmacionEntregaContabilidad(evaluacion);
+
+  if (!confirm(mensaje)) return;
+
   try {
     await Api.patch(`/ordenes-compra/${ocActual.id}/recepciones/${recId}/entregar`, {});
-    Toast.success('Marcado como entregado');
+    if (evaluacion.ok) {
+      Toast.success(esSolicitante
+        ? 'Recepción confirmada — tu OC ha sido cerrada'
+        : 'Entrega confirmada — OC cerrada automáticamente');
+    } else {
+      Toast.success(esSolicitante ? 'Recepción confirmada' : 'Marcado como entregado');
+    }
     abrirDetalle(ocActual.id);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al actualizar');
@@ -501,18 +667,47 @@ async function marcarEntregado(recId) {
 
 document.getElementById('form-recepcion').addEventListener('submit', async e => {
   e.preventDefault();
+
+  const estado = document.getElementById('rec-estado').value;
+  const poNuevo = document.getElementById('rec-datatextnow').value || null;
+  const esCompleta = estado !== 'recibido_parcial';
+
+  if (esCompleta && ocActual?.estado !== 'cerrada') {
+    const recsProyectadas = [
+      ...(recepcionesActuales || []),
+      { estado: 'recibido_completo', datatextnow_id: poNuevo },
+    ];
+    const evaluacion = evaluarCierreOc(ocActual, recsProyectadas, { poNuevo });
+    const mensaje = mensajeConfirmacionCierreRecepcion(evaluacion);
+    if (mensaje && !confirm(mensaje)) return;
+  }
+
   try {
-    await Api.post(`/ordenes-compra/${ocActual.id}/recepciones`, {
-      estado:        document.getElementById('rec-estado').value,
-      datatextnow_id:document.getElementById('rec-datatextnow').value || null,
+    const resp = await Api.post(`/ordenes-compra/${ocActual.id}/recepciones`, {
+      estado,
+      datatextnow_id: poNuevo,
       notas:         document.getElementById('rec-notas').value || null,
     });
     UI.cerrarModal('modal-recepcion');
-    Toast.success('Recepción registrada');
+
+    if (resp.oc_cerrada) {
+      Toast.success('Recepción registrada y OC cerrada automáticamente');
+    } else if (resp.pendiente_po) {
+      Toast.info('Recepción registrada. Registra el PO de DataTextNow para cerrar la OC.');
+    } else {
+      Toast.success('Recepción registrada');
+    }
+
     abrirDetalle(ocActual.id);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al registrar recepción');
   }
+});
+
+['rec-estado', 'rec-datatextnow'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', actualizarAvisoCierreRecepcion);
+  if (el && el.tagName === 'SELECT') el.addEventListener('change', actualizarAvisoCierreRecepcion);
 });
 
 

@@ -33,7 +33,6 @@ async function cargarCotizaciones(reqId) {
 
     cotizaciones.forEach(c => {
       const monto    = parseFloat(c.monto_total || 0).toLocaleString('es-MX');
-      const tieneIva = c.iva && parseFloat(c.iva) > 0;
       const estado   = c.seleccionada === 1 || c.estado === 'seleccionada'
         ? `<span class="badge bg-success">Seleccionada</span>`
         : (c.estado
@@ -56,7 +55,6 @@ async function cargarCotizaciones(reqId) {
           <td><strong>${UI.labelProveedor(c) || 'Sin proveedor'}</strong></td>
           <td class="text-end fw-600">
             $${monto} ${c.moneda || 'MXN'}
-            ${tieneIva ? '<span class="text-xs text-muted">(con IVA)</span>' : ''}
             ${desgloseBtn}
           </td>
           <td>${estado}</td>
@@ -405,16 +403,6 @@ async function editarCotizacion(cotizacionId) {
       itemsDiv.style.display  = 'block';
 
       c.items.forEach(item => tbody.appendChild(crearFilaItem(item)));
-
-      const ivaSel = document.getElementById('cot-iva-porcentaje');
-      if (ivaSel) {
-        if (c.monto_subtotal > 0 && c.iva !== undefined) {
-          const porcentaje = Math.round((parseFloat(c.iva) / parseFloat(c.monto_subtotal)) * 100);
-          ivaSel.value = [0, 8, 16].includes(porcentaje) ? porcentaje.toString() : '16';
-        } else {
-          ivaSel.value = '16';
-        }
-      }
 
       calcularTotalItems();
     } else {

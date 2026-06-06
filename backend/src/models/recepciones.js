@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { validarCierreOrden } from '../utils/ocCierre.js';
 
 async function listarPorOrden(orden_compra_id) {
   const [rows] = await pool.query(
@@ -23,10 +24,28 @@ async function obtenerPorId(id) {
   return rec || null;
 }
 
+async function registrarHistorialOc(conn, ocId, estadoAnterior, estadoNuevo, usuarioId, notas) {
+  await conn.query(
+    `INSERT INTO historial_estados
+       (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
+     VALUES ('orden_compra', ?, ?, ?, ?, ?)`,
+    [ocId, estadoAnterior, estadoNuevo, usuarioId, notas]
+  );
+}
+
 async function crear(datos, recibido_por) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
+    const [[ocAntes]] = await conn.query(
+      'SELECT id, estado, datatextnow_id FROM ordenes_compra WHERE id = ? FOR UPDATE',
+      [datos.orden_compra_id]
+    );
+    if (!ocAntes) throw { status: 404, mensaje: 'Orden de compra no encontrada' };
+
+    const esCompleta = datos.estado !== 'recibido_parcial';
+    const estadoRecepcion = datos.estado || 'recibido_completo';
 
     const [result] = await conn.query(
       `INSERT INTO recepciones
@@ -35,41 +54,70 @@ async function crear(datos, recibido_por) {
       [
         datos.orden_compra_id,
         recibido_por,
-        datos.estado || 'recibido_completo',
+        estadoRecepcion,
         datos.notas || null,
         datos.datatextnow_id || null,
       ]
     );
     const recepcionId = result.insertId;
 
-    // Si se proporcionó datatextnow_id en la recepción, registrarlo en la OC
-    // (el PO principal de DataTextNow se asocia al registrar la recepción)
     if (datos.datatextnow_id) {
       await conn.query(
-        `UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?`,
+        'UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?',
         [datos.datatextnow_id, datos.orden_compra_id]
       );
     }
 
-    // Si es recepción completa, avanzar la OC a estado 'recibida'
-    if (datos.estado !== 'recibido_parcial') {
-      await conn.query(
-        `UPDATE ordenes_compra SET estado = 'recibida'
-         WHERE id = ? AND estado IN ('distribuida','en_proceso')`,
-        [datos.orden_compra_id]
-      );
+    let cerrada = false;
 
-      await conn.query(
-        `INSERT INTO historial_estados
-           (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
-         SELECT 'orden_compra', oc.id, oc.estado, 'recibida', ?, 'Recepción registrada'
-         FROM ordenes_compra oc WHERE oc.id = ?`,
-        [recibido_por, datos.orden_compra_id]
-      );
+    if (esCompleta) {
+      const validacion = await validarCierreOrden(conn, datos.orden_compra_id);
+      const estadoAnterior = ocAntes.estado;
+
+      if (validacion.ok) {
+        cerrada = true;
+        await conn.query(
+          `UPDATE recepciones
+           SET estado = 'entregado_solicitante', fecha_entrega = NOW()
+           WHERE id = ?`,
+          [recepcionId]
+        );
+
+        await conn.query(
+          `UPDATE ordenes_compra
+           SET estado = 'cerrada', datatextnow_id = COALESCE(datatextnow_id, ?)
+           WHERE id = ? AND estado IN ('distribuida', 'en_proceso', 'recibida')`,
+          [validacion.po, datos.orden_compra_id]
+        );
+
+        await registrarHistorialOc(
+          conn,
+          datos.orden_compra_id,
+          estadoAnterior,
+          'cerrada',
+          recibido_por,
+          'Recepción completa registrada — OC cerrada automáticamente'
+        );
+      } else {
+        await conn.query(
+          `UPDATE ordenes_compra SET estado = 'recibida'
+           WHERE id = ? AND estado IN ('distribuida', 'en_proceso')`,
+          [datos.orden_compra_id]
+        );
+
+        await registrarHistorialOc(
+          conn,
+          datos.orden_compra_id,
+          estadoAnterior,
+          'recibida',
+          recibido_por,
+          `Recepción completa registrada${validacion.mensaje.includes('DataTextNow') ? ' — pendiente PO DataTextNow para cierre' : ''}`
+        );
+      }
     }
 
     await conn.commit();
-    return recepcionId;
+    return { id: recepcionId, cerrada, pendientePo: esCompleta && !cerrada };
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -89,43 +137,37 @@ async function marcarEntregado(id, usuarioId) {
        WHERE id = ?`,
       [id]
     );
+    if (!result.affectedRows) {
+      await conn.rollback();
+      return 0;
+    }
 
     const [[rec]] = await conn.query(
-      'SELECT orden_compra_id FROM recepciones WHERE id = ?', [id]
+      'SELECT orden_compra_id FROM recepciones WHERE id = ?',
+      [id]
     );
 
-    // Revisión de cierre: solo cerrar automáticamente si:
-    // 1. Hay al menos una recepción registrada.
-    // 2. Todas las recepciones de la OC están confirmadas por el solicitante.
-    // 3. La OC tiene registrado el PO de DataTextNow (datatextnow_id).
-    const [[ocInfo]] = await conn.query(
-      'SELECT datatextnow_id FROM ordenes_compra WHERE id = ?',
+    const [[oc]] = await conn.query(
+      'SELECT estado FROM ordenes_compra WHERE id = ?',
       [rec.orden_compra_id]
     );
-    const [totalRec] = await conn.query(
-      `SELECT COUNT(*) AS cnt FROM recepciones WHERE orden_compra_id = ?`,
-      [rec.orden_compra_id]
-    );
-    const [pendientes] = await conn.query(
-      `SELECT COUNT(*) AS cnt FROM recepciones
-       WHERE orden_compra_id = ? AND estado <> 'entregado_solicitante'`,
-      [rec.orden_compra_id]
-    );
-    const tienePO = ocInfo && ocInfo.datatextnow_id && String(ocInfo.datatextnow_id).trim() !== '';
-    const tieneRecepciones = (totalRec.cnt || 0) > 0;
-    const todasConfirmadas = (pendientes.cnt || 0) === 0;
 
-    if (tieneRecepciones && todasConfirmadas && tienePO) {
+    const validacion = await validarCierreOrden(conn, rec.orden_compra_id);
+    if (validacion.ok && oc.estado !== 'cerrada') {
       await conn.query(
-        `UPDATE ordenes_compra SET estado = 'cerrada'
-         WHERE id = ? AND estado = 'recibida'`,
-        [rec.orden_compra_id]
+        `UPDATE ordenes_compra
+         SET estado = 'cerrada', datatextnow_id = COALESCE(datatextnow_id, ?)
+         WHERE id = ? AND estado IN ('recibida', 'en_proceso', 'distribuida')`,
+        [validacion.po, rec.orden_compra_id]
       );
-      await conn.query(
-        `INSERT INTO historial_estados
-           (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
-         VALUES ('orden_compra', ?, 'recibida', 'cerrada', ?, 'Entregado al solicitante')`,
-        [rec.orden_compra_id, usuarioId]
+
+      await registrarHistorialOc(
+        conn,
+        rec.orden_compra_id,
+        oc.estado,
+        'cerrada',
+        usuarioId,
+        'Entregado al solicitante — OC cerrada automáticamente'
       );
     }
 

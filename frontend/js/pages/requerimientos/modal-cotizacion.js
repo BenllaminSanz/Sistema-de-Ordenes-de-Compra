@@ -91,18 +91,17 @@ async function guardarCotizacionOriginal() {
 
       if (datos.items.length === 0) return Toast.error('Debe agregar al menos un concepto en la lista de items');
 
-      datos.monto_subtotal = calculo.subtotal;
-      datos.iva            = calculo.iva;
+      datos.monto_subtotal = calculo.total;
+      datos.iva            = 0;
       datos.monto_total    = calculo.total;
-      datos.iva_porcentaje = obtenerIvaPorcentaje();
 
     } else {
       let monto_total = redondear2(parseFloat(document.getElementById('cot_monto_total').value) || 0);
       if (monto_total <= 0) return Toast.error('Debe ingresar un monto total válido');
 
       datos.monto_total    = monto_total;
-      datos.monto_subtotal = redondear2(monto_total / 1.16);
-      datos.iva            = redondear2(datos.monto_total - datos.monto_subtotal);
+      datos.monto_subtotal = monto_total;
+      datos.iva            = 0;
     }
 
     let response;
@@ -410,12 +409,6 @@ function redondear2(n) {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
-function obtenerIvaPorcentaje() {
-  const val = document.getElementById('cot-iva-porcentaje')?.value;
-  const num = parseFloat(val);
-  return isNaN(num) ? 16 : num;
-}
-
 function calcularTotalItems() {
   let subtotal = 0;
   document.querySelectorAll('#tabla-items-cot tbody tr').forEach(row => {
@@ -426,27 +419,9 @@ function calcularTotalItems() {
     subtotal += sub;
   });
 
-  subtotal = redondear2(subtotal);
-  const ivaPorcentaje = obtenerIvaPorcentaje();
-  const ivaMonto      = redondear2(subtotal * (ivaPorcentaje / 100));
-  const totalFinal    = redondear2(subtotal + ivaMonto);
-
-  const subEl   = document.getElementById('cot-subtotal');
-  const ivaEl   = document.getElementById('cot-iva-monto');
+  const total = redondear2(subtotal);
   const totalEl = document.getElementById('cot-total-final');
+  if (totalEl) totalEl.textContent = total.toFixed(2);
 
-  if (subEl)   subEl.textContent   = subtotal.toFixed(2);
-  if (ivaEl)   ivaEl.textContent   = ivaMonto.toFixed(2);
-  if (totalEl) totalEl.textContent = totalFinal.toFixed(2);
-
-  return { subtotal, iva: ivaMonto, total: totalFinal };
+  return { subtotal: total, iva: 0, total };
 }
-
-// Cableado del selector de IVA
-(function () {
-  const ivaSelect = document.getElementById('cot-iva-porcentaje');
-  if (ivaSelect) {
-    ivaSelect.addEventListener('change', calcularTotalItems);
-    ivaSelect.addEventListener('input',  calcularTotalItems);
-  }
-})();

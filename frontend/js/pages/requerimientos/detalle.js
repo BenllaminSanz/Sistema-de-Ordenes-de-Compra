@@ -115,7 +115,10 @@ function renderDetalle(req) {
       </div>
       <ul style="margin:0; padding-left:16px; font-size:12px;">
         ${req.items_libres.map(item => `
-          <li>${item.descripcion} — <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}</li>
+          <li style="margin-bottom:4px;">
+            ${item.descripcion} — <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}
+            ${UI.referenciaItemHtml(item, true)}
+          </li>
         `).join('')}
       </ul>
     </div>` : ''}
