@@ -12,6 +12,7 @@ async function listar(filtros = {}) {
       c.tipo, 
       c.codigo, 
       c.descripcion, 
+      c.unidad,
       c.costo_referencia, 
       c.moneda,
       c.proveedor_id,
@@ -72,13 +73,14 @@ async function crear(datos, conn = null) {
   const db = conn || pool;
   const [result] = await db.query(
     `
-    INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, moneda, proveedor_id, activo)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO catalogo (tipo, codigo, descripcion, unidad, costo_referencia, moneda, proveedor_id, activo)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       datos.tipo,
       datos.codigo,
       datos.descripcion,
+      datos.unidad || null,
       datos.costo_referencia != null ? datos.costo_referencia : null,
       datos.moneda || 'MXN',
       datos.proveedor_id || null,
@@ -129,7 +131,7 @@ async function generarCodigoUnico(conn, tipo, baseDescripcion = '') {
 
 async function actualizar(id, datos) {
   const campos = {};
-  ['tipo', 'codigo', 'descripcion', 'costo_referencia', 'moneda', 'proveedor_id'].forEach(c => {
+  ['tipo', 'codigo', 'descripcion', 'unidad', 'costo_referencia', 'moneda', 'proveedor_id'].forEach(c => {
     if (datos[c] !== undefined) campos[c] = datos[c];
   });
 

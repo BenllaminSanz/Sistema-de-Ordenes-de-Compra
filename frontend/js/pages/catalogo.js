@@ -320,6 +320,30 @@ async function cambiarEstadoCatalogo(id, nuevoEstado) {
   }
 }
 
+async function cargarCatalogoDesdeExcel(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  input.value = ''; // reset for reuse
+
+  if (!esAdminCatalogo) {
+    Toast.error('No tienes permisos para cargar desde Excel');
+    return;
+  }
+
+  try {
+    Toast.info('Procesando archivo Excel del catálogo...');
+
+    const data = await Api.uploadFile('/catalogo/import', file, 'excel');
+
+    Toast.success(data.mensaje || `Carga correcta. Se importaron ${data.nuevos || 0} elementos.`);
+    cargarCatalogo();
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al cargar el archivo Excel');
+  }
+}
+
+window.cargarCatalogoDesdeExcel = cargarCatalogoDesdeExcel;
+
 // Exponer funciones útiles
 window.cargarCatalogo = cargarCatalogo;
 window.abrirModalCatalogo = abrirModalCatalogo;

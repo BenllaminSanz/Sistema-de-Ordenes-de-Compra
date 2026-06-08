@@ -18,10 +18,14 @@
         <div class="d-flex align-center justify-between" style="margin-bottom:16px">
           <div class="card-title mb-0">Catálogo de Artículos y Servicios</div>
           <div id="admin-actions" style="display:none;">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('input-excel-catalogo').click()">
+              📥 Cargar Excel
+            </button>
             <button class="btn btn-primary btn-sm" onclick="abrirModalCatalogo()">
               + Nuevo elemento
             </button>
           </div>
+          <input type="file" id="input-excel-catalogo" accept=".xlsx,.xls" style="display:none" onchange="cargarCatalogoDesdeExcel(this)">
         </div>
 
         <!-- Filtros -->

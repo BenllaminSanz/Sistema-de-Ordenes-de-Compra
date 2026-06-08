@@ -62,4 +62,14 @@ async function cambiarEstado(id, activo) {
   return r.affectedRows;
 }
 
-export { listar, obtenerPorId, crear, actualizar, cambiarEstado, normalizarNumProveedor };
+async function obtenerPorNumProveedor(num) {
+  const norm = normalizarNumProveedor(num);
+  if (!norm) return null;
+  const [[prov]] = await pool.query(
+    'SELECT id, num_proveedor, nombre FROM proveedores WHERE num_proveedor = ? LIMIT 1',
+    [norm]
+  );
+  return prov || null;
+}
+
+export { listar, obtenerPorId, crear, actualizar, cambiarEstado, normalizarNumProveedor, obtenerPorNumProveedor };
