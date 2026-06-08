@@ -141,6 +141,7 @@ Dentro de la carpeta `backend/`:
 | `database/seed-demo-requerimientos.sql` | **Spool extenso de requerimientos para demo/pruebas**: 15+ requerimientos variados (PARTES catálogo puros, SERVICIOS/FLETES libres), todos los estados (borrador/en_revision/aprobado/incompleto/rechazado), múltiples cotizaciones comparables, seleccionadas, OCs en diferentes estados (generada/distribuida/en_proceso/recibida), historial completo y trazabilidad req↔OC. Ideal para "muestra de cómo funciona el sistema". |
 | `database/migrations/add-requerimiento-items-libres.sql` | Migración para agregar soporte de ítems en texto libre (libres para cotización y formalización a catálogo) |
 | `database/migrations/add-requerimiento-orden-compra-id.sql` | Nueva migración: agrega `orden_compra_id` (FK) al requerimiento. Permite vista de solicitante de la OC nacida del req aprobado, enlace bidireccional y trazabilidad. |
+| `database/migrations/add-configuracion-smtp.sql` | Nueva migración (2026): tabla `configuracion_smtp` para gestionar la configuración de envío de correos desde el panel de Administración (solo rol admin). |
 
 ## Variables de Entorno
 
@@ -150,8 +151,10 @@ Las más importantes son:
 
 - `DB_*` → Conexión a MySQL
 - `JWT_SECRET` → Clave para firmar tokens
-- `EMAIL_*` → Configuración SMTP
-- `SECRET_ENCRYPTION_KEY` → Llave de 32 caracteres para encriptación
+- `EMAIL_*` → Configuración SMTP (fallback cuando no hay config en DB)
+- `SECRET_ENCRYPTION_KEY` → Llave de 32 caracteres para encriptación (usada también para la pass SMTP)
+
+**Nueva característica**: Los administradores pueden gestionar la configuración SMTP completa desde la interfaz (Administración → Configuración SMTP). Los cambios se aplican en caliente. La tabla `configuracion_smtp` tiene prioridad sobre `.env`.
 
 ## Notas Importantes
 
@@ -159,6 +162,11 @@ Las más importantes son:
 - Las dependencias se instalan solo dentro de la carpeta `backend/`.
 - El sistema utiliza ES Modules (`"type": "module"`).
 - Se recomienda cambiar las credenciales por defecto después de la instalación inicial.
+- **Migración requerida para Config SMTP**: Después de actualizar, ejecuta:
+  ```bash
+  mysql -u root -p ordenes_compra < database/migrations/add-configuracion-smtp.sql
+  ```
+  Luego accede como **admin** → Administración → "Configuración SMTP" para configurar el envío de correos desde la UI (recomendado).
 
 ## Estado del Proyecto y Arquitectura de Flujo
 

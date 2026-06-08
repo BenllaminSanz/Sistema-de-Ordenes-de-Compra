@@ -209,7 +209,12 @@ async function cargarOrdenes(pagina) {
               <td>${UI.badge(o.estado)}</td>
               <td class="text-muted text-sm">${UI.fecha(o.created_at)}</td>
               <td>
-                <button class="btn btn-sm btn-outline" data-action="ver-oc" data-id="${o.id}">Ver</button>
+                <button class="btn btn-sm btn-outline" data-action="ver-oc" data-id="${o.id}" title="Ver detalle" style="padding:2px 6px;">
+                  <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" style="vertical-align:-1px;">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
               </td>
             </tr>`).join('')}
           </tbody>
@@ -313,7 +318,12 @@ function renderDetalle(oc) {
               ? (() => {
                   const safe = String(oc.datatextnow_id || '').replace(/'/g, "\\'");
                   return `<button onclick="editarDataTextNowOC(${oc.id}, '${safe}')" 
-                             class="btn btn-sm btn-outline" style="margin-left:8px;padding:2px 6px;font-size:11px">✏️ Editar</button>`;
+                             class="btn btn-sm btn-outline" title="Editar PO" style="margin-left:8px;padding:2px 6px;">
+                      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>`;
                 })()
               : ''}
           </td></tr>

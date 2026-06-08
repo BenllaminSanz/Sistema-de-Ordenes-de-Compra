@@ -133,9 +133,16 @@ body {
 #main-content {
   margin-left: var(--sidebar-w);
   margin-top: var(--topbar-h);
-  padding: 24px;
+  padding: 20px 24px;
   flex: 1;
   min-height: calc(100vh - var(--topbar-h));
+  min-width: 0; /* allow shrinking */
+}
+
+@media (max-width: 1080px) {
+  #main-content {
+    padding: 16px 18px;
+  }
 }
 
 /* ── Tarjetas ──────────────────────────────────────────────── */
@@ -143,13 +150,13 @@ body {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 20px 24px;
-  margin-bottom: 20px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
 }
 .card-title {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 600;
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -256,27 +263,39 @@ body {
 .metric-card.red   { border-top: 3px solid var(--danger);  }
 
 /* ── Tablas ────────────────────────────────────────────────── */
-.table-wrap { overflow-x: auto; }
+.table-wrap { 
+  overflow-x: auto; 
+  max-width: 100%;
+}
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13.5px;
+  table-layout: auto;
 }
 thead th {
-  padding: 10px 14px;
+  padding: 7px 8px;
   text-align: left;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: .03em;
   color: var(--muted);
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 tbody td {
-  padding: 11px 14px;
+  padding: 7px 8px;
   border-bottom: 1px solid #f0f0f0;
+  vertical-align: top;
+}
+
+/* Help long text columns not force horizontal expansion too much */
+tbody td {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
   vertical-align: middle;
 }
 tbody tr:hover { background: #fafafa; }
@@ -350,13 +369,21 @@ tbody tr:last-child td { border-bottom: none; }
 /* ── Filtros barra ─────────────────────────────────────────── */
 .filters-bar {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
-.filters-bar .form-control { width: auto; min-width: 160px; }
-.filters-bar .search-input { min-width: 240px; }
+.filters-bar .form-control { 
+  width: auto; 
+  min-width: 130px; 
+  font-size: 13px;
+  padding: 5px 8px;
+}
+.filters-bar .search-input { 
+  min-width: 200px; 
+  flex: 1 1 220px;
+}
 
 /* ── Modal ─────────────────────────────────────────────────── */
 .modal-backdrop {
@@ -511,15 +538,20 @@ tbody tr:last-child td { border-bottom: none; }
 .detail-info-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 .detail-info-table td {
-  padding: 6px 0;
+  padding: 5px 0;
   vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .detail-info-table td:first-child {
   color: #6b7280;
-  width: 140px;
+  width: 115px;
   white-space: nowrap;
+  padding-right: 8px;
+  font-size: 12px;
 }
 .spinner {
   width: 32px; height: 32px;
@@ -534,11 +566,34 @@ tbody tr:last-child td { border-bottom: none; }
 /* ── Helpers de Layout ───────────────────────────────────────── */
 .two-column-layout {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 20px;
+  grid-template-columns: 1fr 260px;
+  gap: 16px;
 }
 .two-column-layout.wide {
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 260px;
+}
+
+/* Prevent grid children from overflowing and force proper shrinking */
+.two-column-layout > div {
+  min-width: 0;
+}
+
+/* Stack panels vertically on medium and smaller screens to avoid horizontal scroll */
+@media (max-width: 1080px) {
+  .two-column-layout,
+  .two-column-layout.wide {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+/* Extra constraints inside requerimientos detail to prevent horizontal push */
+#vista-detalle .card {
+  min-width: 0;
+  overflow: hidden;   /* clips any stubborn inner content */
+}
+#vista-detalle table {
+  max-width: 100%;
 }
 
 .stacked-actions {
@@ -598,20 +653,38 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 #tabla-items-cot .item-desc {
-  min-width: 210px;
+  min-width: 160px;   /* reduced from 210px */
   font-size: 13px;
+  word-break: break-word;
 }
 
 #tabla-items-cot .item-cant,
 #tabla-items-cot .item-precio,
 #tabla-items-cot .item-unidad {
-  font-size: 12.5px;
-  padding: 5px 6px;
+  font-size: 12px;
+  padding: 4px 5px;
+  white-space: nowrap;
 }
 
 #tabla-items-cot .item-subtotal {
-  font-size: 12.8px;
+  font-size: 12.5px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Cotizaciones table inside requerimiento detail - make it fit better */
+#lista-cotizaciones table,
+#detalle-cotizaciones table {
+  font-size: 12.5px;
+}
+
+#lista-cotizaciones th,
+#lista-cotizaciones td {
+  padding: 6px 8px;
+}
+
+#lista-cotizaciones .item-desc {
+  min-width: 140px;
 }
 
 /* ── Responsive ────────────────────────────────────────────── */

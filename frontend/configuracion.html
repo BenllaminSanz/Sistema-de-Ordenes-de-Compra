@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuración SMTP — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    /* Estilos específicos para el panel de config */
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } }
+    .form-hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .status-box {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .status-env { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; }
+    .status-db { background: #d1fae5; border: 1px solid #10b981; color: #065f46; }
+    .test-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .secret-input { font-family: monospace; }
+  </style>
+</head>
+<body>
+<div id="app-layout">
+  <aside id="sidebar"></aside>
+
+  <div style="flex:1">
+    <header id="topbar"></header>
+
+    <main id="main-content">
+      <div class="card">
+        <div style="margin-bottom:16px">
+          <div class="card-title mb-0">Configuración de envío de correos (SMTP)</div>
+          <p class="text-muted" style="margin:6px 0 0; font-size:13px;">
+            Solo visible para administradores. Los cambios se aplican inmediatamente sin reiniciar el servidor.
+          </p>
+        </div>
+
+        <div id="smtp-status"></div>
+
+        <form id="form-smtp">
+          <div class="config-grid">
+            <div class="form-group">
+              <label class="form-label">Servidor SMTP (Host) *</label>
+              <input type="text" id="smtp-host" class="form-control" placeholder="smtp.office365.com" required>
+              <div class="form-hint">Ej: smtp.office365.com, smtp.gmail.com, mail.tuempresa.com</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Puerto *</label>
+              <input type="number" id="smtp-port" class="form-control" value="587" min="1" max="65535" required>
+              <div class="form-hint">Común: 587 (STARTTLS), 465 (SSL), 25 (sin cifrado)</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Usuario / Correo remitente *</label>
+              <input type="email" id="smtp-user" class="form-control" placeholder="compras@empresa.com" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Contraseña / App Password</label>
+              <input type="password" id="smtp-pass" class="form-control secret-input" placeholder="Dejar en blanco para mantener la actual" autocomplete="new-password">
+              <div class="form-hint">Se almacena encriptada. Déjalo vacío para no cambiarla.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nombre del remitente</label>
+              <input type="text" id="smtp-from-name" class="form-control" value="Sistema de Órdenes de Compra">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Cifrado (Secure)</label>
+              <div style="margin-top:6px">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                  <input type="checkbox" id="smtp-secure">
+                  <span>Usar conexión segura (SSL/TLS directo)</span>
+                </label>
+              </div>
+              <div class="form-hint">Marca solo si usas puerto 465. Para 587 normalmente dejar desmarcado.</div>
+            </div>
+          </div>
+
+          <details style="margin:16px 0;">
+            <summary style="cursor:pointer; color:#185FA5; font-size:13px;">Opciones avanzadas TLS</summary>
+            <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Ciphers TLS</label>
+                <input type="text" id="smtp-tls-ciphers" class="form-control" value="SSLv3">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Reject unauthorized</label>
+                <div style="margin-top:6px">
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                    <input type="checkbox" id="smtp-reject-unauthorized">
+                    <span>Rechazar certificados no válidos</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="modal-footer" style="padding-top:8px; border-top:1px solid var(--border); margin-top:8px;">
+            <button type="button" class="btn btn-outline" id="btn-reset-env">Usar solo .env (desactivar DB)</button>
+            <button type="button" class="btn btn-outline" id="btn-test-conn">Probar conexión</button>
+            <button type="button" class="btn btn-outline" id="btn-test-email">Enviar correo de prueba</button>
+            <button type="submit" class="btn btn-primary" id="btn-guardar-smtp">Guardar configuración</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title" style="font-size:14px; margin-bottom:8px;">Notas importantes</div>
+        <ul style="margin:0; padding-left:18px; font-size:13px; color:#475569; line-height:1.5;">
+          <li>La configuración guardada aquí tiene prioridad sobre las variables <code>EMAIL_*</code> del archivo <code>.env</code>.</li>
+          <li>La contraseña se guarda encriptada en la base de datos usando la llave <code>SECRET_ENCRYPTION_KEY</code>.</li>
+          <li>Después de guardar, los próximos correos (RFQ, verificaciones, etc.) usarán inmediatamente la nueva configuración.</li>
+          <li>Si desactivas la config de DB (botón "Usar solo .env"), el sistema volverá a leer las variables de entorno.</li>
+          <li>Para Office 365 / Outlook suele funcionar: Host <strong>smtp.office365.com</strong>, Puerto <strong>587</strong>, Secure <strong>desmarcado</strong>.</li>
+        </ul>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- Modal para correo de prueba -->
+<div class="modal-backdrop" id="modal-test-email">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Enviar correo de prueba</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-test-email')">×</button>
+    </div>
+    <form id="form-test-email">
+      <div class="form-group">
+        <label class="form-label">Enviar a (destinatario) *</label>
+        <input type="email" id="test-to" class="form-control" placeholder="tu@empresa.com" required>
+        <div class="form-hint">Se enviará un correo simple de verificación.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-test-email')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-enviar-prueba">Enviar prueba</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/pages/configuracion.js"></script>
+</body>
+</html>

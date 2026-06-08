@@ -44,7 +44,12 @@ async function cargarRequerimientos(pagina) {
               <td>${UI.badge(r.estado)}</td>
               <td class="text-muted text-sm">${UI.fecha(r.created_at)}</td>
               <td>
-                <button class="btn btn-sm btn-outline" data-action="ver" data-id="${r.id}">Ver</button>
+                <button class="btn btn-sm btn-outline" data-action="ver" data-id="${r.id}" title="Ver detalle" style="padding:2px 6px;">
+                  <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" style="vertical-align:-1px;">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
               </td>
             </tr>`).join('')}
           </tbody>

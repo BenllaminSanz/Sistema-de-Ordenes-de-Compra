@@ -113,12 +113,20 @@ async function cargarUsuarios() {
               <td class="text-muted text-sm">${UI.fecha(u.created_at)}</td>
               <td class="d-flex gap-1" style="flex-wrap:wrap">
                 ${gestionable ? `
-                  <button class="btn btn-sm btn-outline" data-action="editar-usuario" data-id="${u.id}">Editar</button>
+                  <button class="btn btn-sm btn-outline" data-action="editar-usuario" data-id="${u.id}" title="Editar usuario" style="padding:2px 6px;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
                   <button class="btn btn-sm btn-outline" data-action="password-usuario" data-id="${u.id}">Nueva contraseña</button>
                   ${!esYo ? `
                     <button class="btn btn-sm ${u.activo ? 'btn-danger' : 'btn-success'}"
-                            data-action="toggle-usuario" data-id="${u.id}" data-activo="${u.activo ? 'true' : 'false'}">
-                      ${u.activo ? 'Desactivar' : 'Activar'}
+                            data-action="toggle-usuario" data-id="${u.id}" data-activo="${u.activo ? 'true' : 'false'}"
+                            title="${u.activo ? 'Desactivar usuario' : 'Activar usuario'}" style="padding:2px 6px;">
+                      ${u.activo 
+                        ? `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>` 
+                        : `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><path d="M20 6L9 17l-5-5"/></svg>`}
                     </button>` : ''}
                 ` : '<span class="text-muted text-sm">Solo admin</span>'}
               </td>

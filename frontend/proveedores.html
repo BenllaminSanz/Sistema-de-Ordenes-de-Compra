@@ -22,9 +22,14 @@
               <input type="checkbox" id="chk-activos" checked onchange="cargarProveedores()">
               Solo activos
             </label>
+            <button class="btn btn-outline btn-sm"
+                    onclick="document.getElementById('input-excel-proveedores').click()">
+              📥 Cargar desde Excel
+            </button>
             <button class="btn btn-primary btn-sm"
                     onclick="abrirModalProveedor()">+ Nuevo proveedor</button>
           </div>
+          <input type="file" id="input-excel-proveedores" accept=".xlsx,.xls" style="display:none" onchange="cargarProveedoresDesdeExcel(this)">
         </div>
 
         <div id="tabla-proveedores"></div>
