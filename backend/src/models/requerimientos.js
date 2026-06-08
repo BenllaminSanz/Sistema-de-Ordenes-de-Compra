@@ -134,9 +134,12 @@ async function obtenerPorId(id) {
        c.descripcion,
        c.tipo,
        c.costo_referencia,
-       c.moneda
+       c.moneda,
+       p.num_proveedor as proveedor_num,
+       p.nombre as proveedor_nombre
      FROM requerimiento_items ri
      JOIN catalogo c ON c.id = ri.catalogo_id
+     LEFT JOIN proveedores p ON p.id = c.proveedor_id
      WHERE ri.requerimiento_id = ?
      ORDER BY ri.id ASC`,
     [id]

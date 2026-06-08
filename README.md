@@ -84,7 +84,7 @@ mysql -u root -p < database/schema.sql
 ### 5. Crear el usuario administrador
 
 ```bash
-node backend/scripts/seed-admin.js
+node backend/scripts/seed-admin.js   # (usa jebesari48@gmail.com / Admin1234! por defecto)
 ```
 
 ### 6. Iniciar el proyecto
@@ -136,7 +136,7 @@ Dentro de la carpeta `backend/`:
 |-------------------|--------------------------------------|
 | `npm run dev`     | Inicia el servidor con nodemon      |
 | `npm start`       | Inicia el servidor en modo normal   |
-| `node scripts/seed-admin.js` | Crea/actualiza el usuario administrador |
+| `node backend/scripts/seed-admin.js   # (usa jebesari48@gmail.com / Admin1234! por defecto)` | Crea/actualiza el usuario administrador (por defecto jebesari48@gmail.com) |
 | `database/seed_clean_test_data.sql` | Seed limpio base (proveedores + catálogo + algunos requerimientos + OCs de ejemplo) |
 | `database/seed-demo-requerimientos.sql` | **Spool extenso de requerimientos para demo/pruebas**: 15+ requerimientos variados (PARTES catálogo puros, SERVICIOS/FLETES libres), todos los estados (borrador/en_revision/aprobado/incompleto/rechazado), múltiples cotizaciones comparables, seleccionadas, OCs en diferentes estados (generada/distribuida/en_proceso/recibida), historial completo y trazabilidad req↔OC. Ideal para "muestra de cómo funciona el sistema". |
 | `database/migrations/add-requerimiento-items-libres.sql` | Migración para agregar soporte de ítems en texto libre (libres para cotización y formalización a catálogo) |
@@ -282,7 +282,7 @@ flowchart TD
 - **Fletes**: Tratados como "libres por ahora" en la lógica de email/cot (ver historial de chat).
 
 ### Cómo Verificar / "Jugar" con el Flujo (usando seeds existentes)
-1. DB limpia + `node backend/scripts/seed-admin.js`.
+1. DB limpia + `node backend/scripts/seed-admin.js   # (usa jebesari48@gmail.com / Admin1234! por defecto)`.
 2. (Recomendado) `mysql -u root -p ordenes_compra < database/seed_clean_test_data.sql`.
 3. (Para spool rico de demo) `mysql -u root -p ordenes_compra < database/seed-demo-requerimientos.sql` (agrega 15+ reqs variados con cotizaciones, OCs en varios estados, etc.).
 4. `cd backend && npm run dev`.

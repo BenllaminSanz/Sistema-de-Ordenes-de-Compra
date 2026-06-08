@@ -331,7 +331,14 @@ function prellenarItemsCotizacionDesdeReq(req) {
 
   const itemsFuente = tieneLibres
     ? req.items_libres.map(l => ({ descripcion: l.descripcion || '', cantidad: Math.max(1, Math.round(l.cantidad || 1)), unidad: l.unidad || 'pieza', precio_unitario: '' }))
-    : req.items.map(i => ({ descripcion: i.descripcion || i.codigo || '', cantidad: Math.max(1, Math.round(i.cantidad || 1)), unidad: 'pieza', precio_unitario: '' }));
+    : req.items.map(i => ({ 
+        descripcion: i.descripcion || i.codigo || '', 
+        cantidad: Math.max(1, Math.round(i.cantidad || 1)), 
+        unidad: 'pieza', 
+        precio_unitario: '',
+        proveedor_num: i.proveedor_num || '',
+        proveedor_nombre: i.proveedor_nombre || ''
+      }));
 
   itemsFuente.forEach(data => tbody.appendChild(crearFilaItem(data)));
   calcularTotalItems();
@@ -341,8 +348,15 @@ function crearFilaItem(itemData = {}) {
   const row = document.createElement('tr');
   row.className = 'item-row';
 
+  const provInfo = (itemData.proveedor_num || itemData.proveedor_nombre)
+    ? `<div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1;">Prov: <strong>${itemData.proveedor_num || ''}${itemData.proveedor_nombre ? ' — ' + itemData.proveedor_nombre : ''}</strong></div>`
+    : '';
+
   row.innerHTML = `
-    <td><input type="text" class="form-control item-desc" placeholder="Ej: Tornillos hexagonales 1/2" value="${itemData.descripcion || ''}" required></td>
+    <td style="vertical-align: top;">
+      <input type="text" class="form-control item-desc" placeholder="Ej: Tornillos hexagonales 1/2" value="${itemData.descripcion || ''}" required>
+      ${provInfo}
+    </td>
     <td><input type="number" class="form-control item-cant text-center" value="${itemData.cantidad || 1}" min="1" step="1"></td>
     <td>
       <select class="form-control item-unidad">

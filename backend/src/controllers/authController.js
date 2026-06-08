@@ -319,12 +319,16 @@ async function registroSolicitante(req, res) {
     });
 
     // Enviar correo de verificación (no bloqueante)
+    console.log(`[Auth] Intentando enviar correo de verificación a ${emailLimpio} usando config actual...`);
     enviarCorreoVerificacion(nombre.trim(), emailLimpio, token).then(r => {
       if (r.success) {
-        console.log(`[Auth] Correo de verificación enviado a ${emailLimpio}`);
+        console.log(`[Auth] ✓ Correo de verificación enviado exitosamente a ${emailLimpio}`);
+      } else {
+        console.error('[Auth] ✗ Falló el envío de verificación:', r);
       }
     }).catch(err => {
-      console.error('[Auth] Error enviando correo de verificación:', err.message);
+      console.error('[Auth] ✗ Excepción enviando correo de verificación:', err.message);
+      console.error(err);
     });
 
     res.status(201).json({

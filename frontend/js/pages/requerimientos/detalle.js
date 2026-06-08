@@ -95,9 +95,12 @@ function renderDetalle(req) {
           ${req.items.map(item => {
             const p = (item.costo_referencia != null) ? parseFloat(item.costo_referencia).toFixed(2) : '—';
             const m = item.moneda || 'MXN';
+            const prov = (item.proveedor_num || item.proveedor_nombre)
+              ? `<div style="font-size:10px; color:#64748b; margin-top:1px;">Prov: <strong>${item.proveedor_num || ''}${item.proveedor_nombre ? ' — ' + item.proveedor_nombre : ''}</strong></div>`
+              : '';
             return `
             <tr>
-              <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${item.codigo}</strong></td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${item.codigo}</strong>${prov}</td>
               <td style="padding:4px 6px; border-bottom:1px solid #eee;">${item.descripcion}</td>
               <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${parseFloat(item.cantidad).toLocaleString('es-MX')}</td>
               <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; color:#0d6efd; font-weight:500;">${p} ${m}</td>
