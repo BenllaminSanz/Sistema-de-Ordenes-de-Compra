@@ -23,16 +23,20 @@
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
             <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
           </svg>
-          Reporte STATUS 2025 POS HILOS
+          Reporte STATUS POS HILOS
         </div>
-        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
           <div style="flex:1; min-width:240px;">
             <p style="margin:0; font-size:13px; color:#475569; line-height:1.4;">
               Reporte consolidado por línea (el utilizado en contabilidad). Incluye estado de recepciones, montos, proveedores y STATUS.
             </p>
           </div>
+          <div class="form-group" style="margin:0; min-width:120px;">
+            <label for="reporte-status-anio" style="font-size:12px; color:#64748b; margin-bottom:4px; display:block;">Año</label>
+            <select id="reporte-status-anio" class="form-control"></select>
+          </div>
           <button id="btn-descargar-status" class="btn btn-primary" style="white-space:nowrap; padding:10px 18px;">
-            📊 Descargar STATUS 2025 POS HILOS (Excel)
+            📊 Descargar STATUS POS HILOS (Excel)
           </button>
         </div>
       </div>

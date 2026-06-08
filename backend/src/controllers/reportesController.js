@@ -98,6 +98,7 @@ export async function generarReporteOrdenesCompra(req, res) {
 export async function generarReporteStatusPOS(req, res) {
   try {
     const { anio, po, estado } = req.query;
+    const year = parseInt(anio) || new Date().getFullYear();
 
     // Query principal: explotamos OC + Requerimiento + Items del catálogo + Recepción
     let sql = `
@@ -137,10 +138,8 @@ export async function generarReporteStatusPOS(req, res) {
     `;
     const params = [];
 
-    if (anio) {
-      sql += ` AND YEAR(oc.fecha_autorizacion) = ? `;
-      params.push(parseInt(anio));
-    }
+    sql += ` AND YEAR(oc.fecha_autorizacion) = ? `;
+    params.push(year);
     if (po) {
       sql += ` AND (oc.datatextnow_id LIKE ? OR oc.numero_oc LIKE ?) `;
       params.push(`%${po}%`, `%${po}%`);
@@ -246,7 +245,7 @@ export async function generarReporteStatusPOS(req, res) {
 
     XLSX.utils.book_append_sheet(wb, ws, 'STATUS POS HILOS');
 
-    const filename = `STATUS_2025_POS_HILOS_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const filename = `STATUS_${year}_POS_HILOS_${new Date().toISOString().slice(0,10)}.xlsx`;
 
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 

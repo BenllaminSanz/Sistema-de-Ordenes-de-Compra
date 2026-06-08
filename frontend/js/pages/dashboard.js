@@ -151,6 +151,23 @@ cargarOCRecientes();
 cargarReqPendientes();
 
 // ─── Reporte STATUS POS HILOS (solo contabilidad/admin) ────────────────────────
+function poblarAniosReporte() {
+  const select = document.getElementById('reporte-status-anio');
+  if (!select) return;
+
+  const anioActual = new Date().getFullYear();
+  const anioInicio = anioActual - 5;
+
+  select.innerHTML = '';
+  for (let y = anioActual; y >= anioInicio; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === anioActual) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
 function inicializarReporteStatus() {
   const user = Auth.getUsuario();
   const puedeVer = user && ['contabilidad', 'admin'].includes(user.rol);
@@ -164,12 +181,16 @@ function inicializarReporteStatus() {
   }
 
   card.style.display = 'block';
+  poblarAniosReporte();
 
   const btn = document.getElementById('btn-descargar-status');
+  const selectAnio = document.getElementById('reporte-status-anio');
+
   if (btn) {
     btn.addEventListener('click', () => {
       if (window.Reportes && typeof Reportes.descargarStatusPOS === 'function') {
-        Reportes.descargarStatusPOS();
+        const anio = selectAnio ? selectAnio.value : new Date().getFullYear();
+        Reportes.descargarStatusPOS(anio);
       } else {
         Toast.error('No se pudo cargar el módulo de reportes');
       }

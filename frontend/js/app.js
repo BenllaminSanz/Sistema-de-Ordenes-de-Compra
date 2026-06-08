@@ -449,7 +449,7 @@ window.confirmAction = confirmAction;
 
 // ─── REPORTES (descargas Excel protegidas) ───────────────────────────────────
 const Reportes = {
-  async descargarStatusPOS() {
+  async descargarStatusPOS(anio) {
     try {
       const token = Auth.getToken();
       if (!token) {
@@ -457,7 +457,8 @@ const Reportes = {
         return;
       }
 
-      const res = await fetch(API_BASE + '/reportes/status-pos-hilos', {
+      const year = parseInt(anio) || new Date().getFullYear();
+      const res = await fetch(API_BASE + `/reportes/status-pos-hilos?anio=${year}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -473,13 +474,21 @@ const Reportes = {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `STATUS_2025_POS_HILOS_${new Date().toISOString().slice(0,10)}.xlsx`;
+
+      const disposition = res.headers.get('Content-Disposition');
+      let filename = `STATUS_${year}_POS_HILOS_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      if (disposition) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
+      }
+      a.download = filename;
+
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
 
-      Toast.success('Reporte STATUS POS HILOS descargado');
+      Toast.success(`Reporte STATUS POS HILOS ${year} descargado`);
     } catch (err) {
       Toast.error(err.message || 'Error al descargar el reporte STATUS');
     }
