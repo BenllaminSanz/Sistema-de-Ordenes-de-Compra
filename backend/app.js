@@ -29,6 +29,9 @@ const __dirname = path.dirname(__filename);
 // ─── Middlewares globales ──────────────────────────────────
 app.use(
   helmet({
+    hsts: false,
+    crossOriginOpenerPolicy: false,
+    originAgentCluster: false,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
