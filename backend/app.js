@@ -44,6 +44,7 @@ app.use(
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
+        upgradeInsecureRequests: null, // Desactivado: servidor corre en HTTP
       },
     },
   })

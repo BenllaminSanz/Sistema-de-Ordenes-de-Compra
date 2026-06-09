@@ -3,7 +3,7 @@
    Contiene: API client, auth, toast, utilidades de UI
    ============================================================ */
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = `${window.location.protocol}//${window.location.host}/api`;
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 const Auth = {
