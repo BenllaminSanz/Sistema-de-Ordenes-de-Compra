@@ -81,7 +81,7 @@ export async function obtenerConfigParaMailer() {
 }
 
 /**
- * Correo en copia (CC) para solicitudes de cotización.
+ * Correo en copia (CC) y Reply-To para solicitudes de cotización.
  * Prioridad: configuracion_smtp.cc_cotizaciones > EMAIL_CC_COTIZACIONES (.env)
  */
 export async function obtenerCcCotizaciones() {

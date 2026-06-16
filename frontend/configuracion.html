@@ -71,9 +71,9 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label">Copia en cotizaciones (CC)</label>
+              <label class="form-label">Copia y respuestas en cotizaciones</label>
               <input type="email" id="smtp-cc-cotizaciones" class="form-control" placeholder="araceli.morales@parkdalemills.com">
-              <div class="form-hint">Correo que recibirá copia en cada solicitud de cotización al proveedor. No aplica a verificación de usuarios.</div>
+              <div class="form-hint">Recibe copia (CC) de cada solicitud al proveedor y las respuestas cuando el proveedor pulse Responder (Reply-To). No aplica a verificación de usuarios.</div>
             </div>
 
             <div class="form-group">
@@ -122,7 +122,7 @@
           <li>La configuración guardada aquí tiene prioridad sobre las variables <code>EMAIL_*</code> del archivo <code>.env</code>.</li>
           <li>La contraseña se guarda encriptada en la base de datos usando la llave <code>SECRET_ENCRYPTION_KEY</code>.</li>
           <li>Después de guardar, los próximos correos (RFQ, verificaciones, etc.) usarán inmediatamente la nueva configuración.</li>
-          <li>El campo <strong>Copia en cotizaciones (CC)</strong> solo agrega copia en solicitudes de cotización a proveedores.</li>
+          <li>El campo <strong>Copia y respuestas en cotizaciones</strong> usa el mismo correo como CC y Reply-To en solicitudes a proveedores.</li>
           <li>Si desactivas la config de DB (botón "Usar solo .env"), el sistema volverá a leer las variables de entorno.</li>
           <li>Para Office 365 / Outlook suele funcionar: Host <strong>smtp.office365.com</strong>, Puerto <strong>587</strong>, Secure <strong>desmarcado</strong>.</li>
         </ul>

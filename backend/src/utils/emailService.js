@@ -156,12 +156,13 @@ Saludos`;
 
     const ccCotizaciones = await obtenerCcCotizaciones();
     if (ccCotizaciones) {
-      console.log(`[Email] Cotización #${cotizacionId} — CC: ${ccCotizaciones}`);
+      console.log(`[Email] Cotización #${cotizacionId} — CC / Reply-To: ${ccCotizaciones}`);
     }
 
     const result = await enviarCorreo({
       to: cot.proveedor_email,
       cc: ccCotizaciones || undefined,
+      replyTo: ccCotizaciones || undefined,
       subject: `Solicitud de Cotización - ${req.consecutivo || 'Requerimiento ' + req.id}`,
       html,
       text: textoPlano
