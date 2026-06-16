@@ -22,6 +22,7 @@ const el = {
   user: document.getElementById('smtp-user'),
   pass: document.getElementById('smtp-pass'),
   fromName: document.getElementById('smtp-from-name'),
+  ccCotizaciones: document.getElementById('smtp-cc-cotizaciones'),
   secure: document.getElementById('smtp-secure'),
   tlsCiphers: document.getElementById('smtp-tls-ciphers'),
   reject: document.getElementById('smtp-reject-unauthorized'),
@@ -58,6 +59,7 @@ async function cargarConfig() {
       el.port.value = c.port || 587;
       el.user.value = c.user || '';
       el.fromName.value = c.from_name || 'Sistema de Órdenes de Compra';
+      el.ccCotizaciones.value = c.cc_cotizaciones || '';
       el.secure.checked = !!c.secure;
       el.tlsCiphers.value = c.tls_ciphers || 'SSLv3';
       el.reject.checked = !!c.reject_unauthorized;
@@ -84,6 +86,7 @@ form.addEventListener('submit', async (e) => {
     user: el.user.value.trim(),
     pass: el.pass.value.trim() || undefined, // undefined = no cambiar
     from_name: el.fromName.value.trim() || undefined,
+    cc_cotizaciones: el.ccCotizaciones.value.trim() || '',
     secure: el.secure.checked,
     tls_ciphers: el.tlsCiphers.value.trim() || undefined,
     reject_unauthorized: el.reject.checked,

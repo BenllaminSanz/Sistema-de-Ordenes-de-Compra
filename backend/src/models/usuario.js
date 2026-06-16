@@ -20,8 +20,8 @@ async function buscarPorId(id) {
 
 async function crear(datos) {
   const [result] = await pool.query(
-    `INSERT INTO usuarios (nombre, email, password_hash, rol)
-     VALUES (?, ?, ?, ?)`,
+    `INSERT INTO usuarios (nombre, email, password_hash, rol, email_verificado)
+     VALUES (?, ?, ?, ?, 1)`,
     [datos.nombre, datos.email, datos.password_hash, datos.rol || 'solicitante']
   );
   return result.insertId;

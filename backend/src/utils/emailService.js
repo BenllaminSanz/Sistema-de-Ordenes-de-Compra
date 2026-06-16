@@ -1,4 +1,5 @@
 import { enviarCorreo } from '../config/mailer.js';
+import { obtenerCcCotizaciones } from '../models/configSmtp.js';
 import * as Requerimiento from '../models/requerimientos.js';
 import * as Cotizacion from '../models/cotizaciones.js';
 
@@ -153,8 +154,14 @@ ${itemsTextoPlano}${notasTextoPlano}
 
 Saludos`;
 
+    const ccCotizaciones = await obtenerCcCotizaciones();
+    if (ccCotizaciones) {
+      console.log(`[Email] Cotización #${cotizacionId} — CC: ${ccCotizaciones}`);
+    }
+
     const result = await enviarCorreo({
       to: cot.proveedor_email,
+      cc: ccCotizaciones || undefined,
       subject: `Solicitud de Cotización - ${req.consecutivo || 'Requerimiento ' + req.id}`,
       html,
       text: textoPlano

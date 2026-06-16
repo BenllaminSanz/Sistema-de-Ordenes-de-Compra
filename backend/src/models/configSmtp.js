@@ -11,7 +11,7 @@ const DEFAULT_FROM = 'Sistema de Órdenes de Compra';
 
 export async function obtenerConfig() {
   const [[row]] = await pool.query(
-    `SELECT id, host, port, secure, user, pass_encrypted, from_name,
+    `SELECT id, host, port, secure, user, pass_encrypted, from_name, cc_cotizaciones,
             tls_ciphers, reject_unauthorized, activo, updated_at, updated_by
      FROM configuracion_smtp
      WHERE activo = 1
@@ -29,6 +29,7 @@ export async function obtenerConfig() {
     secure: !!row.secure,
     user: row.user,
     from_name: row.from_name || DEFAULT_FROM,
+    cc_cotizaciones: row.cc_cotizaciones || '',
     tls_ciphers: row.tls_ciphers || 'SSLv3',
     reject_unauthorized: !!row.reject_unauthorized,
     activo: !!row.activo,
@@ -46,7 +47,7 @@ export async function obtenerConfig() {
  */
 export async function obtenerConfigParaMailer() {
   const [[row]] = await pool.query(
-    `SELECT id, host, port, secure, user, pass_encrypted, from_name,
+    `SELECT id, host, port, secure, user, pass_encrypted, from_name, cc_cotizaciones,
             tls_ciphers, reject_unauthorized, activo
      FROM configuracion_smtp
      WHERE activo = 1
@@ -73,9 +74,26 @@ export async function obtenerConfigParaMailer() {
     user: row.user,
     pass: passPlano,
     from_name: row.from_name || DEFAULT_FROM,
+    cc_cotizaciones: row.cc_cotizaciones || '',
     tls_ciphers: row.tls_ciphers || 'SSLv3',
     reject_unauthorized: !!row.reject_unauthorized
   };
+}
+
+/**
+ * Correo en copia (CC) para solicitudes de cotización.
+ * Prioridad: configuracion_smtp.cc_cotizaciones > EMAIL_CC_COTIZACIONES (.env)
+ */
+export async function obtenerCcCotizaciones() {
+  try {
+    const cfg = await obtenerConfigParaMailer();
+    const desdeDb = (cfg?.cc_cotizaciones || '').trim();
+    if (desdeDb) return desdeDb;
+  } catch (e) {
+    console.warn('[configSmtp] No se pudo leer cc_cotizaciones desde DB:', e.message);
+  }
+
+  return (process.env.EMAIL_CC_COTIZACIONES || '').trim();
 }
 
 export async function guardarConfig(datos, updatedById = null) {
@@ -86,6 +104,7 @@ export async function guardarConfig(datos, updatedById = null) {
     user,
     pass,                 // texto plano (solo si se quiere actualizar)
     from_name,
+    cc_cotizaciones,
     tls_ciphers,
     reject_unauthorized
   } = datos;
@@ -113,6 +132,7 @@ export async function guardarConfig(datos, updatedById = null) {
     user.trim().toLowerCase(),
     passEncrypted,
     (from_name || DEFAULT_FROM).trim(),
+    (cc_cotizaciones || '').trim(),
     tls_ciphers || 'SSLv3',
     reject_unauthorized ? 1 : 0,
     updatedById
@@ -121,7 +141,7 @@ export async function guardarConfig(datos, updatedById = null) {
   if (existente) {
     await pool.query(
       `UPDATE configuracion_smtp
-       SET host=?, port=?, secure=?, user=?, pass_encrypted=?, from_name=?,
+       SET host=?, port=?, secure=?, user=?, pass_encrypted=?, from_name=?, cc_cotizaciones=?,
            tls_ciphers=?, reject_unauthorized=?, updated_by=?
        WHERE id = ?`,
       [...params, existente.id]
@@ -130,8 +150,8 @@ export async function guardarConfig(datos, updatedById = null) {
   } else {
     const [result] = await pool.query(
       `INSERT INTO configuracion_smtp
-       (host, port, secure, user, pass_encrypted, from_name, tls_ciphers, reject_unauthorized, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (host, port, secure, user, pass_encrypted, from_name, cc_cotizaciones, tls_ciphers, reject_unauthorized, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params
     );
     return result.insertId;
