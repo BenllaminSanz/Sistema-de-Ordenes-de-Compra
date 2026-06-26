@@ -96,6 +96,14 @@ export async function obtenerCcCotizaciones() {
   return (process.env.EMAIL_CC_COTIZACIONES || '').trim();
 }
 
+async function resolverUpdatedBy(updatedById) {
+  if (updatedById == null || updatedById === '') return null;
+  const id = Number(updatedById);
+  if (!Number.isInteger(id) || id < 1) return null;
+  const [[row]] = await pool.query('SELECT id FROM usuarios WHERE id = ? LIMIT 1', [id]);
+  return row ? id : null;
+}
+
 export async function guardarConfig(datos, updatedById = null) {
   const {
     host,
@@ -125,6 +133,8 @@ export async function guardarConfig(datos, updatedById = null) {
     passEncrypted = encrypt(pass.trim());
   }
 
+  const updatedBy = await resolverUpdatedBy(updatedById);
+
   const params = [
     host.trim(),
     Number(port) || 587,
@@ -135,8 +145,10 @@ export async function guardarConfig(datos, updatedById = null) {
     (cc_cotizaciones || '').trim(),
     tls_ciphers || 'SSLv3',
     reject_unauthorized ? 1 : 0,
-    updatedById
+    updatedBy
   ];
+
+  const sesionDesactualizada = updatedById != null && updatedBy === null;
 
   if (existente) {
     await pool.query(
@@ -146,16 +158,16 @@ export async function guardarConfig(datos, updatedById = null) {
        WHERE id = ?`,
       [...params, existente.id]
     );
-    return existente.id;
-  } else {
-    const [result] = await pool.query(
-      `INSERT INTO configuracion_smtp
-       (host, port, secure, user, pass_encrypted, from_name, cc_cotizaciones, tls_ciphers, reject_unauthorized, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params
-    );
-    return result.insertId;
+    return { id: existente.id, sesionDesactualizada };
   }
+
+  const [result] = await pool.query(
+    `INSERT INTO configuracion_smtp
+     (host, port, secure, user, pass_encrypted, from_name, cc_cotizaciones, tls_ciphers, reject_unauthorized, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params
+  );
+  return { id: result.insertId, sesionDesactualizada };
 }
 
 /**

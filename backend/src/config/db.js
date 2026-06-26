@@ -1,13 +1,13 @@
 import { createPool } from 'mysql2/promise';
-import './env.js';
+import { projectRoot } from './env.js';
 
 // Configuración de conexión a la Base de Datos
 const pool = createPool({
-  host:     process.env.DB_HOST     || 'localhost', //Cambia por la IP del servidor
-  port:     process.env.DB_PORT     || 3306,
-  user:     process.env.DB_USER     || 'root',      //Crear usuario para base de datos  
-  password: process.env.DB_PASSWORD || 'root',      //Definir una password
-  database: process.env.DB_NAME     || 'ordenes_compra',  // Nombre de la base de datos
+  host:     process.env.DB_HOST     || 'localhost',
+  port:     Number(process.env.DB_PORT) || 3306,
+  user:     process.env.DB_USER     || 'root',
+  password: process.env.DB_PASSWORD ?? '',
+  database: process.env.DB_NAME     || 'ordenes_compra',
   //Configuración Adicional
   waitForConnections: true,
   connectionLimit:    10,
@@ -23,6 +23,10 @@ pool.getConnection()
   })
   .catch(err => {
     console.error('✘  Error al conectar a MySQL:', err.message);
+    console.error('   Host:', process.env.DB_HOST || 'localhost');
+    console.error('   BD:  ', process.env.DB_NAME || 'ordenes_compra');
+    console.error('   .env esperado en:', projectRoot);
+    console.error('   Revisa DB_HOST, DB_USER, DB_PASSWORD y DB_NAME en .env');
     process.exit(1);
   });
 

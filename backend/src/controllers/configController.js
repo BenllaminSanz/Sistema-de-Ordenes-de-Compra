@@ -51,7 +51,10 @@ export async function updateSmtpConfig(req, res) {
       return res.status(400).json({ mensaje: 'Puerto inválido' });
     }
 
-    const id = await guardarConfig(datos, req.usuario?.id || null);
+    const { id, sesionDesactualizada } = await guardarConfig(datos, req.usuario?.id || null);
+    if (sesionDesactualizada) {
+      logger.warn('[updateSmtpConfig] Token con id de usuario inexistente en BD (sesión anterior al respaldo).');
+    }
 
     // Recargar transporter inmediatamente para que los próximos envíos usen la nueva config
     await recargarTransporter();
@@ -61,7 +64,10 @@ export async function updateSmtpConfig(req, res) {
     res.json({
       mensaje: 'Configuración SMTP guardada correctamente',
       id,
-      config: nuevaCfg
+      config: nuevaCfg,
+      ...(sesionDesactualizada && {
+        aviso: 'Tu sesión usa un usuario de la BD anterior. Cierra sesión e inicia de nuevo para sincronizar tu cuenta.',
+      }),
     });
   } catch (err) {
     logger.error('[updateSmtpConfig]', err);
