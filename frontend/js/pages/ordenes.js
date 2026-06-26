@@ -125,7 +125,32 @@ const params = new URLSearchParams(window.location.search);
 if (params.get('id')) {
   abrirDetalle(params.get('id'));
 } else {
+  aplicarFiltrosDesdeUrl();
   cargarOrdenes(1);
+}
+
+function aplicarFiltrosDesdeUrl() {
+  const estado = params.get('estado');
+  const tipo = params.get('tipo');
+  const sinPo = params.get('sin_po');
+  const busqueda = params.get('busqueda');
+
+  if (estado) {
+    const sel = document.getElementById('fil-estado');
+    if (sel) sel.value = estado;
+  }
+  if (tipo) {
+    const sel = document.getElementById('fil-tipo');
+    if (sel) sel.value = tipo;
+  }
+  if (sinPo === '1' || sinPo === 'true') {
+    const chk = document.getElementById('fil-sin-po');
+    if (chk) chk.checked = true;
+  }
+  if (busqueda) {
+    const inp = document.getElementById('fil-busqueda-oc');
+    if (inp) inp.value = busqueda;
+  }
 }
 
 // Delegación para la tabla de órdenes
@@ -159,18 +184,34 @@ async function cargarOrdenes(pagina) {
   }
 
   const estado    = document.getElementById('fil-estado')?.value || '';
+  const tipo      = document.getElementById('fil-tipo')?.value || '';
+  const sinPo     = document.getElementById('fil-sin-po')?.checked;
   const busqueda  = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
   let qs = `?pagina=${pagina}&limite=15`;
-  if (estado)   qs += `&estado=${estado}`;
+  if (estado)   qs += `&estado=${encodeURIComponent(estado)}`;
+  if (tipo)     qs += `&tipo=${encodeURIComponent(tipo)}`;
+  if (sinPo)    qs += '&sin_po=true';
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
 
   try {
     const { datos, total, limite } = await Api.get('/ordenes-compra' + qs);
 
     if (!datos.length) {
-      UI.empty(contenedor, esSolicitante 
-        ? 'No tienes órdenes de compra generadas a partir de tus requerimientos.' 
-        : 'No hay órdenes de compra');
+      const hayFiltros = estado || tipo || sinPo || busqueda;
+      let msg = esSolicitante
+        ? 'No tienes órdenes de compra que coincidan con el filtro.'
+        : 'No hay órdenes de compra que coincidan con el filtro.';
+      if (!hayFiltros) {
+        msg = esSolicitante
+          ? 'No tienes órdenes de compra generadas a partir de tus requerimientos.'
+          : 'No hay órdenes de compra';
+      } else if (estado === 'activas') {
+        msg = 'No hay órdenes de compra activas o pendientes de cerrar.';
+      } else if (sinPo) {
+        msg = 'No hay órdenes sin PO DataTextNow con los filtros seleccionados.';
+      }
+      UI.empty(contenedor, msg);
+      document.getElementById('paginacion-oc').innerHTML = '';
       return;
     }
 
@@ -714,5 +755,10 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
   if (el) el.addEventListener('input', actualizarAvisoCierreRecepcion);
   if (el && el.tagName === 'SELECT') el.addEventListener('change', actualizarAvisoCierreRecepcion);
 });
+
+const busqOcInput = document.getElementById('fil-busqueda-oc');
+if (busqOcInput) {
+  busqOcInput.addEventListener('input', window.debounce(() => cargarOrdenes(1), 300));
+}
 
 

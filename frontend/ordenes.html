@@ -32,11 +32,11 @@
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input type="search" id="fil-busqueda-oc" class="form-control search-input"
-                     placeholder="Buscar por número OC o proveedor…"
-                     oninput="cargarOrdenes(1)">
+                     placeholder="Buscar por OC, PO, req. o proveedor…">
             </div>
             <select id="fil-estado" class="form-control">
               <option value="">Todos los estados</option>
+              <option value="activas">Activas / pendientes de cerrar</option>
               <option value="generada">Generada</option>
               <option value="distribuida">Distribuida</option>
               <option value="en_proceso">En proceso</option>
@@ -44,6 +44,16 @@
               <option value="cerrada">Cerrada</option>
               <option value="cancelada">Cancelada</option>
             </select>
+            <select id="fil-tipo" class="form-control">
+              <option value="">Todos los tipos</option>
+              <option value="PARTES">Partes</option>
+              <option value="SERVICIOS">Servicios</option>
+              <option value="FLETES">Fletes</option>
+            </select>
+            <label class="chk-label" style="white-space:nowrap">
+              <input type="checkbox" id="fil-sin-po" onchange="cargarOrdenes(1)">
+              Sin PO DataTextNow
+            </label>
             <button class="btn btn-outline btn-sm" onclick="cargarOrdenes(1)">Filtrar</button>
           </div>
 

@@ -128,11 +128,23 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     return;
   }
 
+  const area = document.getElementById('req-area').value;
+  const departamento = document.getElementById('req-departamento').value;
+
+  if (typeof validarComboAreaDepto === 'function') {
+    const v = validarComboAreaDepto(area, departamento);
+    if (!v.ok) {
+      Toast.error(v.mensaje);
+      btn.disabled = false;
+      return;
+    }
+  }
+
   const payload = {
     titulo_solicitud:    document.getElementById('req-titulo').value,
     tipo:                document.getElementById('req-tipo').value,
-    area:                document.getElementById('req-area').value,
-    departamento:        document.getElementById('req-departamento').value,
+    area,
+    departamento,
     notas:               document.getElementById('req-notas')?.value || '',
     requiere_cotizacion: tieneLibres,
     items: (window.requerimientoItemsSeleccionados || []).map(i => ({

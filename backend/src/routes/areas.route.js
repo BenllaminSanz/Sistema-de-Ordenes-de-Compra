@@ -1,8 +1,9 @@
-// backend/src/routes/areas.route.js
 import { Router } from 'express';
 import { autenticar, esContabilidadOAdmin } from '../middlewares/authMiddleware.js';
 import {
   getAreas,
+  getHistorial,
+  getUsoDepartamento,
   crearArea,
   actualizarArea,
   eliminarArea,
@@ -13,18 +14,17 @@ import {
 
 const router = Router();
 
-// Todas las rutas requieren estar autenticado
 router.use(autenticar);
 
-// Lectura: todos los roles
 router.get('/', getAreas);
+router.get('/historial', esContabilidadOAdmin, getHistorial);
+router.get('/:id/departamentos/:nombre/uso', esContabilidadOAdmin, getUsoDepartamento);
 
-// Escritura: solo admin o contabilidad
-router.post('/',                                   esContabilidadOAdmin, crearArea);
-router.put('/:id',                                 esContabilidadOAdmin, actualizarArea);
-router.delete('/:id',                              esContabilidadOAdmin, eliminarArea);
-router.post('/:id/departamentos',                  esContabilidadOAdmin, crearDepartamento);
-router.put('/:id/departamentos/:nombre',           esContabilidadOAdmin, actualizarDepartamento);
-router.delete('/:id/departamentos/:nombre',        esContabilidadOAdmin, eliminarDepartamento);
+router.post('/', esContabilidadOAdmin, crearArea);
+router.put('/:id', esContabilidadOAdmin, actualizarArea);
+router.delete('/:id', esContabilidadOAdmin, eliminarArea);
+router.post('/:id/departamentos', esContabilidadOAdmin, crearDepartamento);
+router.put('/:id/departamentos/:nombre', esContabilidadOAdmin, actualizarDepartamento);
+router.delete('/:id/departamentos/:nombre', esContabilidadOAdmin, eliminarDepartamento);
 
 export default router;

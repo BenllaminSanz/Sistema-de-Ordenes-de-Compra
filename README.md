@@ -127,6 +127,8 @@ Ver [`.env.example`](./.env.example) para la lista completa.
 
 Los administradores pueden configurar SMTP completo (incluido CC de cotizaciones) desde **Administración → Configuración SMTP**. La tabla `configuracion_smtp` tiene prioridad sobre `.env`.
 
+**Nota:** El SMTP suele apuntar al servidor interno de la empresa (`192.168.x.x`). En desarrollo local es normal ver un aviso de conexión rechazada; el resto del sistema funciona sin correo.
+
 ## Roles y Acceso
 
 | Rol | Acceso principal |

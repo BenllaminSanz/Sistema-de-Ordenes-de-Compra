@@ -70,7 +70,15 @@ async function initializeMailer() {
     if (currentTransporter) {
       currentTransporter.verify((error, success) => {
         if (error) {
-          console.error('❌ Error de configuración SMTP:', error.message);
+          const esRedLocal = /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH/i.test(error.message);
+          if (esRedLocal) {
+            console.warn(
+              `⚠️  SMTP no alcanzable desde este entorno (${error.message}). `
+              + 'Normal en desarrollo local: el servidor de correo suele estar en la red de la empresa.'
+            );
+          } else {
+            console.error('❌ Error de configuración SMTP:', error.message);
+          }
         } else {
           console.log(`✅ Servidor SMTP listo para enviar correos. (fuente: ${currentConfigSource})`);
         }

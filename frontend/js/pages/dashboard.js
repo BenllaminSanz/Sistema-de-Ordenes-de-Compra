@@ -73,7 +73,8 @@ function renderKPIs(s) {
   const totalReqs  = Object.values(reqMap).reduce((a, b) => a + b, 0);
   const enRevision = reqMap['en_revision'] || 0;
   const rechazados = reqMap['rechazado']   || 0;
-  const ocEnVuelo  = (ocMap['generada'] || 0) + (ocMap['distribuida'] || 0) + (ocMap['en_proceso'] || 0);
+  const ocEnVuelo  = (ocMap['generada'] || 0) + (ocMap['distribuida'] || 0)
+    + (ocMap['en_proceso'] || 0) + (ocMap['recibida'] || 0);
   const ocCerradas = ocMap['cerrada'] || 0;
   const totalOC    = Object.values(ocMap).reduce((a, b) => a + b, 0);
   const ciclo      = s.ciclo?.dias_promedio;
@@ -290,6 +291,9 @@ async function renderOCActivas() {
       return;
     }
     el.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <a href="ordenes.html?estado=activas" class="btn btn-sm btn-outline">Ver todas en Órdenes →</a>
+      </div>
       <div class="table-wrap">
         <table class="table-sm">
           <thead><tr>

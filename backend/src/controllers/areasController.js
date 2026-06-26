@@ -1,57 +1,92 @@
-// backend/src/controllers/areasController.js
-import { readFile, writeFile } from 'fs/promises';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import pool from '../config/db.js';
+import {
+  cargarConfig,
+  guardarConfig,
+  obtenerAreas,
+  registrarHistorial,
+  leerHistorial,
+  normalizarCodigoDTN,
+  normalizarNombreDepto,
+} from '../config/departamentosStore.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const JSON_PATH = join(__dirname, '../config/departamentos.json');
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-async function leerJSON() {
-  const raw = await readFile(JSON_PATH, 'utf-8');
-  return JSON.parse(raw);
+async function contarUsoDepartamento(areaId, nombre) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM requerimientos
+     WHERE area = ? AND departamento = ?`,
+    [areaId, nombre]
+  );
+  return Number(row?.total) || 0;
 }
 
-async function escribirJSON(data) {
-  await writeFile(JSON_PATH, JSON.stringify(data, null, 2), 'utf-8');
+async function contarUsoArea(areaId) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM requerimientos WHERE area = ?`,
+    [areaId]
+  );
+  return Number(row?.total) || 0;
 }
 
-// ── GET /api/areas ────────────────────────────────────────────────────────────
-// Todos los roles autenticados. Devuelve todas las áreas y departamentos.
+// ── GET /api/areas ────────────────────────────────────────────
 export async function getAreas(req, res) {
   try {
-    const data = await leerJSON();
-    return res.json({ areas: data.areas });
+    const areas = await obtenerAreas();
+    return res.json({ areas });
   } catch (err) {
     console.error('getAreas:', err);
     return res.status(500).json({ mensaje: 'Error al leer configuración de áreas' });
   }
 }
 
-// ── POST /api/areas ───────────────────────────────────────────────────────────
-// Body: { id, label }
+// ── GET /api/areas/historial ──────────────────────────────────
+export async function getHistorial(req, res) {
+  try {
+    const limite = Math.min(parseInt(req.query.limite, 10) || 50, 200);
+    const entradas = await leerHistorial(limite);
+    return res.json({ entradas });
+  } catch (err) {
+    console.error('getHistorial:', err);
+    return res.status(500).json({ mensaje: 'Error al leer historial' });
+  }
+}
+
+// ── GET /api/areas/:id/departamentos/:nombre/uso ──────────────
+export async function getUsoDepartamento(req, res) {
+  try {
+    const areaId = req.params.id;
+    const nombre = decodeURIComponent(req.params.nombre);
+    const total = await contarUsoDepartamento(areaId, nombre);
+    return res.json({ area_id: areaId, departamento: nombre, requerimientos: total });
+  } catch (err) {
+    console.error('getUsoDepartamento:', err);
+    return res.status(500).json({ mensaje: 'Error al consultar uso' });
+  }
+}
+
+// ── POST /api/areas ───────────────────────────────────────────
 export async function crearArea(req, res) {
   try {
     let { id, label } = req.body;
-
     if (!id || !label) {
       return res.status(400).json({ mensaje: 'id y label son requeridos' });
     }
 
-    id    = String(id).trim().toUpperCase().replace(/\s+/g, '_');
+    id = String(id).trim().toUpperCase().replace(/\s+/g, '_');
     label = String(label).trim();
 
-    const data = await leerJSON();
-
+    const data = await cargarConfig();
     if (data.areas.some(a => a.id === id)) {
       return res.status(409).json({ mensaje: `Ya existe un área con id "${id}"` });
     }
 
     const nueva = { id, label, departamentos: [] };
     data.areas.push(nueva);
-    await escribirJSON(data);
+    await guardarConfig(data);
+
+    await registrarHistorial({
+      usuario: req.usuario,
+      accion: 'area_creada',
+      detalle: { area_id: id, label },
+    });
 
     return res.status(201).json({ mensaje: 'Área creada', area: nueva });
   } catch (err) {
@@ -60,26 +95,27 @@ export async function crearArea(req, res) {
   }
 }
 
-// ── PUT /api/areas/:id ────────────────────────────────────────────────────────
-// Body: { label }
+// ── PUT /api/areas/:id ──────────────────────────────────────────
 export async function actualizarArea(req, res) {
   try {
-    const id    = req.params.id;
+    const id = req.params.id;
     const { label } = req.body;
+    if (!label) return res.status(400).json({ mensaje: 'label es requerido' });
 
-    if (!label) {
-      return res.status(400).json({ mensaje: 'label es requerido' });
-    }
-
-    const data = await leerJSON();
+    const data = await cargarConfig();
     const area = data.areas.find(a => a.id === id);
+    if (!area) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
 
-    if (!area) {
-      return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
-    }
-
+    const labelAnterior = area.label;
     area.label = String(label).trim();
-    await escribirJSON(data);
+    await guardarConfig(data);
+
+    await registrarHistorial({
+      usuario: req.usuario,
+      accion: 'area_actualizada',
+      detalle: { area_id: id, label_anterior: labelAnterior, label_nuevo: area.label },
+    });
+
     return res.json({ mensaje: 'Área actualizada', area });
   } catch (err) {
     console.error('actualizarArea:', err);
@@ -87,53 +123,77 @@ export async function actualizarArea(req, res) {
   }
 }
 
-// ── DELETE /api/areas/:id — eliminación real ──────────────────────────────────
+// ── DELETE /api/areas/:id ─────────────────────────────────────
 export async function eliminarArea(req, res) {
   try {
-    const id   = req.params.id;
-    const data = await leerJSON();
-    const idx  = data.areas.findIndex(a => a.id === id);
+    const id = req.params.id;
+    const data = await cargarConfig();
+    const idx = data.areas.findIndex(a => a.id === id);
+    if (idx === -1) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
 
-    if (idx === -1) {
-      return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
-    }
+    const area = data.areas[idx];
+    const reqs = await contarUsoArea(id);
 
     data.areas.splice(idx, 1);
-    await escribirJSON(data);
-    return res.json({ mensaje: 'Área eliminada' });
+    await guardarConfig(data);
+
+    await registrarHistorial({
+      usuario: req.usuario,
+      accion: 'area_eliminada',
+      detalle: {
+        area_id: id,
+        label: area.label,
+        departamentos: area.departamentos.length,
+        requerimientos_historicos: reqs,
+      },
+    });
+
+    return res.json({
+      mensaje: 'Área eliminada',
+      requerimientos_historicos: reqs,
+    });
   } catch (err) {
     console.error('eliminarArea:', err);
     return res.status(500).json({ mensaje: 'Error al eliminar área' });
   }
 }
 
-// ── POST /api/areas/:id/departamentos ─────────────────────────────────────────
-// Body: { nombre }
+// ── POST /api/areas/:id/departamentos ─────────────────────────
 export async function crearDepartamento(req, res) {
   try {
     const id = req.params.id;
-    let { nombre } = req.body;
+    let { nombre, codigo } = req.body;
+    if (!nombre) return res.status(400).json({ mensaje: 'nombre es requerido' });
 
-    if (!nombre) {
-      return res.status(400).json({ mensaje: 'nombre es requerido' });
-    }
+    nombre = normalizarNombreDepto(nombre);
+    codigo = normalizarCodigoDTN(codigo);
 
-    nombre = String(nombre).trim().toUpperCase();
-
-    const data = await leerJSON();
+    const data = await cargarConfig();
     const area = data.areas.find(a => a.id === id);
-
-    if (!area) {
-      return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
-    }
+    if (!area) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
 
     if (area.departamentos.some(d => d.nombre === nombre)) {
       return res.status(409).json({ mensaje: `Ya existe el departamento "${nombre}" en esta área` });
     }
 
-    const depto = { nombre };
+    if (codigo) {
+      const duplicado = data.areas.some(a =>
+        a.departamentos.some(d => d.codigo && d.codigo === codigo)
+      );
+      if (duplicado) {
+        return res.status(409).json({ mensaje: `El código DTN "${codigo}" ya está en uso` });
+      }
+    }
+
+    const depto = { nombre, ...(codigo ? { codigo } : {}) };
     area.departamentos.push(depto);
-    await escribirJSON(data);
+    await guardarConfig(data);
+
+    await registrarHistorial({
+      usuario: req.usuario,
+      accion: 'departamento_creado',
+      detalle: { area_id: id, area_label: area.label, nombre, codigo: codigo || null },
+    });
 
     return res.status(201).json({ mensaje: 'Departamento creado', departamento: depto });
   } catch (err) {
@@ -142,65 +202,109 @@ export async function crearDepartamento(req, res) {
   }
 }
 
-// ── PUT /api/areas/:id/departamentos/:nombre ──────────────────────────────────
-// Body: { nombre } — renombrar
+// ── PUT /api/areas/:id/departamentos/:nombre ──────────────────
 export async function actualizarDepartamento(req, res) {
   try {
-    const id          = req.params.id;
+    const id = req.params.id;
     const nombreActual = decodeURIComponent(req.params.nombre);
-    const { nombre: nuevoNombre } = req.body;
+    const { nombre: nuevoNombre, codigo } = req.body;
+    if (!nuevoNombre) return res.status(400).json({ mensaje: 'nombre es requerido' });
 
-    if (!nuevoNombre) {
-      return res.status(400).json({ mensaje: 'nombre es requerido' });
-    }
-
-    const data = await leerJSON();
+    const data = await cargarConfig();
     const area = data.areas.find(a => a.id === id);
-
-    if (!area) {
-      return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
-    }
+    if (!area) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
 
     const depto = area.departamentos.find(d => d.nombre === nombreActual);
     if (!depto) {
       return res.status(404).json({ mensaje: `Departamento "${nombreActual}" no encontrado` });
     }
 
-    const nombreNorm = String(nuevoNombre).trim().toUpperCase();
+    const nombreNorm = normalizarNombreDepto(nuevoNombre);
+    const codigoNorm = codigo !== undefined ? normalizarCodigoDTN(codigo) : depto.codigo || null;
+
     if (nombreNorm !== nombreActual && area.departamentos.some(d => d.nombre === nombreNorm)) {
       return res.status(409).json({ mensaje: `Ya existe el departamento "${nombreNorm}" en esta área` });
     }
 
+    if (codigoNorm) {
+      const duplicado = data.areas.some(a =>
+        a.departamentos.some(d => d.codigo === codigoNorm && d.nombre !== nombreActual)
+      );
+      if (duplicado) {
+        return res.status(409).json({ mensaje: `El código DTN "${codigoNorm}" ya está en uso` });
+      }
+    }
+
+    const reqs = await contarUsoDepartamento(id, nombreActual);
+    const anterior = { nombre: depto.nombre, codigo: depto.codigo || null };
+
     depto.nombre = nombreNorm;
-    await escribirJSON(data);
-    return res.json({ mensaje: 'Departamento actualizado', departamento: depto });
+    if (codigo !== undefined) {
+      if (codigoNorm) depto.codigo = codigoNorm;
+      else delete depto.codigo;
+    }
+
+    await guardarConfig(data);
+
+    await registrarHistorial({
+      usuario: req.usuario,
+      accion: 'departamento_actualizado',
+      detalle: {
+        area_id: id,
+        anterior,
+        nuevo: { nombre: depto.nombre, codigo: depto.codigo || null },
+        requerimientos_historicos: reqs,
+      },
+    });
+
+    return res.json({
+      mensaje: 'Departamento actualizado',
+      departamento: depto,
+      requerimientos_historicos: reqs,
+    });
   } catch (err) {
     console.error('actualizarDepartamento:', err);
     return res.status(500).json({ mensaje: 'Error al actualizar departamento' });
   }
 }
 
-// ── DELETE /api/areas/:id/departamentos/:nombre — eliminación real ─────────────
+// ── DELETE /api/areas/:id/departamentos/:nombre ───────────────
 export async function eliminarDepartamento(req, res) {
   try {
-    const id     = req.params.id;
+    const id = req.params.id;
     const nombre = decodeURIComponent(req.params.nombre);
 
-    const data = await leerJSON();
+    const data = await cargarConfig();
     const area = data.areas.find(a => a.id === id);
-
-    if (!area) {
-      return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
-    }
+    if (!area) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
 
     const idx = area.departamentos.findIndex(d => d.nombre === nombre);
     if (idx === -1) {
       return res.status(404).json({ mensaje: `Departamento "${nombre}" no encontrado` });
     }
 
+    const depto = area.departamentos[idx];
+    const reqs = await contarUsoDepartamento(id, nombre);
+
     area.departamentos.splice(idx, 1);
-    await escribirJSON(data);
-    return res.json({ mensaje: 'Departamento eliminado' });
+    await guardarConfig(data);
+
+    await registrarHistorial({
+      usuario: req.usuario,
+      accion: 'departamento_eliminado',
+      detalle: {
+        area_id: id,
+        area_label: area.label,
+        nombre: depto.nombre,
+        codigo: depto.codigo || null,
+        requerimientos_historicos: reqs,
+      },
+    });
+
+    return res.json({
+      mensaje: 'Departamento eliminado',
+      requerimientos_historicos: reqs,
+    });
   } catch (err) {
     console.error('eliminarDepartamento:', err);
     return res.status(500).json({ mensaje: 'Error al eliminar departamento' });

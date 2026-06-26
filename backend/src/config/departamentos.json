@@ -6,52 +6,68 @@
       "label": "Administración",
       "departamentos": [
         {
-          "nombre": "MATERIAL DE OFICINA"
+          "nombre": "MATERIAL DE OFICINA",
+          "codigo": "00001"
         },
         {
-          "nombre": "EDIFICIOS"
+          "nombre": "EDIFICIOS",
+          "codigo": "00003"
         },
         {
-          "nombre": "SUMINISTROS Y EQUIPOS DE COMPUTO"
+          "nombre": "SUMINISTROS Y EQUIPOS DE COMPUTO",
+          "codigo": "00020"
         },
         {
-          "nombre": "SEGURIDAD"
+          "nombre": "SEGURIDAD",
+          "codigo": "00030"
         },
         {
-          "nombre": "MEDICAMENTOS"
+          "nombre": "MEDICAMENTOS",
+          "codigo": "00035"
         },
         {
-          "nombre": "RECURSOS HUMANOS"
+          "nombre": "RECURSOS HUMANOS",
+          "codigo": "00037"
         },
         {
-          "nombre": "HONORARIOS PROFESIONALES"
+          "nombre": "HONORARIOS PROFESIONALES",
+          "codigo": "00040"
         },
         {
-          "nombre": "SERVICIOS DE COCINA"
+          "nombre": "SERVICIOS DE COCINA",
+          "codigo": "00041"
         },
         {
-          "nombre": "MATERIAL DE LIMPIEZA"
+          "nombre": "MATERIAL DE LIMPIEZA",
+          "codigo": "2460"
         },
         {
-          "nombre": "REPARACIÓN DE MONTACARGAS"
+          "nombre": "REPARACIÓN DE MONTACARGAS",
+          "codigo": "2465"
         },
         {
-          "nombre": "RENTA DE ALMACEN"
+          "nombre": "RENTA DE ALMACEN",
+          "codigo": "2480"
         },
         {
-          "nombre": "ADMINISTRACIÓN"
+          "nombre": "ADMINISTRACIÓN",
+          "codigo": "ADM01"
         },
         {
-          "nombre": "CAPACITACIÓN"
+          "nombre": "CAPACITACIÓN",
+          "codigo": "ADM02"
         },
         {
-          "nombre": "SISTEMAS"
+          "nombre": "SISTEMAS",
+          "codigo": "ADM03"
         },
         {
-          "nombre": "ENFERMERÍA"
+          "nombre": "ENFERMERÍA",
+          "codigo": "ADM04"
         },
         {
-          "nombre": "ATENCIÓN A CLIENTES"
+          "nombre": "ATENCIÓN A CLIENTES",
+          "codigo": "ADM05"
         }
       ]
     },
@@ -60,37 +76,48 @@
       "label": "Producción",
       "departamentos": [
         {
-          "nombre": "ARTÍCULOS DE SEGURIDAD"
+          "nombre": "ARTÍCULOS DE SEGURIDAD",
+          "codigo": "00006"
         },
         {
-          "nombre": "MATERIAL DE EMPAQUE"
+          "nombre": "MATERIAL DE EMPAQUE",
+          "codigo": "00007"
         },
         {
-          "nombre": "CERA"
+          "nombre": "CERA",
+          "codigo": "00008"
         },
         {
-          "nombre": "LABORATORIO"
+          "nombre": "LABORATORIO",
+          "codigo": "00009"
         },
         {
-          "nombre": "SISTEMA CONTRA INCENDIO"
+          "nombre": "SISTEMA CONTRA INCENDIO",
+          "codigo": "00010"
         },
         {
-          "nombre": "PROYECTO"
+          "nombre": "PROYECTO",
+          "codigo": "00012"
         },
         {
-          "nombre": "CHILLER"
+          "nombre": "CHILLER",
+          "codigo": "00013"
         },
         {
-          "nombre": "HVAC"
+          "nombre": "HVAC",
+          "codigo": "00014"
         },
         {
-          "nombre": "AIRE COMPRIMIDO"
+          "nombre": "AIRE COMPRIMIDO",
+          "codigo": "00022"
         },
         {
-          "nombre": "TUBOS / CONOS"
+          "nombre": "TUBOS / CONOS",
+          "codigo": "00023"
         },
         {
-          "nombre": "RECOLECCIÓN DE RESIDUOS"
+          "nombre": "RECOLECCIÓN DE RESIDUOS",
+          "codigo": "00034"
         }
       ]
     },
@@ -99,19 +126,24 @@
       "label": "OE (Open End)",
       "departamentos": [
         {
-          "nombre": "APERTURA-OE"
+          "nombre": "APERTURA-OE",
+          "codigo": "3000"
         },
         {
-          "nombre": "CARDADO-OE"
+          "nombre": "CARDADO-OE",
+          "codigo": "3010"
         },
         {
-          "nombre": "ESTIRADO-OE"
+          "nombre": "ESTIRADO-OE",
+          "codigo": "3050"
         },
         {
-          "nombre": "HILATURA-OE"
+          "nombre": "HILATURA-OE",
+          "codigo": "3070"
         },
         {
-          "nombre": "MANTENIMIENTO-OE"
+          "nombre": "MANTENIMIENTO-OE",
+          "codigo": "3420"
         }
       ]
     },
@@ -120,19 +152,24 @@
       "label": "Polycotton",
       "departamentos": [
         {
-          "nombre": "APERTURA-POLYCOTTON"
+          "nombre": "APERTURA-POLYCOTTON",
+          "codigo": "4000"
         },
         {
-          "nombre": "CARDADO-POLYCOTTON"
+          "nombre": "CARDADO-POLYCOTTON",
+          "codigo": "4010"
         },
         {
-          "nombre": "ESTIRADO-POLYCOTTON"
+          "nombre": "ESTIRADO-POLYCOTTON",
+          "codigo": "4050"
         },
         {
-          "nombre": "HILATURA-POLYCOTTON"
+          "nombre": "HILATURA-POLYCOTTON",
+          "codigo": "4070"
         },
         {
-          "nombre": "MANTENIMIENTO-POLYCOTTON"
+          "nombre": "MANTENIMIENTO-POLYCOTTON",
+          "codigo": "4420"
         }
       ]
     },
@@ -141,25 +178,32 @@
       "label": "RS (Ring Spinning)",
       "departamentos": [
         {
-          "nombre": "APERTURA-RS"
+          "nombre": "APERTURA-RS",
+          "codigo": "5000"
         },
         {
-          "nombre": "CARDADO-RS"
+          "nombre": "CARDADO-RS",
+          "codigo": "5010"
         },
         {
-          "nombre": "ESTIRADO-RS"
+          "nombre": "ESTIRADO-RS",
+          "codigo": "5050"
         },
         {
-          "nombre": "VELOZ-RS"
+          "nombre": "VELOZ-RS",
+          "codigo": "5060"
         },
         {
-          "nombre": "HILATURA-RS"
+          "nombre": "HILATURA-RS",
+          "codigo": "5070"
         },
         {
-          "nombre": "CONERAS-RS"
+          "nombre": "CONERAS-RS",
+          "codigo": "5080"
         },
         {
-          "nombre": "MANTENIMIENTO-RS"
+          "nombre": "MANTENIMIENTO-RS",
+          "codigo": "5420"
         }
       ]
     },
@@ -168,22 +212,28 @@
       "label": "Fletes",
       "departamentos": [
         {
-          "nombre": "FLETE POR RETORNO DE INSUMOS"
+          "nombre": "FLETE POR RETORNO DE INSUMOS",
+          "codigo": "00032"
         },
         {
-          "nombre": "FLETE POR VENTA DE HILO"
+          "nombre": "FLETE POR VENTA DE HILO",
+          "codigo": "00033"
         },
         {
-          "nombre": "FLETE POR MATERIALES"
+          "nombre": "FLETE POR MATERIALES",
+          "codigo": "00036"
         },
         {
-          "nombre": "FLETE POR MATERIAL DE EMPAQUE"
+          "nombre": "FLETE POR MATERIAL DE EMPAQUE",
+          "codigo": "00038"
         },
         {
-          "nombre": "FLETE POR RECOLECCIÓN DE PACAS"
+          "nombre": "FLETE POR RECOLECCIÓN DE PACAS",
+          "codigo": "00039"
         },
         {
-          "nombre": "FLETE POR MATERIAL SINTÉTICO"
+          "nombre": "FLETE POR MATERIAL SINTÉTICO",
+          "codigo": "3200"
         }
       ]
     },
@@ -192,10 +242,12 @@
       "label": "Otros",
       "departamentos": [
         {
-          "nombre": "XORELLA"
+          "nombre": "XORELLA",
+          "codigo": "OTR01"
         },
         {
-          "nombre": "RECLAIM"
+          "nombre": "RECLAIM",
+          "codigo": "OTR02"
         }
       ]
     }

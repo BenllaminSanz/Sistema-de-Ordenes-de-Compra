@@ -1,6 +1,14 @@
 import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar } from '../models/requerimientos.js';
 import * as CotizacionModel from '../models/cotizaciones.js';
+import { validarAreaDepartamento } from '../config/departamentosStore.js';
 import logger from '../utils/logger.js';
+
+async function validarAreaDeptoReq(area, departamento) {
+  if (!area || !departamento) {
+    return { ok: false, mensaje: 'Área y departamento son requeridos' };
+  }
+  return validarAreaDepartamento(area, departamento);
+}
 
 // ─── GET /requerimientos ──────────────────────────────────────────────────────
 async function listar(req, res) {
@@ -90,6 +98,11 @@ async function crear(req, res) {
     // Forzar requiere_cotizacion=true si hay ítems libres (regla de negocio: solo ellos necesitan cotización para alta en catálogo)
     const requiereCotFinal = tieneItemsLibres ? true : (requiere_cotizacion || false);
 
+    const valAreaDepto = await validarAreaDeptoReq(area, departamento);
+    if (!valAreaDepto.ok) {
+      return res.status(422).json({ mensaje: valAreaDepto.mensaje });
+    }
+
     const id = await _crear(
       { 
         titulo_solicitud, 
@@ -144,9 +157,26 @@ async function actualizar(req, res) {
     // Forzar requiere_cotizacion=true cuando se usan items_libres (libres siempre requieren cotización)
     const requiereCotFinal = tieneItemsLibres ? true : (requiere_cotizacion || false);
 
+    const reqActualPrev = (area !== undefined || departamento !== undefined || req.usuario.rol === 'solicitante')
+      ? await obtenerPorId(req.params.id)
+      : null;
+
+    if (area !== undefined || departamento !== undefined) {
+      if (!reqActualPrev) {
+        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+      }
+      const valAreaDepto = await validarAreaDeptoReq(
+        area ?? reqActualPrev.area,
+        departamento ?? reqActualPrev.departamento
+      );
+      if (!valAreaDepto.ok) {
+        return res.status(422).json({ mensaje: valAreaDepto.mensaje });
+      }
+    }
+
     // Los solicitantes solo pueden editar sus propios requerimientos
     if (req.usuario.rol === 'solicitante') {
-      const reqActual = await obtenerPorId(req.params.id);
+      const reqActual = reqActualPrev || await obtenerPorId(req.params.id);
       if (!reqActual) {
         return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
       }

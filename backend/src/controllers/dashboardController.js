@@ -106,7 +106,7 @@ export async function getStats(req, res, next) {
                SUM(CASE WHEN oc.monto_total IS NOT NULL THEN oc.monto_total ELSE 0 END) AS monto_comprometido,
                oc.moneda
         FROM ordenes_compra oc
-        WHERE oc.estado IN ('generada', 'distribuida', 'en_proceso')
+        WHERE oc.estado IN ('generada', 'distribuida', 'en_proceso', 'recibida')
         GROUP BY oc.moneda
       `),
 

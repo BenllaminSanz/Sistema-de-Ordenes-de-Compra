@@ -277,7 +277,7 @@
               <option value="SERVICIOS">Servicios</option>
               <option value="FLETES">Fletes</option>
             </select>
-            <select id="fil-area" class="form-control">
+            <select id="fil-area" class="form-control" onchange="filtrarFiltroDeptosPorArea(this.value)">
               <option value="">Todas las áreas</option>
             </select>
             <select id="fil-departamento" class="form-control">
@@ -765,22 +765,9 @@ async function cargarAreasEnForm() {
       if (valActual) filArea.value = valActual;
     }
 
-    // Poblar #fil-departamento con todos los departamentos (para filtros)
-    const filDepto = document.getElementById('fil-departamento');
-    if (filDepto) {
-      filDepto.innerHTML = '<option value="">Todos los deptos</option>';
-      areas.forEach(a => {
-        const grp = document.createElement('optgroup');
-        grp.label = a.label;
-        a.departamentos.forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d.nombre;
-          opt.textContent = d.nombre;
-          grp.appendChild(opt);
-        });
-        filDepto.appendChild(grp);
-      });
-    }
+    // Poblar #fil-departamento (filtrado por área si aplica)
+    const filAreaVal = document.getElementById('fil-area')?.value || '';
+    filtrarFiltroDeptosPorArea(filAreaVal, true);
 
     // Si hay un área ya seleccionada en el formulario, mostrar deptos
     const areaActual = document.getElementById('req-area')?.value;
@@ -879,12 +866,27 @@ function setRefTab(tipo) {
   }
 }
 
-// ── Filtrado de departamentos según el área seleccionada ─────
-function filtrarDeptosPorArea(area) {
+// ── Validar que departamento pertenece al área ───────────────
+function validarComboAreaDepto(area, depto) {
+  if (!area || !depto) {
+    return { ok: false, mensaje: 'Selecciona área y departamento' };
+  }
+  const areaData = (_areasCache || []).find(a => a.id === area);
+  if (!areaData) return { ok: false, mensaje: 'El área seleccionada no es válida' };
+  if (!areaData.departamentos.some(d => d.nombre === depto)) {
+    return { ok: false, mensaje: 'El departamento no corresponde al área seleccionada' };
+  }
+  return { ok: true };
+}
+window.validarComboAreaDepto = validarComboAreaDepto;
+
+// ── Formulario: departamentos según área ─────────────────────
+function filtrarDeptosPorArea(area, deptoPreferido) {
   const sel  = document.getElementById('req-departamento');
   const hint = document.getElementById('depto-hint');
   if (!sel) return;
 
+  const prev = deptoPreferido || sel.value;
   const areaData = (_areasCache || []).find(a => a.id === area);
 
   sel.innerHTML = '';
@@ -906,12 +908,50 @@ function filtrarDeptosPorArea(area) {
   areaData.departamentos.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.nombre;
-    opt.textContent = d.nombre;
+    opt.textContent = d.codigo ? `${d.nombre} (${d.codigo})` : d.nombre;
     sel.appendChild(opt);
   });
 
+  if (prev && areaData.departamentos.some(d => d.nombre === prev)) {
+    sel.value = prev;
+  }
+
   if (hint) hint.textContent = `— ${areaData.label}`;
 }
+window.filtrarDeptosPorArea = filtrarDeptosPorArea;
+
+// ── Filtros lista: departamentos según área ──────────────────
+function filtrarFiltroDeptosPorArea(area, conservarValor) {
+  const filDepto = document.getElementById('fil-departamento');
+  if (!filDepto) return;
+
+  const prev = conservarValor ? filDepto.value : '';
+  filDepto.innerHTML = '<option value="">Todos los deptos</option>';
+
+  const areas = _areasCache || [];
+  const lista = area
+    ? areas.filter(a => a.id === area)
+    : areas;
+
+  lista.forEach(a => {
+    const grp = document.createElement('optgroup');
+    grp.label = a.label;
+    a.departamentos.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.nombre;
+      opt.textContent = d.nombre;
+      grp.appendChild(opt);
+    });
+    filDepto.appendChild(grp);
+  });
+
+  if (prev && [...filDepto.options].some(o => o.value === prev)) {
+    filDepto.value = prev;
+  } else if (area && prev) {
+    filDepto.value = '';
+  }
+}
+window.filtrarFiltroDeptosPorArea = filtrarFiltroDeptosPorArea;
 </script>
 
 <script src="js/app.js"></script>

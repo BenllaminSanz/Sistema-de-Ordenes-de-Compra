@@ -72,14 +72,16 @@ async function login(req, res) {
       rol:    usuario.rol,
     };
 
+    const jwtExpires = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRES || '8h';
+
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '8h',
+      expiresIn: jwtExpires,
     });
 
     res.json({
       token,
       usuario: payload,
-      expira_en: process.env.JWT_EXPIRES_IN || '8h',
+      expira_en: jwtExpires,
     });
 
     // Envío oportunista de cotizaciones pendientes (solo para roles con permisos)

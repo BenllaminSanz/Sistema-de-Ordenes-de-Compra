@@ -19,7 +19,17 @@ async function generarNumeroOC(conn) {
 const ESTADOS_OC_ACTIVAS = ['generada', 'distribuida', 'en_proceso', 'recibida'];
 
 async function listar(filtros = {}) {
-  const { estado, solicitante_id, fecha_desde, fecha_hasta, pagina = 1, limite = 20 } = filtros;
+  const {
+    estado,
+    tipo,
+    busqueda,
+    sin_po,
+    solicitante_id,
+    fecha_desde,
+    fecha_hasta,
+    pagina = 1,
+    limite = 20,
+  } = filtros;
 
   let where = [];
   let params = [];
@@ -33,9 +43,25 @@ async function listar(filtros = {}) {
     params.push(estado);
   }
 
+  if (tipo) {
+    where.push('r.tipo = ?');
+    params.push(tipo);
+  }
+
+  if (sin_po === 'true' || sin_po === true || sin_po === '1') {
+    where.push("(oc.datatextnow_id IS NULL OR TRIM(oc.datatextnow_id) = '')");
+  }
+
+  if (busqueda) {
+    const like = `%${String(busqueda).trim()}%`;
+    where.push(`(
+      oc.numero_oc LIKE ? OR oc.datatextnow_id LIKE ? OR r.consecutivo LIKE ?
+      OR p.nombre LIKE ? OR p.num_proveedor LIKE ?
+    )`);
+    params.push(like, like, like, like, like);
+  }
+
   if (solicitante_id) {
-    // Filtrado para solicitantes: solo OCs que nacen de sus requerimientos
-    // (usando la relación requerimiento -> orden_compra)
     where.push('r.solicitante_id = ?');
     params.push(solicitante_id);
   }
@@ -51,6 +77,10 @@ async function listar(filtros = {}) {
   }
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const joinsFiltro = `
+     JOIN requerimientos r ON r.id = oc.requerimiento_id
+     LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
+     LEFT JOIN proveedores p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)`;
   const offset = (pagina - 1) * limite;
 
   const [rows] = await pool.query(
@@ -83,9 +113,9 @@ async function listar(filtros = {}) {
   );
 
   const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total 
+    `SELECT COUNT(DISTINCT oc.id) AS total
      FROM ordenes_compra oc
-     JOIN requerimientos r ON r.id = oc.requerimiento_id
+     ${joinsFiltro}
      ${whereClause}`, params
   );
 
