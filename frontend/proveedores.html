@@ -15,21 +15,43 @@
 
     <main id="main-content">
       <div class="card">
-        <div class="d-flex align-center justify-between" style="margin-bottom:16px">
-          <div class="card-title mb-0">Proveedores</div>
-          <div class="d-flex gap-2">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Proveedores</h2>
+          </div>
+          <div class="page-header-actions">
+            <label class="chk-label">
               <input type="checkbox" id="chk-activos" checked onchange="cargarProveedores()">
               Solo activos
             </label>
             <button class="btn btn-outline btn-sm"
                     onclick="document.getElementById('input-excel-proveedores').click()">
-              📥 Cargar desde Excel
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24" style="vertical-align:-1px;margin-right:3px">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Cargar Excel
             </button>
-            <button class="btn btn-primary btn-sm"
-                    onclick="abrirModalProveedor()">+ Nuevo proveedor</button>
+            <button class="btn btn-primary btn-sm" onclick="abrirModalProveedor()">
+              + Nuevo proveedor
+            </button>
           </div>
-          <input type="file" id="input-excel-proveedores" accept=".xlsx,.xls" style="display:none" onchange="cargarProveedoresDesdeExcel(this)">
+          <input type="file" id="input-excel-proveedores" accept=".xlsx,.xls"
+                 style="display:none" onchange="cargarProveedoresDesdeExcel(this)">
+        </div>
+
+        <div class="filters-bar">
+          <div class="search-wrap">
+            <svg class="search-icon" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" id="busq-proveedor" class="form-control search-input"
+                   placeholder="Buscar por nombre, N°, RFC o email…"
+                   oninput="filtrarProveedores(this.value)">
+          </div>
+          <span id="prov-contador" class="filter-count"></span>
         </div>
 
         <div id="tabla-proveedores"></div>
@@ -48,10 +70,10 @@
     <form id="form-proveedor">
       <div style="display:grid;grid-template-columns:140px 1fr;gap:12px">
         <div class="form-group">
-          <label class="form-label">No. Proveedor *</label>
-          <input type="text" id="prov-numero" class="form-control" required
+          <label class="form-label">No. Proveedor</label>
+          <input type="text" id="prov-numero" class="form-control"
                  maxlength="5" inputmode="numeric" pattern="\d{5}"
-                 placeholder="00001" title="5 dígitos numéricos">
+                 placeholder="00001 (opcional)" title="5 dígitos numéricos">
           <small class="text-danger" id="error-prov-numero"></small>
         </div>
         <div class="form-group">
@@ -74,8 +96,8 @@
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Dirección</label>
-        <textarea id="prov-direccion" class="form-control" rows="2"></textarea>
+        <label class="form-label">Notas</label>
+        <textarea id="prov-notas" class="form-control" rows="2"></textarea>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline"

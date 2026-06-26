@@ -22,8 +22,9 @@ if (reqTipoSelect) {
       const checkbox = document.getElementById('usar-items-nuevos');
       if (checkbox) checkbox.checked = false;
 
-      const seccion2 = document.getElementById('seccion-items-catalogo');
-      if (seccion2) seccion2.style.opacity = '1';
+      // Resetear modo al cambiar tipo (arrays ya limpios, sin confirm)
+      if (typeof ocultarLibreInline === 'function') ocultarLibreInline(true);
+      if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('catalogo');
 
       cargarFiltroProveedoresParaCatalogo();
     }
@@ -34,31 +35,71 @@ function renderItemsSeleccionados() {
   const contenedor = document.getElementById('items-seleccionados-req');
   if (!contenedor) return;
 
-  if (!window.requerimientoItemsSeleccionados || window.requerimientoItemsSeleccionados.length === 0) {
-    contenedor.innerHTML = '<span class="text-muted" style="font-size:11px;">Ninguno seleccionado aún. Busca arriba y agrega ítems del catálogo.</span>';
+  const catalogo = window.requerimientoItemsSeleccionados || [];
+  const libres   = window.requerimientoItemsLibres        || [];
+
+  if (catalogo.length === 0 && libres.length === 0) {
+    contenedor.innerHTML = `
+      <div class="sel-empty">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        Ninguno seleccionado — busca y agrega ítems arriba
+      </div>`;
     return;
   }
 
   let html = '';
-  window.requerimientoItemsSeleccionados.forEach((item, index) => {
+
+  // ── Ítems del catálogo (verde) ────────────────────────────────
+  catalogo.forEach((item, index) => {
     const precio = (item.costo_referencia != null && !isNaN(item.costo_referencia))
-      ? parseFloat(item.costo_referencia).toFixed(2)
+      ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       : null;
     const moneda = item.moneda || 'MXN';
     const precioHtml = precio != null
-      ? `<span style="color:#555; font-size:11px; margin-left:6px; white-space:nowrap;">${precio} ${moneda}</span>`
+      ? `<span class="sel-item-price">${precio} ${moneda}</span>`
       : '';
 
     html += `
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px; background:#e6f4ea; padding:3px 6px; border-radius:4px; border:1px solid #a3d9b1;">
-        <span style="flex:1; font-size:12px;">${item.codigo} — ${item.descripcion}${precioHtml}</span>
-        <input type="number" value="${Math.round(item.cantidad)}" min="1" step="1"
-               style="width:60px; font-size:11px;"
+      <div class="sel-item-row">
+        <span class="sel-item-code">${item.codigo}</span>
+        <span class="sel-item-desc" title="${item.descripcion}">${item.descripcion}</span>
+        ${precioHtml}
+        <input type="number" class="form-control sel-item-qty" value="${Math.round(item.cantidad)}"
+               min="1" step="1" title="Cantidad"
                onchange="actualizarCantidadItem(${index}, this.value)">
-        <button type="button" class="btn btn-sm btn-danger" style="padding:0 4px; font-size:10px; line-height:1;"
-                onclick="eliminarItemSeleccionado(${index})">×</button>
+        <button type="button" class="libre-del-btn" title="Quitar" onclick="eliminarItemSeleccionado(${index})">×</button>
       </div>`;
   });
+
+  // ── Ítems libres (ámbar) ──────────────────────────────────────
+  libres.forEach((item, index) => {
+    const metaPartes = [];
+    if (item.cantidad > 1 || item.unidad) {
+      metaPartes.push(`${item.cantidad}${item.unidad ? ' ' + item.unidad : ''}`);
+    }
+    let refHtml = '';
+    if (item.referencia_tipo === 'link' && item.referencia_url) {
+      refHtml = `<a href="${item.referencia_url}" target="_blank" rel="noopener" style="font-size:10.5px; color:var(--primary); margin-left:4px;">🔗 enlace</a>`;
+    } else if (item.referencia_tipo === 'archivo' && item.referencia_nombre) {
+      refHtml = `<span style="font-size:10.5px; color:var(--muted); margin-left:4px;">📎 ${item.referencia_nombre}</span>`;
+    }
+
+    html += `
+      <div class="libre-item-card" style="background:#fffbeb; border-color:#fde68a;">
+        <div class="libre-item-num" style="background:#fef3c7; color:#92400e;">${index + 1}</div>
+        <div class="libre-item-body">
+          <div class="libre-item-desc">${item.descripcion}</div>
+          <div class="libre-item-meta">
+            ${metaPartes.length ? `<span>${metaPartes.join(' · ')}</span>` : ''}
+            ${refHtml}
+          </div>
+        </div>
+        <button type="button" class="libre-del-btn" title="Quitar" onclick="eliminarItemLibreInline(${index})">×</button>
+      </div>`;
+  });
+
   contenedor.innerHTML = html;
 }
 
@@ -98,16 +139,16 @@ async function buscarEnCatalogo() {
 
     if (!resultados.length) {
       contenedor.innerHTML = `
-        <div style="padding:8px; font-size:11px; color:#7c3f00; background:#fefce8; border:1px solid #facc15; border-radius:4px;">
-          <strong>No se encontró en el catálogo.</strong><br>
-          <button type="button" class="btn btn-sm btn-outline-warning mt-1" style="font-size:10px;"
-                  onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true);">
-            Agregar como ítem nuevo (libre)
-          </button>
-          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" style="font-size:10px; margin-left:4px;"
-                  onclick="crearRequerimientoParaAltaCatalogoFromCurrent()">
-            Crear req separado
-          </button>
+        <div class="cat-empty-state">
+          <div class="cat-no-results">
+            <strong>Sin resultados en el catálogo</strong>
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+              <button type="button" class="btn btn-sm btn-primary"
+                      onclick="mostrarLibreInline()">
+                + Agregar como ítem nuevo
+              </button>
+            </div>
+          </div>
         </div>`;
       return;
     }
@@ -116,41 +157,50 @@ async function buscarEnCatalogo() {
     resultados.forEach(item => {
       const yaSeleccionado = window.requerimientoItemsSeleccionados.some(i => i.catalogo_id === item.id);
       const safeDesc = item.descripcion.replace(/'/g, "\\'").replace(/"/g, '\\"');
+      const precio = item.costo_referencia != null
+        ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : null;
 
       html += `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #eee; font-size:12px; gap:6px;">
-          <div style="flex:1; min-width:0;">
-            <strong>${item.codigo}</strong> — ${item.descripcion}
-            ${item.costo_referencia != null ? `<span style="color:#0d6efd; font-size:11px; font-weight:600; margin-left:4px;">${parseFloat(item.costo_referencia).toFixed(2)} ${item.moneda || 'MXN'}</span>` : ''}
-            ${item.proveedor_nombre ? `<span style="color:#888; font-size:10px; margin-left:6px;">(${UI.labelProveedor(item)})</span>` : ''}
+        <div class="cat-result-row">
+          <div class="cat-result-info">
+            <div class="cat-result-top">
+              <span class="cat-result-code">${item.codigo}</span>
+              <span class="cat-result-desc">${item.descripcion}</span>
+            </div>
+            <div class="cat-result-meta">
+              ${precio != null ? `<span class="cat-result-price">${precio} ${item.moneda || 'MXN'}</span>` : ''}
+              ${item.proveedor_nombre ? `<span class="cat-result-prov">${UI.labelProveedor(item)}</span>` : ''}
+            </div>
           </div>
-          ${!yaSeleccionado ? `
-            <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
-              <input type="number" id="qty-${item.id}" value="1" min="1" step="1"
-                     style="width:58px; font-size:11px; padding:2px 4px;">
-              <button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px; font-size:11px;"
+          <div class="cat-result-actions">
+            ${!yaSeleccionado ? `
+              <input type="number" id="qty-${item.id}" class="form-control cat-qty" value="1" min="1" step="1" title="Cantidad">
+              <button type="button" class="btn btn-sm btn-primary"
                       onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}')">
                 + Agregar
               </button>
-            </div>
-          ` : `<span style="color:#28a745; font-size:11px; flex-shrink:0;">✓ Agregado</span>`}
+            ` : `
+              <span class="cat-added-badge">
+                <svg width="12" height="12" fill="none" stroke="#166534" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                Agregado
+              </span>
+            `}
+          </div>
         </div>`;
     });
 
+    // Pie del listado — acceso rápido a ítem nuevo
     html += `
-      <div style="padding:3px 4px; font-size:9.5px; color:#854d0e; background:#fffbeb; margin-top:3px; border-radius:3px; border:1px solid #fde047;">
-        ¿Ninguno coincide?
-        <a href="#" onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true); return false;" style="font-weight:600; color:#b45309; text-decoration:underline;">Agregar como ítem nuevo</a>
-        o
-        <a href="#" onclick="crearRequerimientoParaAltaCatalogoFromCurrent(); return false;" style="font-weight:600; color:#b45309; text-decoration:underline;">crear req separado</a>.
+      <div style="padding:8px 10px; background:#fffbeb; border-top:1px solid #fde68a; font-size:11px; color:#92400e; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+        <span>¿No está lo que buscas?</span>
+        <button type="button" class="btn btn-sm btn-outline" style="font-size:11px;"
+                onclick="mostrarLibreInline()">
+          + Agregar como ítem nuevo
+        </button>
       </div>`;
 
     contenedor.innerHTML = html;
-
-    const addNewHint = document.createElement('div');
-    addNewHint.style.cssText = 'margin-top:4px; font-size:10px;';
-    addNewHint.innerHTML = `<button type="button" class="btn btn-sm btn-outline" style="font-size:10px;" onclick="document.getElementById('usar-items-nuevos').checked=true; toggleModoItemsNuevos(true);">+ No está en catálogo (agregar como nuevo)</button>`;
-    contenedor.appendChild(addNewHint);
 
   } catch (err) {
     contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#c00;">Error al buscar.</div>';
@@ -158,14 +208,13 @@ async function buscarEnCatalogo() {
 }
 
 window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo, moneda = 'MXN') {
-  const tieneLibres = window.requerimientoItemsLibres && window.requerimientoItemsLibres.length > 0;
+  const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
 
   if (tieneLibres) {
     if (!confirm('Ya tienes ítems nuevos/libres.\n\n¿Limpiarlos y volver a usar solo catálogo?')) return;
     window.requerimientoItemsLibres = [];
-    renderLibresResumen();
-    const libresModal = document.getElementById('modal-req-libres');
-    if (libresModal && libresModal.style.display !== 'none') renderItemsLibresModal();
+    // Ocultar panel inline
+    if (typeof ocultarLibreInline === 'function') ocultarLibreInline();
     const checkbox = document.getElementById('usar-items-nuevos');
     if (checkbox) checkbox.checked = false;
   }
@@ -199,10 +248,11 @@ window.agregarComoLibreDesdeBusqueda = function() {
   const texto = input.value.trim();
   if (!texto) { Toast.info('Escribe una descripción en el buscador primero'); return; }
 
+  // Pre-rellenar descripción con lo que escribió en el buscador
   const descInput = document.getElementById('libre-descripcion');
   if (descInput) descInput.value = texto;
 
-  abrirModalItemsLibres();
+  mostrarLibreInline();
 
   const contenedor = document.getElementById('resultados-catalogo');
   if (contenedor) contenedor.innerHTML = '';

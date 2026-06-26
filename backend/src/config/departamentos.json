@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "areas": [
+    {
+      "id": "ADMINISTRACION",
+      "label": "Administración",
+      "departamentos": [
+        {
+          "nombre": "MATERIAL DE OFICINA"
+        },
+        {
+          "nombre": "EDIFICIOS"
+        },
+        {
+          "nombre": "SUMINISTROS Y EQUIPOS DE COMPUTO"
+        },
+        {
+          "nombre": "SEGURIDAD"
+        },
+        {
+          "nombre": "MEDICAMENTOS"
+        },
+        {
+          "nombre": "RECURSOS HUMANOS"
+        },
+        {
+          "nombre": "HONORARIOS PROFESIONALES"
+        },
+        {
+          "nombre": "SERVICIOS DE COCINA"
+        },
+        {
+          "nombre": "MATERIAL DE LIMPIEZA"
+        },
+        {
+          "nombre": "REPARACIÓN DE MONTACARGAS"
+        },
+        {
+          "nombre": "RENTA DE ALMACEN"
+        },
+        {
+          "nombre": "ADMINISTRACIÓN"
+        },
+        {
+          "nombre": "CAPACITACIÓN"
+        },
+        {
+          "nombre": "SISTEMAS"
+        },
+        {
+          "nombre": "ENFERMERÍA"
+        },
+        {
+          "nombre": "ATENCIÓN A CLIENTES"
+        }
+      ]
+    },
+    {
+      "id": "PRODUCCION",
+      "label": "Producción",
+      "departamentos": [
+        {
+          "nombre": "ARTÍCULOS DE SEGURIDAD"
+        },
+        {
+          "nombre": "MATERIAL DE EMPAQUE"
+        },
+        {
+          "nombre": "CERA"
+        },
+        {
+          "nombre": "LABORATORIO"
+        },
+        {
+          "nombre": "SISTEMA CONTRA INCENDIO"
+        },
+        {
+          "nombre": "PROYECTO"
+        },
+        {
+          "nombre": "CHILLER"
+        },
+        {
+          "nombre": "HVAC"
+        },
+        {
+          "nombre": "AIRE COMPRIMIDO"
+        },
+        {
+          "nombre": "TUBOS / CONOS"
+        },
+        {
+          "nombre": "RECOLECCIÓN DE RESIDUOS"
+        }
+      ]
+    },
+    {
+      "id": "OE",
+      "label": "OE (Open End)",
+      "departamentos": [
+        {
+          "nombre": "APERTURA-OE"
+        },
+        {
+          "nombre": "CARDADO-OE"
+        },
+        {
+          "nombre": "ESTIRADO-OE"
+        },
+        {
+          "nombre": "HILATURA-OE"
+        },
+        {
+          "nombre": "MANTENIMIENTO-OE"
+        }
+      ]
+    },
+    {
+      "id": "POLYCOTTON",
+      "label": "Polycotton",
+      "departamentos": [
+        {
+          "nombre": "APERTURA-POLYCOTTON"
+        },
+        {
+          "nombre": "CARDADO-POLYCOTTON"
+        },
+        {
+          "nombre": "ESTIRADO-POLYCOTTON"
+        },
+        {
+          "nombre": "HILATURA-POLYCOTTON"
+        },
+        {
+          "nombre": "MANTENIMIENTO-POLYCOTTON"
+        }
+      ]
+    },
+    {
+      "id": "RS",
+      "label": "RS (Ring Spinning)",
+      "departamentos": [
+        {
+          "nombre": "APERTURA-RS"
+        },
+        {
+          "nombre": "CARDADO-RS"
+        },
+        {
+          "nombre": "ESTIRADO-RS"
+        },
+        {
+          "nombre": "VELOZ-RS"
+        },
+        {
+          "nombre": "HILATURA-RS"
+        },
+        {
+          "nombre": "CONERAS-RS"
+        },
+        {
+          "nombre": "MANTENIMIENTO-RS"
+        }
+      ]
+    },
+    {
+      "id": "FLETES",
+      "label": "Fletes",
+      "departamentos": [
+        {
+          "nombre": "FLETE POR RETORNO DE INSUMOS"
+        },
+        {
+          "nombre": "FLETE POR VENTA DE HILO"
+        },
+        {
+          "nombre": "FLETE POR MATERIALES"
+        },
+        {
+          "nombre": "FLETE POR MATERIAL DE EMPAQUE"
+        },
+        {
+          "nombre": "FLETE POR RECOLECCIÓN DE PACAS"
+        },
+        {
+          "nombre": "FLETE POR MATERIAL SINTÉTICO"
+        }
+      ]
+    },
+    {
+      "id": "OTROS",
+      "label": "Otros",
+      "departamentos": [
+        {
+          "nombre": "XORELLA"
+        },
+        {
+          "nombre": "RECLAIM"
+        }
+      ]
+    }
+  ]
+}

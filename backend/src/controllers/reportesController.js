@@ -1,7 +1,7 @@
 import * as Ordenes from '../models/ordenes.js';
-import { autorizar } from '../middlewares/authMiddleware.js';
 import XLSX from 'xlsx';
 import pool from '../config/db.js';
+import logger from '../utils/logger.js';
 
 /**
  * Genera el "Reporte de Órdenes de Compra" (estilo POS HILOS básico)
@@ -83,7 +83,7 @@ export async function generarReporteOrdenesCompra(req, res) {
     res.send(buffer);
 
   } catch (err) {
-    console.error('[Reporte OC]', err);
+    logger.error('[Reporte OC]', err);
     res.status(500).json({ mensaje: 'Error al generar el reporte' });
   }
 }
@@ -100,9 +100,11 @@ export async function generarReporteStatusPOS(req, res) {
     const { anio, po, estado } = req.query;
     const year = parseInt(anio) || new Date().getFullYear();
 
-    // Query principal: explotamos OC + Requerimiento + Items del catálogo + Recepción
+    // Query principal: OC + Requerimiento + Items (catálogo o libres) + Recepción
+    // LEFT JOINs en items/catálogo para incluir OCs de reqs con items_libres o solo notas.
+    // COALESCE en fecha para incluir OCs sin fecha_autorizacion aún (generada/en_proceso).
     let sql = `
-      SELECT 
+      SELECT
         oc.id as oc_id,
         oc.numero_oc,
         oc.datatextnow_id as po_number,
@@ -113,32 +115,35 @@ export async function generarReporteStatusPOS(req, res) {
         r.consecutivo as req_consecutivo,
         r.tipo,
         r.notas,
+        r.titulo_solicitud,
         r.requiere_cotizacion,
         u.nombre as requisitor,
-        ri.cantidad as cantidad_solicitada,
-        c.codigo as numero_de_parte,
-        c.descripcion,
-        p.nombre as proveedor,
+        COALESCE(ri.cantidad, ril.cantidad, 1) as cantidad_solicitada,
+        COALESCE(c.codigo, ril.descripcion, '—') as numero_de_parte,
+        COALESCE(c.descripcion, ril.descripcion, r.titulo_solicitud) as descripcion,
+        COALESCE(p.nombre, prov_oc.nombre) as proveedor,
         rec.estado as estado_recepcion,
         rec.fecha_recepcion,
         rec.datatextnow_id as recibo_number,
         rec.notas as rec_notas,
-        c.costo_referencia as costo_unitario,
+        COALESCE(c.costo_referencia, 0) as costo_unitario,
         cot.iva as cot_iva,
         cot.monto_total as cot_monto_total
       FROM ordenes_compra oc
       JOIN requerimientos r ON r.id = oc.requerimiento_id
-      JOIN requerimiento_items ri ON ri.requerimiento_id = r.id
-      JOIN catalogo c ON c.id = ri.catalogo_id
-      LEFT JOIN usuarios u ON u.id = r.solicitante_id
+      LEFT JOIN requerimiento_items ri ON ri.requerimiento_id = r.id
+      LEFT JOIN catalogo c ON c.id = ri.catalogo_id
       LEFT JOIN proveedores p ON p.id = c.proveedor_id
+      LEFT JOIN requerimiento_items_libres ril ON ril.requerimiento_id = r.id AND ri.id IS NULL
+      LEFT JOIN usuarios u ON u.id = r.solicitante_id
+      LEFT JOIN proveedores prov_oc ON prov_oc.id = oc.proveedor_id
       LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
       LEFT JOIN cotizaciones cot ON cot.id = oc.cotizacion_id
       WHERE 1=1
     `;
     const params = [];
 
-    sql += ` AND YEAR(oc.fecha_autorizacion) = ? `;
+    sql += ` AND YEAR(COALESCE(oc.fecha_autorizacion, oc.created_at)) = ? `;
     params.push(year);
     if (po) {
       sql += ` AND (oc.datatextnow_id LIKE ? OR oc.numero_oc LIKE ?) `;
@@ -149,7 +154,7 @@ export async function generarReporteStatusPOS(req, res) {
       params.push(estado);
     }
 
-    sql += ` ORDER BY oc.datatextnow_id, ri.id `;
+    sql += ` ORDER BY oc.numero_oc, ri.id, ril.id `;
 
     const [rows] = await pool.query(sql, params);
 
@@ -193,9 +198,9 @@ export async function generarReporteStatusPOS(req, res) {
       return {
         'PO Line': poLine,
         'PO': row.po_number || row.numero_oc,
-        'Fecha de P.O.': row.fecha_po ? new Date(row.fecha_po).toISOString().split('T')[0] : '',
+        'Fecha de P.O.': row.fecha_po ? new Date(row.fecha_po).toISOString().split('T')[0] : '(sin autorizar)',
         'wk': '', // no data
-        'Año': row.fecha_po ? new Date(row.fecha_po).getFullYear() : '',
+        'Año': row.fecha_po ? new Date(row.fecha_po).getFullYear() : year,
         'N° Vendor': '', // no direct data
         'Proveedor': row.proveedor || '',
         'Centro ': '', 
@@ -208,7 +213,7 @@ export async function generarReporteStatusPOS(req, res) {
         'línea': linea,
         'Numero de Parte': row.numero_de_parte,
         'DESCRIPCION': row.descripcion,
-        'Comments': row.notas || row.req_consecutivo || '',
+        'Comments': row.titulo_solicitud || row.notas || row.req_consecutivo || '',
         'Cantidad Solicitada': cantidadSolicitada,
         'Cantidad Recibida': row.estado_recepcion ? cantidadSolicitada : 0, // aproximado; mejorar con recepción por ítem
         'BO': 0,
@@ -254,7 +259,7 @@ export async function generarReporteStatusPOS(req, res) {
     res.send(buffer);
 
   } catch (err) {
-    console.error('[Reporte STATUS POS HILOS]', err);
+    logger.error('[Reporte STATUS POS HILOS]', err);
     res.status(500).json({ mensaje: 'Error al generar el reporte STATUS' });
   }
 }

@@ -85,7 +85,7 @@ async function login(req, res) {
     // Envío oportunista de cotizaciones pendientes (solo para roles con permisos)
     if (['contabilidad', 'admin'].includes(usuario.rol)) {
       enviarCotizacionesPendientesOportunista().catch(err => {
-        console.error('[Login] Error enviando cotizaciones pendientes:', err.message);
+        logger.error('[Login] Error enviando cotizaciones pendientes:', err.message);
       });
     }
 
@@ -102,7 +102,7 @@ async function perfil(req, res) {
     if (!usuario) return res.status(404).json({ mensaje: 'Usuario no encontrado' });
     res.json(usuario);
   } catch (err) {
-    console.error('[perfil]', err);
+    logger.error('[perfil]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -131,7 +131,7 @@ async function cambiarPassword(req, res) {
 
     res.json({ mensaje: 'Contraseña actualizada correctamente' });
   } catch (err) {
-    console.error('[cambiarPassword]', err);
+    logger.error('[cambiarPassword]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -172,7 +172,7 @@ async function registro(req, res) {
     const nuevo = await buscarPorId(id);
     res.status(201).json(nuevo);
   } catch (err) {
-    console.error('[registro]', err);
+    logger.error('[registro]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -184,7 +184,7 @@ async function listarUsuarios(req, res) {
     const usuarios = await listar({ activo });
     res.json(usuarios);
   } catch (err) {
-    console.error('[listarUsuarios]', err);
+    logger.error('[listarUsuarios]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -225,7 +225,7 @@ async function actualizarUsuario(req, res) {
 
     res.json(await buscarPorId(id));
   } catch (err) {
-    console.error('[actualizarUsuario]', err);
+    logger.error('[actualizarUsuario]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -250,7 +250,7 @@ async function restablecerPasswordUsuario(req, res) {
 
     res.json({ mensaje: 'Contraseña actualizada correctamente' });
   } catch (err) {
-    console.error('[restablecerPasswordUsuario]', err);
+    logger.error('[restablecerPasswordUsuario]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -280,7 +280,7 @@ async function cambiarEstadoUsuario(req, res) {
 
     res.json({ mensaje: `Usuario ${activo ? 'activado' : 'desactivado'} correctamente` });
   } catch (err) {
-    console.error('[cambiarEstadoUsuario]', err);
+    logger.error('[cambiarEstadoUsuario]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -319,16 +319,16 @@ async function registroSolicitante(req, res) {
     });
 
     // Enviar correo de verificación (no bloqueante)
-    console.log(`[Auth] Intentando enviar correo de verificación a ${emailLimpio} usando config actual...`);
+    logger.info(`[Auth] Intentando enviar correo de verificación a ${emailLimpio} usando config actual...`);
     enviarCorreoVerificacion(nombre.trim(), emailLimpio, token).then(r => {
       if (r.success) {
-        console.log(`[Auth] ✓ Correo de verificación enviado exitosamente a ${emailLimpio}`);
+        logger.info(`[Auth] ✓ Correo de verificación enviado exitosamente a ${emailLimpio}`);
       } else {
-        console.error('[Auth] ✗ Falló el envío de verificación:', r);
+        logger.error('[Auth] ✗ Falló el envío de verificación:', r);
       }
     }).catch(err => {
-      console.error('[Auth] ✗ Excepción enviando correo de verificación:', err.message);
-      console.error(err);
+      logger.error('[Auth] ✗ Excepción enviando correo de verificación:', err.message);
+      logger.error(err);
     });
 
     res.status(201).json({
@@ -336,7 +336,7 @@ async function registroSolicitante(req, res) {
       email: emailLimpio
     });
   } catch (err) {
-    console.error('[registroSolicitante]', err);
+    logger.error('[registroSolicitante]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -368,7 +368,7 @@ async function verificarEmail(req, res) {
       email: usuario.email
     });
   } catch (err) {
-    console.error('[verificarEmail]', err);
+    logger.error('[verificarEmail]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }

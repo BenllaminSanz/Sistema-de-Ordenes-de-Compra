@@ -1,5 +1,6 @@
 import { obtenerConfig, guardarConfig, desactivarConfig, obtenerConfigParaMailer } from '../models/configSmtp.js';
 import { recargarTransporter, enviarCorreo, getFromAddress, getConfigSource, getTransporter } from '../config/mailer.js';
+import logger from '../utils/logger.js';
 
 /**
  * GET /api/config/smtp
@@ -24,7 +25,7 @@ export async function getSmtpConfig(req, res) {
       config: cfg
     });
   } catch (err) {
-    console.error('[getSmtpConfig]', err);
+    logger.error('[getSmtpConfig]', err);
     res.status(500).json({ mensaje: 'Error al obtener configuración SMTP' });
   }
 }
@@ -63,7 +64,7 @@ export async function updateSmtpConfig(req, res) {
       config: nuevaCfg
     });
   } catch (err) {
-    console.error('[updateSmtpConfig]', err);
+    logger.error('[updateSmtpConfig]', err);
     res.status(500).json({ mensaje: err.message || 'Error al guardar configuración SMTP' });
   }
 }
@@ -126,7 +127,7 @@ export async function testSmtpConnection(req, res) {
 
     res.json(testResult);
   } catch (err) {
-    console.error('[testSmtpConnection]', err);
+    logger.error('[testSmtpConnection]', err);
     res.status(400).json({
       success: false,
       mensaje: 'Fallo en la conexión SMTP',
@@ -189,7 +190,7 @@ export async function sendTestEmail(req, res) {
       });
     }
   } catch (err) {
-    console.error('[sendTestEmail]', err);
+    logger.error('[sendTestEmail]', err);
     res.status(500).json({ mensaje: 'Error al enviar correo de prueba', error: err.message });
   }
 }
@@ -208,7 +209,7 @@ export async function resetToEnv(req, res) {
       usando_env: true
     });
   } catch (err) {
-    console.error('[resetToEnv]', err);
+    logger.error('[resetToEnv]', err);
     res.status(500).json({ mensaje: 'Error al resetear configuración' });
   }
 }

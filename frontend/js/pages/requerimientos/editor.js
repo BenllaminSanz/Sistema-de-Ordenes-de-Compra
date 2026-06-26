@@ -4,21 +4,31 @@ function puedeGestionarCotizaciones() {
   return Auth.puedeHacer(['contabilidad', 'admin']);
 }
 
-function abrirEditorRequerimiento(req = null) {
+async function abrirEditorRequerimiento(req = null) {
   const tituloEl   = document.querySelector('#modal-req .modal-title');
   const btnGuardar = document.getElementById('btn-guardar-req');
   const form       = document.getElementById('form-req');
+
+  // Cargar áreas dinámicas si no están en caché
+  if (typeof cargarAreasEnForm === 'function') {
+    await cargarAreasEnForm();
+  }
 
   if (req && req.id) {
     editandoId = req.id;
     tituloEl.textContent = 'Editar requerimiento';
     btnGuardar.textContent = 'Guardar cambios';
 
-    document.getElementById('req-titulo').value      = req.titulo_solicitud || '';
-    document.getElementById('req-tipo').value        = req.tipo || '';
-    document.getElementById('req-area').value        = req.area || '';
+    document.getElementById('req-titulo').value = req.titulo_solicitud || '';
+    document.getElementById('req-tipo').value   = req.tipo || '';
+    // Seleccionar área y luego disparar filtrado para poblar deptos antes de fijar departamento
+    const areaEl = document.getElementById('req-area');
+    if (areaEl) {
+      areaEl.value = req.area || '';
+      if (typeof filtrarDeptosPorArea === 'function') filtrarDeptosPorArea(areaEl.value);
+    }
     document.getElementById('req-departamento').value = req.departamento || '';
-    document.getElementById('req-notas').value       = req.notas || req.descripcion || '';
+    document.getElementById('req-notas').value        = req.notas || req.descripcion || '';
 
     window.requerimientoItemsSeleccionados = (req.items || []).map(i => ({
       catalogo_id:     i.catalogo_id,
@@ -41,21 +51,15 @@ function abrirEditorRequerimiento(req = null) {
     }));
     renderLibresResumen();
 
-    const checkbox = document.getElementById('usar-items-nuevos');
-    if (checkbox) {
-      const esModoLibres = (req.items_libres && req.items_libres.length > 0) &&
-                           (!req.items || req.items.length === 0);
-      checkbox.checked = esModoLibres;
-
-      const seccionEl = document.getElementById('seccion-items-catalogo');
-      const actions   = document.getElementById('libres-actions');
-      if (esModoLibres) {
-        if (seccionEl) seccionEl.style.display = 'none';
-        if (actions)   actions.style.display   = 'block';
-      } else {
-        if (seccionEl) seccionEl.style.display = 'block';
-        if (actions)   actions.style.display   = 'none';
-      }
+    // Si tiene ítems libres, mostrar el panel inline después de abrir el modal
+    const tieneLibresEdit = (req.items_libres && req.items_libres.length > 0) &&
+                            (!req.items || req.items.length === 0);
+    if (tieneLibresEdit) {
+      const checkbox = document.getElementById('usar-items-nuevos');
+      if (checkbox) checkbox.checked = true;
+      setTimeout(() => {
+        if (typeof mostrarLibreInline === 'function') mostrarLibreInline();
+      }, 100);
     }
 
     const tieneAmbos = (req.items && req.items.length > 0) &&
@@ -87,14 +91,7 @@ function abrirEditorRequerimiento(req = null) {
   if (seccion)  seccion.style.display  = tipoVal ? 'block' : 'none';
   if (selector) selector.style.display = tipoVal ? 'block' : 'none';
 
-  const cb      = document.getElementById('usar-items-nuevos');
-  const actions = document.getElementById('libres-actions');
-  if (cb && cb.checked) {
-    if (seccion)  seccion.style.display  = 'none';
-    if (actions)  actions.style.display  = 'block';
-  } else if (actions) {
-    actions.style.display = 'none';
-  }
+  // El panel inline de libres lo controla mostrarLibreInline() — no se toca aquí.
 
   const provWrapper2 = document.getElementById('filtro-proveedor-wrapper');
   const provSel2     = document.getElementById('filtro-proveedor-catalogo');

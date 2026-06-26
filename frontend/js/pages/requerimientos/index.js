@@ -10,6 +10,11 @@ if (!Auth.puedeHacer(['solicitante', 'admin'])) {
   if (btnNuevo) btnNuevo.style.display = 'none';
 }
 
+// Cargar áreas para los filtros de la página (fil-area, fil-departamento)
+if (typeof cargarAreasEnForm === 'function') {
+  cargarAreasEnForm().catch(console.error);
+}
+
 // Si viene con ?id= mostrar detalle directo
 const params = new URLSearchParams(window.location.search);
 if (params.get('id')) {

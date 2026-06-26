@@ -2,6 +2,7 @@ import * as Cotizacion from '../models/cotizaciones.js';
 import { registrarHistorial } from '../models/historialEstados.js';
 import { enviarSolicitudDeCotizacion } from '../utils/emailService.js';
 import fs from 'fs';
+import logger from '../utils/logger.js';
 
 // Función para enviar cotizaciones pendientes de forma oportunista
 async function enviarCotizacionesPendientesOportunista() {
@@ -10,25 +11,25 @@ async function enviarCotizacionesPendientesOportunista() {
 
     if (pendientes.length === 0) return;
 
-    console.log(`[Email] Enviando ${pendientes.length} cotizaciones pendientes...`);
+    logger.info(`[Email] Enviando ${pendientes.length} cotizaciones pendientes...`);
 
     for (const cot of pendientes) {
       try {
         const result = await enviarSolicitudDeCotizacion(cot.id);
         if (result.success) {
           await Cotizacion.marcarComoEnviadaPorCorreo(cot.id);
-          console.log(`[Email] Cotización #${cot.id} enviada (programada)`);
+          logger.info(`[Email] Cotización #${cot.id} enviada (programada)`);
         } else if (result.reason === 'no_requiere_segun_condicion') {
           // Regla de negocio: no corresponde enviar correo para este tipo de requerimiento
           await Cotizacion.marcarComoProcesadaSinEnvioCorreo(cot.id);
-          console.log(`[Email] Cotización #${cot.id} procesada sin envío (regla: solo servicios o libres/actualizar precios).`);
+          logger.info(`[Email] Cotización #${cot.id} procesada sin envío (regla: solo servicios o libres/actualizar precios).`);
         }
       } catch (err) {
-        console.error(`[Email] Error enviando cotización pendiente #${cot.id}:`, err.message);
+        logger.error(`[Email] Error enviando cotización pendiente #${cot.id}:`, err.message);
       }
     }
   } catch (error) {
-    console.error('[Email] Error en envío oportunista de cotizaciones:', error.message);
+    logger.error('[Email] Error en envío oportunista de cotizaciones:', error.message);
   }
 }
 
@@ -60,7 +61,7 @@ export const listarCotizaciones = async (req, res) => {
       data: cotizaciones
     });
   } catch (error) {
-    console.error('Error al listar cotizaciones:', error);
+    logger.error('Error al listar cotizaciones:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener las cotizaciones'
@@ -86,7 +87,7 @@ export const obtenerCotizacion = async (req, res) => {
       data: cotizacion
     });
   } catch (error) {
-    console.error('Error al obtener cotización:', error);
+    logger.error('Error al obtener cotización:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener la cotización'
@@ -188,30 +189,30 @@ export const crearCotizacion = async (req, res) => {
     });
 
     if (esFechaPasada) {
-      console.log(`[Cotizacion] Cotización #${id} con fecha pasada. Se guardó como enviada (sin enviar correo).`);
+      logger.info(`[Cotizacion] Cotización #${id} con fecha pasada. Se guardó como enviada (sin enviar correo).`);
     } else if (esHoyOMenor) {
       // Hoy (o sin fecha programada) → intentar enviar inmediatamente
       enviarSolicitudDeCotizacion(id).then(result => {
         if (result.success) {
-          console.log(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
+          logger.info(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
           Cotizacion.marcarComoEnviadaPorCorreo(id).catch(() => {});
         } else if (result.reason === 'no_requiere_segun_condicion') {
           // Según la regla de negocio (solo SERVICIOS o libres/actualizar precios para otros tipos)
           // se crea el registro pero no se envía correo automático.
           Cotizacion.marcarComoProcesadaSinEnvioCorreo(id).catch(() => {});
-          console.log(`[Email] Cotización #${id} creada pero NO se envió correo (regla de tipo/catálogo/precios).`);
+          logger.info(`[Email] Cotización #${id} creada pero NO se envió correo (regla de tipo/catálogo/precios).`);
         }
       }).catch(err => {
-        console.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
+        logger.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
       });
     } else {
       // Futura → solo programada
-      console.log(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt}`);
+      logger.info(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt}`);
     }
 
     // Intentar enviar otras cotizaciones pendientes (envío oportunista)
     enviarCotizacionesPendientesOportunista().catch(err => {
-      console.error('[Email] Error enviando cotizaciones pendientes:', err.message);
+      logger.error('[Email] Error enviando cotizaciones pendientes:', err.message);
     });
 
     res.status(201).json({
@@ -222,7 +223,7 @@ export const crearCotizacion = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[crearCotizacion] Error:', error);
+    logger.error('[crearCotizacion] Error:', error);
     res.status(500).json({ 
       mensaje: 'Error al crear la cotización',
       error: error.message 
@@ -276,7 +277,7 @@ export const actualizarCotizacion = async (req, res) => {
       message: 'Cotización actualizada correctamente'
     });
   } catch (error) {
-    console.error('Error al actualizar cotización:', error);
+    logger.error('Error al actualizar cotización:', error);
     res.status(500).json({
       success: false,
       message: 'Error al actualizar la cotización'
@@ -321,7 +322,7 @@ export const seleccionarCotizacion = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error al seleccionar cotización:', error);
+    logger.error('Error al seleccionar cotización:', error);
     res.status(500).json({
       success: false,
       message: 'Error al seleccionar la cotización'
@@ -365,7 +366,7 @@ export const deseleccionarCotizacion = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error al deseleccionar cotización:', error);
+    logger.error('Error al deseleccionar cotización:', error);
     res.status(500).json({
       success: false,
       message: 'Error al deseleccionar la cotización'
@@ -403,7 +404,7 @@ export const subirArchivoCotizacion = async (req, res) => {
       archivo_url: archivoUrl
     });
   } catch (error) {
-    console.error('Error al subir archivo de cotización:', error);
+    logger.error('Error al subir archivo de cotización:', error);
 
     if (req.file && req.file.path) {
       try { fs.unlinkSync(req.file.path); } catch (e) {}
@@ -454,7 +455,7 @@ export const enviarCorreoCotizacion = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('[enviarCorreoCotizacion] Error:', error);
+    logger.error('[enviarCorreoCotizacion] Error:', error);
     res.status(500).json({ success: false, mensaje: 'Error interno al enviar el correo' });
   }
 };
@@ -477,7 +478,7 @@ export const eliminarCotizacion = async (req, res) => {
       message: 'Cotización eliminada correctamente'
     });
   } catch (error) {
-    console.error('Error al eliminar cotización:', error);
+    logger.error('Error al eliminar cotización:', error);
     res.status(500).json({
       success: false,
       message: 'Error al eliminar la cotización'

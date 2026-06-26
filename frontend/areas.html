@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Áreas y Departamentos — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    .area-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .area-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--surface, #f8fafc);
+      cursor: pointer;
+      user-select: none;
+    }
+    .area-header:hover { background: #f1f5f9; }
+    .area-chevron {
+      transition: transform .2s;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .area-card.open .area-chevron { transform: rotate(90deg); }
+    .area-label { flex: 1; font-weight: 600; font-size: 14px; }
+    .area-id-badge {
+      font-size: 10px; font-family: monospace; font-weight: 700;
+      background: #e6f1fb; color: var(--primary);
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .area-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .deptos-body {
+      display: none;
+      padding: 8px 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .area-card.open .deptos-body { display: block; }
+
+    .depto-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      transition: background .1s;
+    }
+    .depto-row:hover { background: #f8fafc; }
+    .depto-nombre { flex: 1; }
+    .depto-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+    .depto-empty {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 8px 4px;
+      font-style: italic;
+    }
+
+    .modal-sm .modal-box { max-width: 420px; }
+
+    .btn-icon {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      transition: background .12s, border-color .12s;
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { background: #f1f5f9; border-color: #94a3b8; }
+    .btn-icon.danger:hover { background: #fee2e2; border-color: #fca5a5; }
+  </style>
+</head>
+<body>
+<div id="app-layout">
+  <aside id="sidebar"></aside>
+
+  <div style="flex:1">
+    <header id="topbar"></header>
+
+    <main id="main-content">
+      <div class="card">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Áreas y Departamentos</h2>
+            <p class="text-muted" style="margin:4px 0 0; font-size:13px;">
+              Configura las áreas y departamentos disponibles al crear requerimientos.
+            </p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="abrirModalArea()">+ Nueva área</button>
+        </div>
+
+        <div id="lista-areas">
+          <div class="spinner" style="margin:40px auto;"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ── Modal crear/editar área ──────────────────────────────── -->
+<div class="modal-backdrop modal-sm" id="modal-area">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-area-titulo">Nueva área</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-area')">×</button>
+    </div>
+    <form id="form-area" onsubmit="submitArea(event)">
+      <div style="padding:16px 24px;">
+        <div class="form-group" id="campo-area-id-wrap">
+          <label class="form-label">ID del área
+            <span style="font-size:10.5px; color:var(--muted); font-weight:400;">(ej: LOGISTICA)</span>
+          </label>
+          <input type="text" id="area-id" class="form-control"
+                 placeholder="LOGISTICA" style="text-transform:uppercase;"
+                 oninput="this.value = this.value.toUpperCase().replace(/\s+/g,'_')">
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">
+            Solo letras mayúsculas y guiones bajos. No se puede cambiar después.
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Nombre visible *</label>
+          <input type="text" id="area-label" class="form-control"
+                 placeholder="Logística" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-area')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-area">Crear área</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal agregar/editar departamento ────────────────────── -->
+<div class="modal-backdrop modal-sm" id="modal-depto">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-depto-titulo">Nuevo departamento</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-depto')">×</button>
+    </div>
+    <form id="form-depto" onsubmit="submitDepto(event)">
+      <div style="padding:16px 24px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Nombre del departamento *</label>
+          <input type="text" id="depto-nombre" class="form-control"
+                 placeholder="PRODUCCIÓN TURNO NOCHE"
+                 style="text-transform:uppercase;"
+                 oninput="this.value = this.value.toUpperCase()"
+                 required>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">
+            Se guardará en mayúsculas.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-depto')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-depto">Agregar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// ── Estado ────────────────────────────────────────────────────
+let _areas = [];
+let _editandoAreaId      = null;
+let _editandoDeptoArea   = null;
+let _editandoDeptoNombre = null;
+
+// ── Cargar y renderizar ───────────────────────────────────────
+async function cargarAreas() {
+  const cont = document.getElementById('lista-areas');
+  try {
+    const data = await Api.get('/areas');
+    _areas = data.areas || [];
+    renderAreas();
+  } catch (err) {
+    cont.innerHTML = `<p class="text-muted">Error al cargar áreas.</p>`;
+    Toast.error('No se pudo cargar la configuración de áreas');
+  }
+}
+
+function renderAreas() {
+  const cont = document.getElementById('lista-areas');
+  if (!_areas.length) {
+    cont.innerHTML = '<p class="text-muted" style="text-align:center; padding:32px;">Sin áreas configuradas. Crea la primera con el botón de arriba.</p>';
+    return;
+  }
+
+  cont.innerHTML = _areas.map(area => `
+    <div class="area-card" id="area-card-${area.id}">
+      <div class="area-header" onclick="toggleArea('${area.id}')">
+        <svg class="area-chevron" width="14" height="14" fill="none" stroke="currentColor"
+             stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+        <span class="area-id-badge">${escHtml(area.id)}</span>
+        <span class="area-label">${escHtml(area.label)}</span>
+        <span style="font-size:11px; color:var(--muted);">${area.departamentos.length} depto${area.departamentos.length !== 1 ? 's' : ''}</span>
+        <div class="area-actions" onclick="event.stopPropagation()">
+          <button class="btn-icon" title="Editar nombre"
+                  onclick="abrirModalEditarArea('${area.id}')">✏️</button>
+          <button class="btn-icon" title="Agregar departamento"
+                  onclick="abrirModalDepto('${area.id}')">＋</button>
+          <button class="btn-icon danger" title="Eliminar área"
+                  onclick="confirmarEliminarArea('${area.id}', '${escAttr(area.label)}')">🗑</button>
+        </div>
+      </div>
+      <div class="deptos-body">
+        ${area.departamentos.length === 0
+          ? '<div class="depto-empty">Sin departamentos — pulsa ＋ para agregar.</div>'
+          : area.departamentos.map(d => `
+            <div class="depto-row">
+              <span class="depto-nombre">${escHtml(d.nombre)}</span>
+              <div class="depto-actions">
+                <button class="btn-icon" title="Renombrar"
+                        onclick="abrirModalEditarDepto('${area.id}', '${escAttr(d.nombre)}')">✏️</button>
+                <button class="btn-icon danger" title="Eliminar departamento"
+                        onclick="confirmarEliminarDepto('${area.id}', '${escAttr(d.nombre)}')">🗑</button>
+              </div>
+            </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function toggleArea(id) {
+  document.getElementById(`area-card-${id}`)?.classList.toggle('open');
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escAttr(str) {
+  return String(str).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+// ── Modal Área ────────────────────────────────────────────────
+function abrirModalArea() {
+  _editandoAreaId = null;
+  document.getElementById('modal-area-titulo').textContent = 'Nueva área';
+  document.getElementById('area-id').value    = '';
+  document.getElementById('area-label').value = '';
+  document.getElementById('campo-area-id-wrap').style.display = '';
+  document.getElementById('btn-guardar-area').textContent = 'Crear área';
+  UI.abrirModal('modal-area');
+  setTimeout(() => document.getElementById('area-id').focus(), 80);
+}
+
+function abrirModalEditarArea(id) {
+  const area = _areas.find(a => a.id === id);
+  if (!area) return;
+  _editandoAreaId = id;
+  document.getElementById('modal-area-titulo').textContent = 'Editar área';
+  document.getElementById('area-id').value    = area.id;
+  document.getElementById('area-label').value = area.label;
+  document.getElementById('campo-area-id-wrap').style.display = 'none';
+  document.getElementById('btn-guardar-area').textContent = 'Guardar cambios';
+  UI.abrirModal('modal-area');
+  setTimeout(() => document.getElementById('area-label').focus(), 80);
+}
+
+async function submitArea(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-guardar-area');
+  btn.disabled = true;
+  try {
+    if (_editandoAreaId) {
+      const label = document.getElementById('area-label').value.trim();
+      await Api.put(`/areas/${_editandoAreaId}`, { label });
+      Toast.success('Área actualizada');
+    } else {
+      const id    = document.getElementById('area-id').value.trim();
+      const label = document.getElementById('area-label').value.trim();
+      if (!id) { Toast.error('El ID es requerido'); btn.disabled = false; return; }
+      await Api.post('/areas', { id, label });
+      Toast.success('Área creada');
+    }
+    UI.cerrarModal('modal-area');
+    await cargarAreas();
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar el área');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function confirmarEliminarArea(id, label) {
+  if (!confirm(`¿Eliminar el área "${label}" y todos sus departamentos?\n\nLos requerimientos existentes conservan su valor.`)) return;
+  try {
+    await Api.delete(`/areas/${id}`);
+    Toast.success('Área eliminada');
+    await cargarAreas();
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al eliminar el área');
+  }
+}
+
+// ── Modal Departamento ────────────────────────────────────────
+function abrirModalDepto(areaId) {
+  _editandoDeptoArea   = areaId;
+  _editandoDeptoNombre = null;
+  const area = _areas.find(a => a.id === areaId);
+  document.getElementById('modal-depto-titulo').textContent =
+    `Nuevo departamento — ${area ? area.label : areaId}`;
+  document.getElementById('depto-nombre').value = '';
+  document.getElementById('btn-guardar-depto').textContent = 'Agregar';
+  UI.abrirModal('modal-depto');
+  setTimeout(() => document.getElementById('depto-nombre').focus(), 80);
+}
+
+function abrirModalEditarDepto(areaId, nombreActual) {
+  _editandoDeptoArea   = areaId;
+  _editandoDeptoNombre = nombreActual;
+  const area = _areas.find(a => a.id === areaId);
+  document.getElementById('modal-depto-titulo').textContent =
+    `Editar departamento — ${area ? area.label : areaId}`;
+  document.getElementById('depto-nombre').value = nombreActual;
+  document.getElementById('btn-guardar-depto').textContent = 'Guardar cambios';
+  UI.abrirModal('modal-depto');
+  setTimeout(() => document.getElementById('depto-nombre').focus(), 80);
+}
+
+async function submitDepto(e) {
+  e.preventDefault();
+  const btn    = document.getElementById('btn-guardar-depto');
+  const nombre = document.getElementById('depto-nombre').value.trim().toUpperCase();
+  btn.disabled = true;
+  try {
+    if (_editandoDeptoNombre) {
+      const encoded = encodeURIComponent(_editandoDeptoNombre);
+      await Api.put(`/areas/${_editandoDeptoArea}/departamentos/${encoded}`, { nombre });
+      Toast.success('Departamento actualizado');
+    } else {
+      await Api.post(`/areas/${_editandoDeptoArea}/departamentos`, { nombre });
+      Toast.success('Departamento agregado');
+    }
+    UI.cerrarModal('modal-depto');
+    await cargarAreas();
+    // Mantener área expandida
+    const card = document.getElementById(`area-card-${_editandoDeptoArea}`);
+    if (card && !card.classList.contains('open')) card.classList.add('open');
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar departamento');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function confirmarEliminarDepto(areaId, nombre) {
+  if (!confirm(`¿Eliminar el departamento "${nombre}"?\n\nLos requerimientos existentes conservan su valor.`)) return;
+  try {
+    const encoded = encodeURIComponent(nombre);
+    await Api.delete(`/areas/${areaId}/departamentos/${encoded}`);
+    Toast.success('Departamento eliminado');
+    await cargarAreas();
+    // Mantener área expandida
+    const card = document.getElementById(`area-card-${areaId}`);
+    if (card && !card.classList.contains('open')) card.classList.add('open');
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al eliminar departamento');
+  }
+}
+
+window.abrirModalArea           = abrirModalArea;
+window.abrirModalEditarArea     = abrirModalEditarArea;
+window.submitArea               = submitArea;
+window.confirmarEliminarArea    = confirmarEliminarArea;
+window.abrirModalDepto          = abrirModalDepto;
+window.abrirModalEditarDepto    = abrirModalEditarDepto;
+window.submitDepto              = submitDepto;
+window.confirmarEliminarDepto   = confirmarEliminarDepto;
+window.toggleArea               = toggleArea;
+</script>
+
+<script src="js/app.js"></script>
+<script>
+Auth.requiereAuth();
+if (!Auth.puedeHacer(['admin', 'contabilidad'])) {
+  window.location.href = '/dashboard.html';
+}
+renderSidebar();
+renderTopbar('Áreas y Departamentos');
+cargarAreas();
+</script>
+</body>
+</html>

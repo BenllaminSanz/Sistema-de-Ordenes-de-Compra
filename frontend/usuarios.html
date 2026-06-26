@@ -15,15 +15,29 @@
 
     <main id="main-content">
       <div class="card">
-        <div class="d-flex align-center justify-between" style="margin-bottom:16px; flex-wrap:wrap; gap:10px">
-          <div class="card-title mb-0">Usuarios del sistema</div>
-          <div class="d-flex align-center gap-2" style="flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Usuarios del sistema</h2>
+          </div>
+          <div class="page-header-actions">
+            <label class="chk-label">
               <input type="checkbox" id="chk-activos" checked onchange="cargarUsuarios()">
               Solo activos
             </label>
             <button class="btn btn-primary btn-sm" onclick="abrirModalNuevo()">+ Nuevo usuario</button>
           </div>
+        </div>
+        <div class="filters-bar">
+          <div class="search-wrap">
+            <svg class="search-icon" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" id="busq-usuario" class="form-control search-input"
+                   placeholder="Buscar por nombre, email o rol…"
+                   oninput="filtrarUsuarios(this.value)">
+          </div>
+          <span id="usr-contador" class="filter-count"></span>
         </div>
         <div id="tabla-usuarios"></div>
       </div>

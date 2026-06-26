@@ -367,6 +367,11 @@ function renderSidebar() {
              0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197"/></svg>
         Usuarios
       </a>
+      <a href="areas.html">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+             viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+        Áreas y Departamentos
+      </a>
       ${u.rol === 'admin' ? `
       <a href="configuracion.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"

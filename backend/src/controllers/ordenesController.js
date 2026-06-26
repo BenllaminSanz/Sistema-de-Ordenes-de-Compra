@@ -1,4 +1,5 @@
 import { listar as _listar, obtenerPorId, crear as _crear, cambiarEstado as _cambiarEstado, actualizarDatatextnow as _actualizarDatatextnow } from '../models/ordenes.js';
+import logger from '../utils/logger.js';
 
 async function listar(req, res) {
   try {
@@ -14,7 +15,7 @@ async function listar(req, res) {
 
     res.json(await _listar(filtros));
   } catch (err) {
-    console.error('[listar OC]', err);
+    logger.error('[listar OC]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -32,7 +33,7 @@ async function obtener(req, res) {
 
     res.json(oc);
   } catch (err) {
-    console.error('[obtener OC]', err);
+    logger.error('[obtener OC]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -62,7 +63,7 @@ async function crear(req, res) {
     const id = await _crear(requerimiento_id, cotizacion_id, req.usuario.id, notasOC);
     res.status(201).json(await obtenerPorId(id));
   } catch (err) {
-    console.error('[crear OC]', err);
+    logger.error('[crear OC]', err);
     if (err.status) return res.status(err.status).json({ mensaje: err.mensaje || 'Error' });
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -76,7 +77,7 @@ async function cambiarEstado(req, res) {
     res.json(await obtenerPorId(req.params.id));
   } catch (err) {
     if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
-    console.error('[cambiarEstado OC]', err);
+    logger.error('[cambiarEstado OC]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -92,7 +93,7 @@ async function actualizarDatatextnow(req, res) {
     await _actualizarDatatextnow(req.params.id, val);
     res.json(await obtenerPorId(req.params.id));
   } catch (err) {
-    console.error('[actualizar datatextnow OC]', err);
+    logger.error('[actualizar datatextnow OC]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }

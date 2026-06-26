@@ -1,6 +1,7 @@
-import * as CatalogoModel from '../models/catalogo.js';
 import XLSX from 'xlsx';
 import { normalizarNumProveedor, obtenerPorNumProveedor } from '../models/proveedores.js';
+import * as CatalogoModel from '../models/catalogo.js';
+import logger from '../utils/logger.js';
 
 async function listar(req, res) {
   try {
@@ -14,7 +15,7 @@ async function listar(req, res) {
     const items = await CatalogoModel.listar(filtros);
     res.json(items);
   } catch (err) {
-    console.error('[listar catalogo]', err);
+    logger.error('[listar catalogo]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -25,7 +26,7 @@ async function obtener(req, res) {
     if (!item) return res.status(404).json({ mensaje: 'Elemento no encontrado en el catálogo' });
     res.json(item);
   } catch (err) {
-    console.error('[obtener catalogo]', err);
+    logger.error('[obtener catalogo]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -57,7 +58,7 @@ async function crear(req, res) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ mensaje: 'Ya existe un elemento con ese código en el catálogo' });
     }
-    console.error('[crear catalogo]', err);
+    logger.error('[crear catalogo]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -76,7 +77,7 @@ async function actualizar(req, res) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ mensaje: 'Ya existe un elemento con ese código' });
     }
-    console.error('[actualizar catalogo]', err);
+    logger.error('[actualizar catalogo]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -95,7 +96,7 @@ async function cambiarEstado(req, res) {
       mensaje: `Elemento ${activo ? 'activado' : 'desactivado'} correctamente` 
     });
   } catch (err) {
-    console.error('[cambiarEstado catalogo]', err);
+    logger.error('[cambiarEstado catalogo]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -197,7 +198,7 @@ async function importarExcel(req, res) {
       total_filas: rows.length
     });
   } catch (err) {
-    console.error('[importarExcel catalogo]', err);
+    logger.error('[importarExcel catalogo]', err);
     if (err.message && err.message.includes('Solo archivos Excel')) {
       return res.status(400).json({ mensaje: err.message });
     }

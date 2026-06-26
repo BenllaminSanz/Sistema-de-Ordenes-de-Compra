@@ -5,6 +5,166 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — Sistema OC</title>
   <link rel="stylesheet" href="css/app.css">
+  <style>
+    /* ── Grid de KPIs ────────────────────────────────────────── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 900px) {
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 500px) {
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Layout de dos columnas del dashboard ─────────────────── */
+    .dash-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 16px;
+      align-items: start;
+    }
+    .dash-col-right {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    @media (max-width: 1100px) {
+      .dash-grid { grid-template-columns: 1fr; }
+      .dash-col-right { display: grid; grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── Encabezado del dashboard ─────────────────────────────── */
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .dash-header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+      letter-spacing: -0.3px;
+    }
+    .dash-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ── KPI cards mejorados ──────────────────────────────────── */
+    .kpi-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: var(--card-shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--kpi-color, var(--primary));
+    }
+    .kpi-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--kpi-bg, #E6F1FB);
+      margin-bottom: 2px;
+      flex-shrink: 0;
+    }
+    .kpi-card .label {
+      font-size: 11.5px;
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: .2px;
+    }
+    .kpi-card .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1;
+    }
+    .kpi-card .sub {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Barra de distribución mejorada ───────────────────────── */
+    .dist-row {
+      margin-bottom: 14px;
+    }
+    .dist-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12.5px;
+      margin-bottom: 5px;
+    }
+    .dist-bar-bg {
+      background: #f1f5f9;
+      border-radius: 4px;
+      height: 7px;
+      overflow: hidden;
+    }
+    .dist-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width .4s ease;
+    }
+    .dist-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* ── Aging badge de días ──────────────────────────────────── */
+    .badge-dias-ok   { background:#dcfce7; color:#166534; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+    .badge-dias-warn { background:#fef9c3; color:#854d0e; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+    .badge-dias-crit { background:#fee2e2; color:#991b1b; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+
+    /* ── Botón de reporte discreto ────────────────────────────── */
+    .btn-reporte {
+      display: none;   /* visible solo para admin/contab via JS */
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+      text-decoration: none;
+    }
+    .btn-reporte:hover { background: var(--bg); color: #0f172a; }
+
+    /* ── Card sin margen inferior (para columna derecha) ─────── */
+    .card-flush { margin-bottom: 0; }
+
+    /* ── Sparkline inline ─────────────────────────────────────── */
+    .sparkline-wrap { margin-top: 6px; opacity: .85; }
+
+    /* ── tabla compacta ───────────────────────────────────────── */
+    .table-sm td, .table-sm th { padding: 7px 10px; font-size: 12.5px; }
+    .table-sm th { font-size: 11px; }
+  </style>
 </head>
 <body>
 <div id="app-layout">
@@ -14,51 +174,109 @@
     <header id="topbar"></header>
 
     <main id="main-content">
-      <div class="metrics-grid" id="metrics"></div>
 
-      <!-- Reporte principal visible a primera vista (solo contabilidad/admin) -->
-      <div class="card" id="reporte-status-card" style="display:none; border-left: 5px solid #185FA5;">
-        <div class="card-title">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-          </svg>
-          Reporte STATUS POS HILOS
-        </div>
-        <div style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
-          <div style="flex:1; min-width:240px;">
-            <p style="margin:0; font-size:13px; color:#475569; line-height:1.4;">
-              Reporte consolidado por línea (el utilizado en contabilidad). Incluye estado de recepciones, montos, proveedores y STATUS.
-            </p>
-          </div>
-          <div class="form-group" style="margin:0; min-width:120px;">
-            <label for="reporte-status-anio" style="font-size:12px; color:#64748b; margin-bottom:4px; display:block;">Año</label>
-            <select id="reporte-status-anio" class="form-control"></select>
-          </div>
-          <button id="btn-descargar-status" class="btn btn-primary" style="white-space:nowrap; padding:10px 18px;">
-            📊 Descargar STATUS POS HILOS (Excel)
+      <!-- ── Encabezado con selector de año y reporte discreto ── -->
+      <div class="dash-header">
+        <h1 id="dash-titulo">Dashboard</h1>
+        <div class="dash-header-actions">
+          <select id="dash-anio" class="form-control"
+                  style="width:92px;height:32px;font-size:13px;display:inline-block">
+          </select>
+          <!-- Botón reporte — solo visible para contabilidad/admin -->
+          <button id="btn-reporte" class="btn-reporte" title="Descargar reporte STATUS POS HILOS">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Reporte Excel
           </button>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title" id="titulo-req">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-               viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0
-               002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
-          Requerimientos pendientes de revisión
-        </div>
-        <div id="tabla-req"></div>
-      </div>
+      <!-- ── KPI Cards ─────────────────────────────────────────── -->
+      <div class="metrics-grid" id="metrics" style="margin-bottom:18px"></div>
 
-      <div class="card">
-        <div class="card-title" id="titulo-oc">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-               viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-          Órdenes de compra recientes
+      <!-- ── Grid principal: tablas izq · analytics der ─────── -->
+      <div class="dash-grid">
+
+        <!-- Columna izquierda: lo accionable primero -->
+        <div>
+
+          <!-- Aging de revisión -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-title">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24" style="color:#b45309">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Pendientes de revisión
+              <span id="aging-count"
+                    style="margin-left:4px;font-size:11px;background:#fef3c7;color:#92400e;
+                           padding:1px 7px;border-radius:999px;font-weight:600"></span>
+            </div>
+            <div id="tabla-aging"></div>
+          </div>
+
+          <!-- OC activas -->
+          <div class="card" style="margin-bottom:0">
+            <div class="card-title">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24" style="color:var(--primary)">
+                <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+              </svg>
+              OC activas / pendientes de cerrar
+              <span id="oc-activas-count"
+                    style="margin-left:4px;font-size:11px;background:#dbeafe;color:#1e40af;
+                           padding:1px 7px;border-radius:999px;font-weight:600"></span>
+            </div>
+            <div id="tabla-oc"></div>
+          </div>
+
         </div>
-        <div id="tabla-oc"></div>
-      </div>
+
+        <!-- Columna derecha: analítica compacta -->
+        <div class="dash-col-right">
+
+          <!-- Gasto por tipo -->
+          <div class="card card-flush">
+            <div class="card-title" style="margin-bottom:10px">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+              Gasto por tipo <span id="anio-tipo" style="font-weight:400;color:var(--muted);font-size:12px"></span>
+            </div>
+            <div id="dist-tipo"></div>
+          </div>
+
+          <!-- Top proveedores -->
+          <div class="card card-flush">
+            <div class="card-title" style="margin-bottom:10px">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 010 7.75"/>
+              </svg>
+              Top proveedores MXN
+            </div>
+            <div id="top-proveedores"></div>
+          </div>
+
+          <!-- Top departamentos -->
+          <div class="card card-flush">
+            <div class="card-title" style="margin-bottom:10px">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24">
+                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+              Más activos por departamento
+            </div>
+            <div id="top-departamentos"></div>
+          </div>
+
+        </div>
+      </div><!-- /dash-grid -->
 
     </main>
   </div>

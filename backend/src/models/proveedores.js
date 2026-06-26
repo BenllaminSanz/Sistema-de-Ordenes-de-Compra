@@ -10,7 +10,7 @@ function normalizarNumProveedor(valor) {
 async function listar(soloActivos = false) {
   const where = soloActivos ? 'WHERE activo = 1' : '';
   const [rows] = await pool.query(
-    `SELECT id, num_proveedor, nombre, email, telefono, rfc, direccion, activo, created_at
+    `SELECT id, num_proveedor, nombre, email, telefono, rfc, notas, activo, created_at
      FROM proveedores ${where} ORDER BY num_proveedor ASC, nombre ASC`
   );
   return rows;
@@ -25,7 +25,7 @@ async function obtenerPorId(id) {
 
 async function crear(datos) {
   const [result] = await pool.query(
-    `INSERT INTO proveedores (num_proveedor, nombre, email, telefono, rfc, direccion)
+    `INSERT INTO proveedores (num_proveedor, nombre, email, telefono, rfc, notas)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
       normalizarNumProveedor(datos.num_proveedor),
@@ -33,7 +33,7 @@ async function crear(datos) {
       datos.email,
       datos.telefono || null,
       datos.rfc || null,
-      datos.direccion || null
+      datos.notas || null
     ]
   );
   return result.insertId;
@@ -41,7 +41,7 @@ async function crear(datos) {
 
 async function actualizar(id, datos) {
   const campos = {};
-  ['num_proveedor', 'nombre', 'email', 'telefono', 'rfc', 'direccion'].forEach(c => {
+  ['num_proveedor', 'nombre', 'email', 'telefono', 'rfc', 'notas'].forEach(c => {
     if (datos[c] !== undefined) {
       campos[c] = c === 'num_proveedor' ? normalizarNumProveedor(datos[c]) : datos[c];
     }

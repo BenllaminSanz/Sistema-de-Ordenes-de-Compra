@@ -6,6 +6,7 @@ import {
   cambiarEstado as _cambiarEstado,
   normalizarNumProveedor
 } from '../models/proveedores.js';
+import logger from '../utils/logger.js';
 import XLSX from 'xlsx';
 import pool from '../config/db.js';
 
@@ -25,7 +26,7 @@ async function listar(req, res) {
     const soloActivos = req.query.activos === 'true';
     res.json(await _listar(soloActivos));
   } catch (err) {
-    console.error('[listar proveedores]', err);
+    logger.error('[listar proveedores]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -36,14 +37,14 @@ async function obtener(req, res) {
     if (!p) return res.status(404).json({ mensaje: 'Proveedor no encontrado' });
     res.json(p);
   } catch (err) {
-    console.error('[obtener proveedor]', err);
+    logger.error('[obtener proveedor]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
 
 async function crear(req, res) {
   try {
-    const { num_proveedor, nombre, email, telefono, rfc, direccion } = req.body;
+    const { num_proveedor, nombre, email, telefono, rfc, notas } = req.body;
     if (!nombre || !email) {
       return res.status(400).json({ mensaje: 'Nombre y email son requeridos' });
     }
@@ -51,7 +52,7 @@ async function crear(req, res) {
     const errorNum = validarNumProveedor(num_proveedor, true);
     if (errorNum) return res.status(400).json({ mensaje: errorNum });
 
-    const id = await _crear({ num_proveedor, nombre, email, telefono, rfc, direccion });
+    const id = await _crear({ num_proveedor, nombre, email, telefono, rfc, notas });
     res.status(201).json(await obtenerPorId(id));
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
@@ -60,7 +61,7 @@ async function crear(req, res) {
         : 'RFC';
       return res.status(409).json({ mensaje: `Ya existe un proveedor con ese ${campo}` });
     }
-    console.error('[crear proveedor]', err);
+    logger.error('[crear proveedor]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -82,7 +83,7 @@ async function actualizar(req, res) {
         : 'RFC';
       return res.status(409).json({ mensaje: `Ya existe un proveedor con ese ${campo}` });
     }
-    console.error('[actualizar proveedor]', err);
+    logger.error('[actualizar proveedor]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -97,7 +98,7 @@ async function cambiarEstado(req, res) {
     if (!afectados) return res.status(404).json({ mensaje: 'Proveedor no encontrado' });
     res.json({ mensaje: `Proveedor ${activo ? 'activado' : 'desactivado'}` });
   } catch (err) {
-    console.error('[cambiarEstado proveedor]', err);
+    logger.error('[cambiarEstado proveedor]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -191,7 +192,7 @@ async function importarExcel(req, res) {
       total_filas: rows.length
     });
   } catch (err) {
-    console.error('[importarExcel proveedores]', err);
+    logger.error('[importarExcel proveedores]', err);
     if (err.message && err.message.includes('Solo archivos Excel')) {
       return res.status(400).json({ mensaje: err.message });
     }

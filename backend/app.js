@@ -19,6 +19,8 @@ import recepcionesRoutes from "./src/routes/recepciones.route.js";
 import reportesRoutes from "./src/routes/reportes.route.js";
 import catalogoRoutes from "./src/routes/catalogo.route.js";
 import configRoutes from "./src/routes/config.route.js";
+import dashboardRoutes from "./src/routes/dashboard.route.js";
+import areasRoutes from "./src/routes/areas.route.js";
 
 const app = express();
 
@@ -104,6 +106,8 @@ app.use("/api/ordenes-compra/:orden_id/recepciones", recepcionesRoutes);
 app.use("/api/reportes", reportesRoutes);
 app.use("/api/catalogo", catalogoRoutes);
 app.use("/api/config", configRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/areas", areasRoutes);
 
 // ─── Health check ──────────────────────────────────────────
 app.get("/api/health", (req, res) => {

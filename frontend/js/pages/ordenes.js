@@ -146,18 +146,11 @@ async function cargarOrdenes(pagina) {
   const esSolicitante = usuario?.rol === 'solicitante';
   const esAdminOContab = !esSolicitante;
 
-  // Ajustar título y subtítulo según rol (vista de solicitante)
-  const cardTitle = document.querySelector('#vista-lista .card-title');
+  // Subtítulo contextual para solicitantes
   const subtitle = document.getElementById('oc-subtitle');
-
-  if (cardTitle) {
-    cardTitle.textContent = 'Órdenes de Compra';
-  }
-
   if (subtitle) {
     if (esSolicitante) {
-      subtitle.innerHTML = 'Solo se muestran las Órdenes de Compra que nacen de <strong>tus requerimientos aprobados</strong>.';
-      subtitle.style.cssText = 'font-size:13px;color:#64748b;margin-top:-4px;margin-bottom:10px;padding:6px 10px;background:#f1f5f9;border-radius:6px;';
+      subtitle.innerHTML = 'Solo se muestran las OC que nacen de <strong>tus requerimientos aprobados</strong>.';
       subtitle.style.display = '';
     } else {
       subtitle.textContent = '';
@@ -165,9 +158,11 @@ async function cargarOrdenes(pagina) {
     }
   }
 
-  const estado = document.getElementById('fil-estado').value;
+  const estado    = document.getElementById('fil-estado')?.value || '';
+  const busqueda  = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
   let qs = `?pagina=${pagina}&limite=15`;
-  if (estado) qs += `&estado=${estado}`;
+  if (estado)   qs += `&estado=${estado}`;
+  if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
 
   try {
     const { datos, total, limite } = await Api.get('/ordenes-compra' + qs);

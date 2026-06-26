@@ -15,35 +15,49 @@
 
     <main id="main-content">
       <div class="card">
-        <div class="d-flex align-center justify-between" style="margin-bottom:16px">
-          <div class="card-title mb-0">Catálogo de Artículos y Servicios</div>
-          <div id="admin-actions" style="display:none;">
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('input-excel-catalogo').click()">
-              📥 Cargar Excel
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Catálogo de Artículos y Servicios</h2>
+          </div>
+          <div class="page-header-actions" id="admin-actions" style="display:none">
+            <button class="btn btn-outline btn-sm"
+                    onclick="document.getElementById('input-excel-catalogo').click()">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
+                   viewBox="0 0 24 24" style="vertical-align:-1px;margin-right:3px">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Cargar Excel
             </button>
             <button class="btn btn-primary btn-sm" onclick="abrirModalCatalogo()">
               + Nuevo elemento
             </button>
           </div>
-          <input type="file" id="input-excel-catalogo" accept=".xlsx,.xls" style="display:none" onchange="cargarCatalogoDesdeExcel(this)">
+          <input type="file" id="input-excel-catalogo" accept=".xlsx,.xls"
+                 style="display:none" onchange="cargarCatalogoDesdeExcel(this)">
         </div>
 
-        <!-- Filtros -->
-        <div class="d-flex gap-2 align-center mb-3" style="flex-wrap: wrap;">
-          <input type="text" id="busqueda" class="form-control" placeholder="Buscar por código o descripción..." 
-                 style="max-width: 320px;" oninput="cargarCatalogo()">
-
-          <select id="filtro-tipo" class="form-control" style="max-width: 160px;" onchange="cargarCatalogo()">
+        <div class="filters-bar">
+          <div class="search-wrap">
+            <svg class="search-icon" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" id="busqueda" class="form-control search-input"
+                   placeholder="Buscar por código o descripción…"
+                   oninput="filtrarCatalogo(this.value)">
+          </div>
+          <select id="filtro-tipo" class="form-control" onchange="filtrarCatalogo()">
             <option value="">Todos los tipos</option>
             <option value="PARTES">Partes</option>
             <option value="SERVICIOS">Servicios</option>
             <option value="FLETES">Fletes</option>
           </select>
-
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer; margin-left:8px;">
+          <label class="chk-label">
             <input type="checkbox" id="chk-activos" checked onchange="cargarCatalogo()">
             Solo activos
           </label>
+          <span id="cat-contador" class="filter-count"></span>
         </div>
 
         <div id="tabla-catalogo"></div>

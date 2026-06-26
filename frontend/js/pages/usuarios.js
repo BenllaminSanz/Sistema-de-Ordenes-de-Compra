@@ -82,16 +82,48 @@ async function cargarUsuarios() {
   const contenedor = document.getElementById('tabla-usuarios');
   UI.spinner(contenedor);
 
+  const inputBusq = document.getElementById('busq-usuario');
+  if (inputBusq) inputBusq.value = '';
+
   try {
     const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
     const qs = soloActivos ? '?activo=true' : '';
     const usuarios = await Api.get(`/auth/usuarios${qs}`);
     usuariosCache = usuarios;
+    renderTablaUsuarios(usuariosCache);
+  } catch {
+    UI.empty(document.getElementById('tabla-usuarios'), 'Error al cargar usuarios');
+  }
+}
 
-    if (!usuarios.length) {
-      UI.empty(contenedor, 'No hay usuarios con el filtro seleccionado');
-      return;
-    }
+function filtrarUsuarios(termino) {
+  const q = (termino || '').trim().toLowerCase();
+  if (!q) { renderTablaUsuarios(usuariosCache); return; }
+  const filtrados = usuariosCache.filter(u =>
+    (u.nombre || '').toLowerCase().includes(q) ||
+    (u.email  || '').toLowerCase().includes(q) ||
+    (u.rol    || '').toLowerCase().includes(q)
+  );
+  renderTablaUsuarios(filtrados, usuariosCache.length);
+}
+
+function renderTablaUsuarios(usuarios, totalOriginal = null) {
+  const contenedor = document.getElementById('tabla-usuarios');
+  const contador   = document.getElementById('usr-contador');
+
+  if (contador) {
+    const total = totalOriginal ?? usuarios.length;
+    contador.textContent = totalOriginal !== null && usuarios.length !== total
+      ? `${usuarios.length} de ${total} usuarios`
+      : `${total} usuarios`;
+  }
+
+  if (!usuarios.length) {
+    UI.empty(contenedor, totalOriginal !== null
+      ? 'Sin resultados para esa búsqueda'
+      : 'No hay usuarios con el filtro seleccionado');
+    return;
+  }
 
     contenedor.innerHTML = `
       <div class="table-wrap">
@@ -135,11 +167,9 @@ async function cargarUsuarios() {
           </tbody>
         </table>
       </div>`;
-  } catch (err) {
-    UI.empty(contenedor, 'Error al cargar usuarios');
-    Toast.error(err.mensaje || 'Error');
-  }
 }
+
+window.filtrarUsuarios = filtrarUsuarios;
 
 document.getElementById('form-usuario').addEventListener('submit', async e => {
   e.preventDefault();

@@ -16,13 +16,19 @@ async function generarNumeroOC(conn) {
   return `${prefijo}${String(ultimo + 1).padStart(4, '0')}`;
 }
 
+const ESTADOS_OC_ACTIVAS = ['generada', 'distribuida', 'en_proceso', 'recibida'];
+
 async function listar(filtros = {}) {
   const { estado, solicitante_id, fecha_desde, fecha_hasta, pagina = 1, limite = 20 } = filtros;
 
   let where = [];
   let params = [];
+  const soloActivas = estado === 'activas';
 
-  if (estado) {
+  if (soloActivas) {
+    where.push(`oc.estado IN (${ESTADOS_OC_ACTIVAS.map(() => '?').join(', ')})`);
+    params.push(...ESTADOS_OC_ACTIVAS);
+  } else if (estado) {
     where.push('oc.estado = ?');
     params.push(estado);
   }
@@ -69,7 +75,9 @@ async function listar(filtros = {}) {
      LEFT JOIN proveedores  p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)
      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
      ${whereClause}
-     ORDER BY oc.created_at DESC
+     ORDER BY ${soloActivas
+       ? '(oc.datatextnow_id IS NULL OR oc.datatextnow_id = \'\') DESC, oc.created_at ASC'
+       : 'oc.created_at DESC'}
      LIMIT ? OFFSET ?`,
     [...params, Number(limite), Number(offset)]
   );

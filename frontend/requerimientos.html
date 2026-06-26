@@ -5,6 +5,231 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Requerimientos — Sistema OC</title>
   <link rel="stylesheet" href="css/app.css">
+  <style>
+    /* ── Modal nuevo requerimiento ────────────────────────────── */
+    #modal-req .modal-box {
+      max-width: 640px;
+      width: 95vw;
+      display: flex;
+      flex-direction: column;
+      max-height: 92vh;
+    }
+    #modal-req .modal-form-body {
+      overflow-y: auto;
+      flex: 1;
+      padding: 20px 24px;
+    }
+    #modal-req .modal-header { padding: 16px 24px 14px; flex-shrink: 0; }
+    #modal-req .modal-footer { padding: 14px 24px; flex-shrink: 0; border-top: 1px solid var(--border); }
+
+    /* Separadores de sección */
+    .req-sep {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 18px 0 12px;
+    }
+    .req-sep::after { content:''; flex:1; height:1px; background:var(--border); }
+    .req-sep:first-child { margin-top: 0; }
+
+    /* Grid de campos */
+    .req-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Mode cards (catálogo vs libre) */
+    .mode-cards-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .mode-card {
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      background: #fff;
+      text-align: left;
+      transition: border-color .15s, background .15s;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .mode-card:hover { border-color: var(--primary); background: #f0f7ff; }
+    .mode-card.active-cat { border-color: var(--primary); background: #e6f1fb; }
+    .mode-card.active-lib { border-color: #b45309; background: #fef3c7; }
+    .mode-card-icon {
+      width: 30px; height: 30px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 15px;
+    }
+    .mode-cat .mode-card-icon { background: #e6f1fb; }
+    .mode-lib .mode-card-icon { background: #fef3c7; }
+    .mode-card-title { font-size: 12.5px; font-weight: 600; color: #0f172a; line-height: 1.2; }
+    .mode-card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Sección catálogo */
+    #seccion-items-catalogo {
+      background: #f8faff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 0;
+    }
+    #resultados-catalogo {
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #dbeafe;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+    }
+    #items-seleccionados-req {
+      min-height: 34px;
+      border: 1px dashed #93c5fd;
+      border-radius: 6px;
+      padding: 5px 7px;
+      font-size: 11.5px;
+      background: #fff;
+    }
+
+    /* Sección libres */
+    #libres-actions {
+      background: #fefce8;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    /* Textarea sin resize */
+    #req-titulo, #req-notas { resize: none; }
+
+    /* ── Resultados de búsqueda del catálogo ─────────────────── */
+    .cat-result-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #f1f5f9;
+      transition: background .1s;
+    }
+    .cat-result-row:last-child { border-bottom: none; }
+    .cat-result-row:hover { background: #f8faff; }
+    .cat-result-info { flex: 1; min-width: 0; }
+    .cat-result-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cat-result-code {
+      font-size: 10px; font-weight: 700; color: var(--primary);
+      background: #e6f1fb; padding: 1px 5px; border-radius: 4px;
+      font-family: monospace; flex-shrink: 0;
+    }
+    .cat-result-desc { font-size: 12.5px; color: #0f172a; font-weight: 500; }
+    .cat-result-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
+    .cat-result-price { font-size: 11.5px; font-weight: 700; color: #0f766e; }
+    .cat-result-prov { font-size: 10.5px; color: var(--muted); }
+    .cat-result-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .cat-qty { width: 52px; font-size: 12px; padding: 3px 5px; }
+    .cat-added-badge { font-size: 11px; color: #166534; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 3px; }
+    .cat-empty-state { padding: 14px 12px; text-align: center; }
+    .cat-no-results {
+      background: #fefce8; border: 1px solid #fde68a;
+      border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #92400e;
+    }
+
+    /* ── Ítems seleccionados del catálogo ─────────────────────── */
+    .sel-item-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px;
+      background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;
+      margin-bottom: 4px;
+    }
+    .sel-item-code {
+      font-size: 10px; font-weight: 700; color: #166534;
+      font-family: monospace; background: #dcfce7;
+      padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+    }
+    .sel-item-desc { flex: 1; font-size: 12px; color: #0f172a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sel-item-price { font-size: 11px; color: #166534; font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+    .sel-item-qty { width: 56px; font-size: 12px; padding: 2px 5px; text-align: center; }
+    .sel-empty { font-size: 11.5px; color: var(--muted); padding: 6px 0; display: flex; align-items: center; gap: 6px; }
+
+    /* ── Modal de ítems libres ────────────────────────────────── */
+    #modal-req-libres .modal-box {
+      max-width: 600px; width: 95vw;
+      display: flex; flex-direction: column; max-height: 92vh;
+    }
+    #modal-req-libres .modal-header { padding: 16px 24px 14px; flex-shrink: 0; }
+    #modal-req-libres .modal-footer { padding: 14px 24px; flex-shrink: 0; border-top: 1px solid var(--border); }
+    #modal-req-libres .libre-body { overflow-y: auto; flex: 1; padding: 0 24px 20px; }
+
+    .libre-form-card {
+      background: #f8faff; border: 1px solid #dbeafe;
+      border-radius: 10px; padding: 16px;
+      margin-bottom: 16px;
+    }
+    .libre-form-row {
+      display: grid; grid-template-columns: 1fr 68px 80px; gap: 8px; align-items: end;
+      margin-bottom: 12px;
+    }
+    .libre-ref-tabs {
+      display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px;
+      overflow: hidden; margin-bottom: 8px; width: fit-content;
+    }
+    .libre-ref-tab {
+      padding: 5px 12px; font-size: 11.5px; font-weight: 500; cursor: pointer;
+      border: none; background: #fff; color: var(--muted); transition: all .15s;
+    }
+    .libre-ref-tab.active { background: var(--primary); color: #fff; }
+
+    .libre-item-card {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 12px;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      margin-bottom: 6px;
+      transition: box-shadow .15s;
+    }
+    .libre-item-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    .libre-item-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #f1f5f9; color: var(--muted);
+      font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .libre-item-body { flex: 1; min-width: 0; }
+    .libre-item-desc { font-size: 13px; font-weight: 500; color: #0f172a; margin-bottom: 2px; }
+    .libre-item-meta { font-size: 11px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+    .libre-item-ref { font-size: 11px; margin-top: 3px; }
+    .libre-item-ref a { color: var(--primary); }
+    .libre-del-btn {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1px solid #fecaca; background: #fff5f5; color: #dc2626;
+      font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background .15s;
+    }
+    .libre-del-btn:hover { background: #fee2e2; }
+
+    .libre-empty {
+      text-align: center; padding: 24px 16px; color: var(--muted);
+      border: 1.5px dashed var(--border); border-radius: 8px;
+      font-size: 12.5px;
+    }
+    .libre-section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .6px;
+      text-transform: uppercase; color: var(--muted);
+      margin: 0 0 10px; display: flex; align-items: center; gap: 8px;
+    }
+    .libre-section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  </style>
 </head>
 <body>
 <div id="app-layout">
@@ -18,15 +243,25 @@
       <!-- ── Lista ─────────────────────────────────────────── -->
       <div id="vista-lista">
         <div class="card">
-          <div class="d-flex align-center justify-between mb-0" style="margin-bottom:16px">
-            <h2 class="card-title mb-0">Requerimientos</h2>
-            <button class="btn btn-primary btn-sm" id="btn-nuevo"
-                    onclick="abrirEditorRequerimiento()">+ Nuevo requerimiento</button>
+          <div class="page-header">
+            <div>
+              <h2 class="page-title">Requerimientos</h2>
+            </div>
+            <div class="page-header-actions">
+              <button class="btn btn-primary btn-sm" id="btn-nuevo"
+                      onclick="abrirEditorRequerimiento()">+ Nuevo requerimiento</button>
+            </div>
           </div>
 
           <div class="filters-bar">
-            <input type="text" id="fil-busqueda" class="form-control search-input"
-                   placeholder="Buscar por consecutivo o descripción…">
+            <div class="search-wrap">
+              <svg class="search-icon" width="14" height="14" fill="none"
+                   stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="fil-busqueda" class="form-control search-input"
+                     placeholder="Buscar por consecutivo o descripción…">
+            </div>
             <select id="fil-estado" class="form-control">
               <option value="">Todos los estados</option>
               <option value="borrador">Borrador</option>
@@ -44,16 +279,9 @@
             </select>
             <select id="fil-area" class="form-control">
               <option value="">Todas las áreas</option>
-              <option value="ADMINISTRACION">Administración</option>
-              <option value="PRODUCCION">Producción</option>
             </select>
             <select id="fil-departamento" class="form-control">
               <option value="">Todos los deptos</option>
-              <option value="RH">Recursos Humanos</option>
-              <option value="IT">IT</option>
-              <option value="VENTAS">Ventas</option>
-              <option value="MTTO">Mantenimiento</option>
-              <option value="ALMACEN">Almacén</option>
             </select>
             <button class="btn btn-outline btn-sm" onclick="cargarRequerimientos(1)">Filtrar</button>
           </div>
@@ -102,190 +330,211 @@
 <!-- ── Modal: Nuevo requerimiento ─────────────────────────────── -->
 <div class="modal-backdrop" id="modal-req">
   <div class="modal-box">
+
     <div class="modal-header">
       <h3 class="modal-title">Nuevo requerimiento</h3>
       <button class="modal-close" onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">×</button>
     </div>
+
     <form id="form-req">
-      <div class="form-group">
-        <label class="form-label">Título de la solicitud *</label>
-        <textarea id="req-titulo" class="form-control" rows="1"
-                  placeholder="Ej: Repuestos para prensa hidráulica línea A" required></textarea>
-      </div>
-      <!-- Tipo + Área + Depto en una fila más compacta -->
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="flex:1; margin-bottom:0;">
-          <label class="form-label">Tipo *</label>
-          <select id="req-tipo" class="form-control" required>
-            <option value="">Selecciona…</option>
-            <option value="PARTES">Partes</option>
-            <option value="SERVICIOS">Servicios</option>
-            <option value="FLETES">Fletes</option>
-          </select>
-        </div>
-        <div class="form-group" style="flex:1; margin-bottom:0;">
-          <label class="form-label">Área *</label>
-          <select id="req-area" class="form-control" required>
-            <option value="">Selecciona…</option>
-            <option value="ADMINISTRACION">Administración</option>
-            <option value="PRODUCCION">Producción</option>
-          </select>
-        </div>
-        <div class="form-group" style="flex:1; margin-bottom:0;">
-          <label class="form-label">Departamento *</label>
-          <select id="req-departamento" class="form-control" required>
-            <option value="">Selecciona…</option>
-            <option value="RH">Recursos Humanos</option>
-            <option value="IT">IT</option>
-            <option value="VENTAS">Ventas</option>
-            <option value="MTTO">Mantenimiento</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Notas / Justificación</label>
-        <textarea id="req-notas" class="form-control" rows="2"
-                  placeholder="Motivo de la solicitud, urgencia, ubicación, etc."></textarea>
-      </div>
+      <div class="modal-form-body">
 
-      <!-- Sección de ítems del Catálogo -->
-      <div class="form-group" id="seccion-items-catalogo" style="display:none; background:#f0f7ff; padding:8px 10px; border-radius:6px; border:1px solid #bfdbfe;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-          <label class="form-label" style="font-weight:600; color:#0d6efd; margin:0;">Ítems del catálogo</label>
-          <span style="font-size:10px; color:#166534; background:#dcfce7; padding:1px 6px; border-radius:3px;">Del catálogo</span>
+        <!-- ── Sección 1: Datos de la solicitud ──────────────── -->
+        <div class="req-sep">Datos de la solicitud</div>
+
+        <div class="form-group">
+          <label class="form-label">Título de la solicitud *</label>
+          <textarea id="req-titulo" class="form-control" rows="2"
+                    placeholder="Ej: Repuestos para prensa hidráulica línea A" required></textarea>
         </div>
 
-        <!-- Búsqueda catálogo + Filtro por proveedor -->
-        <div class="d-flex gap-2 mb-1" style="flex-wrap: wrap; align-items: flex-end;">
-          <div style="flex: 2; min-width: 160px;">
-            <input type="text" id="busqueda-catalogo" class="form-control form-control-sm" placeholder="Buscar en catálogo (código/descripción)..." style="width:100%;">
-          </div>
-          <div id="filtro-proveedor-wrapper" style="flex: 1; min-width: 150px; display: none;">
-            <select id="filtro-proveedor-catalogo" class="form-control form-control-sm" title="Filtrar por proveedor del catálogo">
-              <option value="">Todos los proveedores</option>
+        <div class="req-grid-2" style="margin-bottom:10px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Tipo *</label>
+            <select id="req-tipo" class="form-control" required>
+              <option value="">Selecciona…</option>
+              <option value="PARTES">Partes</option>
+              <option value="SERVICIOS">Servicios</option>
+              <option value="FLETES">Fletes</option>
             </select>
           </div>
-          <div style="padding-bottom: 2px;">
-            <button type="button" class="btn btn-primary btn-sm" onclick="buscarEnCatalogo()">Buscar</button>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Área *</label>
+            <select id="req-area" class="form-control" required onchange="filtrarDeptosPorArea(this.value)">
+              <option value="">Selecciona…</option>
+            </select>
           </div>
         </div>
-        <div id="resultados-catalogo" style="max-height:120px; overflow:auto; border:1px solid #b3d7ff; border-radius:4px; padding:4px; font-size:11px; background:white;"></div>
 
-        <!-- Seleccionados catálogo -->
-        <div style="font-size:10.5px; font-weight:500; color:#166534; margin:4px 0 2px;">Seleccionados del catálogo:</div>
-        <div id="items-seleccionados-req" style="min-height:28px; border:1px dashed #0d6efd; border-radius:4px; padding:4px; font-size:11px; background:white;"></div>
-      </div>
-
-      <!-- Modo ítems nuevos (secundario y exclusivo) -->
-      <div class="form-group" id="selector-items-nuevos" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee;">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm btn-outline-warning" onclick="document.getElementById('usar-items-nuevos').checked = true; toggleModoItemsNuevos(true);">
-            Mis ítems <strong>no están en el catálogo</strong>
-          </button>
-          <span style="font-size:10.5px; color:#854d0e;">(se solicitará cotización y se darán de alta)</span>
-          <input type="checkbox" id="usar-items-nuevos" style="display:none;" onchange="toggleModoItemsNuevos(this.checked)">
+        <div class="form-group">
+          <label class="form-label">Departamento *
+            <span id="depto-hint" style="font-size:10.5px; color:var(--muted); font-weight:400;">
+              — selecciona un área primero
+            </span>
+          </label>
+          <select id="req-departamento" class="form-control" required>
+            <option value="">Selecciona un área primero…</option>
+          </select>
         </div>
 
-        <!-- Acciones para libres (visible cuando está en modo nuevos) -->
-        <div id="libres-actions" style="margin-top: 6px; display: none;">
-          <button type="button" class="btn btn-sm btn-warning" onclick="abrirModalItemsLibres()">
-            Gestionar ítems nuevos
-          </button>
-          <span style="font-size:10px; color:#666; margin-left:8px;">(este req será solo de ítems nuevos)</span>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">
+            Notas / Justificación
+            <span style="font-size:10.5px; color:var(--muted); font-weight:400;">opcional</span>
+          </label>
+          <textarea id="req-notas" class="form-control" rows="2"
+                    placeholder="Motivo, urgencia, ubicación, número de máquina…"></textarea>
         </div>
-      </div>
-      <!-- El solicitante ya no define si requiere cotización (lo decide Contabilidad) -->
+
+        <!-- ── Sección 2: Ítems ──────────────────────────────── -->
+        <div class="req-sep" style="margin-top:20px;">Ítems a solicitar</div>
+
+        <!-- Panel unificado (oculto hasta seleccionar Tipo) -->
+        <div id="selector-items-nuevos" style="display:none;">
+
+          <!-- Selector de modo — visible desde el inicio -->
+          <div class="mode-cards-row" id="mode-cards-row">
+            <button type="button" class="mode-card mode-cat active-cat" id="mode-btn-catalogo"
+                    onclick="seleccionarModoItems('catalogo')">
+              <div class="mode-card-icon">🔍</div>
+              <div>
+                <div class="mode-card-title">Buscar en catálogo</div>
+                <div class="mode-card-sub">Ítems registrados con proveedor</div>
+              </div>
+            </button>
+            <button type="button" class="mode-card mode-lib" id="mode-btn-libre"
+                    onclick="seleccionarModoItems('libre')">
+              <div class="mode-card-icon">✏️</div>
+              <div>
+                <div class="mode-card-title">Solicitar ítem nuevo</div>
+                <div class="mode-card-sub">No está en el catálogo aún</div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Búsqueda en catálogo -->
+          <div id="seccion-items-catalogo">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+              <div style="flex:2; min-width:150px;">
+                <input type="text" id="busqueda-catalogo" class="form-control form-control-sm"
+                       placeholder="Buscar por código o descripción…"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();buscarEnCatalogo();}">
+              </div>
+              <div id="filtro-proveedor-wrapper" style="flex:1; min-width:120px; display:none;">
+                <select id="filtro-proveedor-catalogo" class="form-control form-control-sm">
+                  <option value="">Todos los proveedores</option>
+                </select>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" onclick="buscarEnCatalogo()">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
+                     viewBox="0 0 24 24" style="margin-right:3px;">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>Buscar
+              </button>
+            </div>
+            <div id="resultados-catalogo"></div>
+          </div>
+
+          <!-- Formulario de ítem libre INLINE (sin modal) -->
+          <div id="libre-inline-section" style="display:none; margin-top:10px; background:#fefce8; border:1px solid #fde68a; border-radius:8px; padding:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <span style="font-size:11.5px; font-weight:600; color:#92400e;">
+                Ítem nuevo — no está en el catálogo
+              </span>
+              <button type="button" onclick="ocultarLibreInline()"
+                      style="background:none; border:none; cursor:pointer; color:var(--muted); font-size:16px; line-height:1; padding:0;">×</button>
+            </div>
+            <div class="libre-form-row" style="margin-bottom:10px;">
+              <div>
+                <label class="form-label" style="font-size:11px;">Descripción *</label>
+                <input type="text" id="libre-descripcion" class="form-control form-control-sm"
+                       placeholder="Ej: Rodamiento FAG 6205, servicio de maquinado…"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();agregarItemLibre();}">
+              </div>
+              <div>
+                <label class="form-label" style="font-size:11px;">Cantidad</label>
+                <input type="number" id="libre-cantidad" class="form-control form-control-sm"
+                       value="1" min="1" step="1">
+              </div>
+              <div>
+                <label class="form-label" style="font-size:11px;">Unidad</label>
+                <input type="text" id="libre-unidad" class="form-control form-control-sm"
+                       placeholder="pza, hr…">
+              </div>
+            </div>
+
+            <!-- Referencia opcional -->
+            <div style="margin-bottom:10px;">
+              <label class="form-label" style="font-size:10.5px; color:var(--muted); margin-bottom:5px;">
+                Referencia <span style="font-weight:400;">(opcional)</span>
+              </label>
+              <div class="libre-ref-tabs" style="margin-bottom:6px;">
+                <button type="button" class="libre-ref-tab active" id="tab-ref-link"
+                        onclick="setRefTab('link')">🔗 Enlace</button>
+                <button type="button" class="libre-ref-tab" id="tab-ref-archivo"
+                        onclick="setRefTab('archivo')">📎 Archivo</button>
+              </div>
+              <!-- Radios ocultos para compat con JS existente -->
+              <input type="radio" name="libre-ref-tipo" id="libre-ref-link" value="link" checked
+                     style="display:none;" onchange="toggleReferenciaLibre()">
+              <input type="radio" name="libre-ref-tipo" id="libre-ref-archivo" value="archivo"
+                     style="display:none;" onchange="toggleReferenciaLibre()">
+              <div id="libre-ref-link-wrap">
+                <input type="url" id="libre-link" class="form-control form-control-sm"
+                       placeholder="https://proveedor.com/producto…">
+              </div>
+              <div id="libre-ref-archivo-wrap" style="display:none;">
+                <input type="file" id="libre-archivo" class="form-control form-control-sm"
+                       accept=".pdf,image/jpeg,image/png,image/webp,image/gif">
+                <small class="text-muted" style="font-size:10px;">PDF o imagen — máx. 8 MB</small>
+              </div>
+            </div>
+
+            <div style="text-align:right;">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-agregar-item-libre"
+                      onclick="agregarItemLibre()">
+                + Agregar ítem
+              </button>
+            </div>
+          </div>
+
+          <!-- Lista unificada de ítems seleccionados -->
+          <div style="margin-top:12px;">
+            <div style="font-size:10px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
+                        color:var(--muted); margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+              Seleccionados
+              <span id="libres-count" style="display:none;"></span>
+              <span style="flex:1; height:1px; background:var(--border); display:block;"></span>
+            </div>
+            <div id="items-seleccionados-req"></div>
+          </div>
+
+          <!-- Elementos de compat JS (ocultos) -->
+          <input type="checkbox" id="usar-items-nuevos" style="display:none;">
+          <div id="libres-actions" style="display:none;"></div>
+
+        </div>
+
+        <!-- Hint cuando tipo no está seleccionado -->
+        <p id="items-hint" style="font-size:11.5px; color:var(--muted); display:none;">
+          Selecciona el <strong>Tipo</strong> primero para buscar ítems.
+        </p>
+
+      </div><!-- /modal-form-body -->
+
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">Cancelar</button>
-        <button type="submit" class="btn btn-primary" id="btn-guardar-req">Guardar</button>
+        <button type="button" class="btn btn-outline"
+                onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-req">Guardar requerimiento</button>
       </div>
     </form>
+
   </div>
 </div>
 
-<!-- ── Modal separado: Ítems Libres / Solicitud de ítem nuevo (no en catálogo) ──────────────────────────────────── -->
-<div class="modal-backdrop" id="modal-req-libres" style="display: none;">
-  <div class="modal-box" style="max-width: 620px;">
-    <div class="modal-header">
-      <h3 class="modal-title">Ítems nuevos (en texto libre)</h3>
-      <button class="modal-close" onclick="cerrarModalItemsLibres()">×</button>
-    </div>
-    <div class="modal-body">
-
-      <div style="background:#fefce8; border:1px solid #facc15; border-radius:4px; padding:6px 8px; margin-bottom:8px; font-size:11px; color:#713f12;">
-        <strong>Regla:</strong> Este requerimiento será <strong>solo de ítems nuevos</strong> (se enviará a cotización para darlos de alta en catálogo). No se pueden mezclar con ítems del catálogo.
-      </div>
-
-      <button type="button" 
-              class="btn btn-sm btn-outline-secondary w-100 mb-2" 
-              onclick="crearRequerimientoParaAltaCatalogoFromCurrent(); cerrarModalItemsLibres();">
-        Preferiría crear un requerimiento separado solo para estos ítems nuevos
-      </button>
-
-      <button type="button" 
-              class="btn btn-sm btn-outline-secondary w-100 mb-2" 
-              onclick="deseleccionarYVolverACatalogo()">
-        Volver a usar ítems del catálogo (deseleccionar)
-      </button>
-
-      <hr style="margin:10px 0;">
-
-      <h6 style="margin-bottom:6px;">Agregar ítem nuevo en texto libre a este requerimiento (alternativa)</h6>
-
-      <!-- Formulario para libre (dentro de este modal) -->
-      <div id="form-item-libre" style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:4px; padding:8px; margin-bottom:10px; font-size:12px;">
-        <div class="d-flex gap-2 align-items-end flex-wrap">
-          <div style="flex: 2 1 170px; min-width:150px;">
-            <label style="font-size:10px; margin-bottom:1px; display:block;">Descripción *</label>
-            <input type="text" id="libre-descripcion" class="form-control form-control-sm" placeholder="Ej: Servicio de maquinado especial...">
-          </div>
-          <div style="width:65px;">
-            <label style="font-size:10px; margin-bottom:1px; display:block;">Cantidad</label>
-            <input type="number" id="libre-cantidad" class="form-control form-control-sm" value="1" min="1" step="1">
-          </div>
-          <div style="width:80px;">
-            <label style="font-size:10px; margin-bottom:1px; display:block;">Unidad (opc)</label>
-            <input type="text" id="libre-unidad" class="form-control form-control-sm" placeholder="pieza, hr">
-          </div>
-          <div style="padding-bottom:2px;">
-            <button type="button" class="btn btn-sm btn-primary" style="font-size:11px; padding:2px 8px;" id="btn-agregar-item-libre" onclick="agregarItemLibre()">Agregar</button>
-          </div>
-        </div>
-
-        <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #dee2e6;">
-          <label style="font-size:10px; font-weight:600; display:block; margin-bottom:4px;">Referencia (opcional)</label>
-          <div class="d-flex gap-2 flex-wrap" style="margin-bottom:6px;">
-            <label style="font-size:10px; display:flex; align-items:center; gap:4px; cursor:pointer;">
-              <input type="radio" name="libre-ref-tipo" id="libre-ref-link" value="link" checked onchange="toggleReferenciaLibre()">
-              Enlace web
-            </label>
-            <label style="font-size:10px; display:flex; align-items:center; gap:4px; cursor:pointer;">
-              <input type="radio" name="libre-ref-tipo" id="libre-ref-archivo" value="archivo" onchange="toggleReferenciaLibre()">
-              Archivo (PDF o imagen)
-            </label>
-          </div>
-          <div id="libre-ref-link-wrap">
-            <input type="url" id="libre-link" class="form-control form-control-sm"
-                   placeholder="https://proveedor.com/producto...">
-            <small class="text-muted" style="font-size:9px;">Pega el link del producto, parte o servicio.</small>
-          </div>
-          <div id="libre-ref-archivo-wrap" style="display:none;">
-            <input type="file" id="libre-archivo" class="form-control form-control-sm"
-                   accept=".pdf,image/jpeg,image/png,image/webp,image/gif">
-            <small class="text-muted" style="font-size:9px;">PDF o imagen, máximo 8 MB.</small>
-          </div>
-        </div>
-      </div>
-
-      <h6 style="font-size:12px; margin-bottom:4px;">Ítems libres agregados a este requerimiento:</h6>
-      <div id="items-libres-lista-modal" style="min-height:40px; border:1px dashed #f0ad4e; border-radius:4px; padding:4px; font-size:12px; background:#fffaf0; margin-bottom:8px;"></div>
-
-      <div class="text-end">
-        <button type="button" class="btn btn-outline btn-sm" onclick="cerrarModalItemsLibres()">Cerrar</button>
-      </div>
-
-    </div>
-  </div>
+<!-- ── Modal stub: modal-req-libres (ya no se usa, se mantiene para compat JS) -->
+<div id="modal-req-libres" style="display:none;">
+  <div id="items-libres-lista-modal"></div>
 </div>
 
 <!-- ── Modal: Cambiar estado ──────────────────────────────────── -->
@@ -477,6 +726,194 @@
 </div>
 
 <div id="toast-container"></div>
+
+<script>
+// ── Cache de áreas cargadas desde el API ─────────────────────
+let _areasCache = null;
+
+// ── Carga áreas desde /api/areas y puebla los selects ────────
+async function cargarAreasEnForm() {
+  try {
+    const { areas } = await Api.get('/areas');
+    _areasCache = areas;
+
+    // Poblar #req-area (formulario)
+    const selArea = document.getElementById('req-area');
+    if (selArea) {
+      const valActual = selArea.value;
+      selArea.innerHTML = '<option value="">Selecciona…</option>';
+      areas.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.label;
+        selArea.appendChild(opt);
+      });
+      if (valActual) selArea.value = valActual;
+    }
+
+    // Poblar #fil-area (filtros)
+    const filArea = document.getElementById('fil-area');
+    if (filArea) {
+      const valActual = filArea.value;
+      filArea.innerHTML = '<option value="">Todas las áreas</option>';
+      areas.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.label;
+        filArea.appendChild(opt);
+      });
+      if (valActual) filArea.value = valActual;
+    }
+
+    // Poblar #fil-departamento con todos los departamentos (para filtros)
+    const filDepto = document.getElementById('fil-departamento');
+    if (filDepto) {
+      filDepto.innerHTML = '<option value="">Todos los deptos</option>';
+      areas.forEach(a => {
+        const grp = document.createElement('optgroup');
+        grp.label = a.label;
+        a.departamentos.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.nombre;
+          opt.textContent = d.nombre;
+          grp.appendChild(opt);
+        });
+        filDepto.appendChild(grp);
+      });
+    }
+
+    // Si hay un área ya seleccionada en el formulario, mostrar deptos
+    const areaActual = document.getElementById('req-area')?.value;
+    if (areaActual) filtrarDeptosPorArea(areaActual);
+
+  } catch (err) {
+    console.error('cargarAreasEnForm:', err);
+  }
+}
+
+// Exponer globalmente
+window.cargarAreasEnForm = cargarAreasEnForm;
+
+// ── Selector de modo: catálogo vs ítem nuevo ─────────────────
+window.seleccionarModoItems = function(modo) {
+  const btnCat    = document.getElementById('mode-btn-catalogo');
+  const btnLib    = document.getElementById('mode-btn-libre');
+  const secCat    = document.getElementById('seccion-items-catalogo');
+  const secLib    = document.getElementById('libre-inline-section');
+  const resCat    = document.getElementById('resultados-catalogo');
+
+  if (modo === 'catalogo') {
+    // Verificar si hay ítems libres y pedir confirmación
+    const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
+    if (tieneLibres) {
+      if (!confirm('Tienes ítems nuevos en la lista. ¿Limpiarlos y cambiar a catálogo?')) return;
+      window.requerimientoItemsLibres = [];
+      const cb = document.getElementById('usar-items-nuevos');
+      if (cb) cb.checked = false;
+    }
+
+    // UI: activar catálogo
+    btnCat.classList.add('active-cat');   btnCat.classList.remove('active-lib');
+    btnLib.classList.remove('active-lib'); btnLib.classList.remove('active-cat');
+    if (secCat) secCat.style.display = 'block';
+    if (secLib) secLib.style.display = 'none';
+    if (resCat) resCat.innerHTML = '';
+
+    // Limpiar el formulario de ítem libre
+    const descEl = document.getElementById('libre-descripcion');
+    const cantEl = document.getElementById('libre-cantidad');
+    const unidEl = document.getElementById('libre-unidad');
+    if (descEl) descEl.value = '';
+    if (cantEl) cantEl.value = '1';
+    if (unidEl) unidEl.value = '';
+    if (typeof limpiarReferenciaLibreForm === 'function') limpiarReferenciaLibreForm();
+
+    setTimeout(() => {
+      const busq = document.getElementById('busqueda-catalogo');
+      if (busq) busq.focus();
+    }, 80);
+
+  } else { // 'libre'
+    // Verificar si hay ítems del catálogo y pedir confirmación
+    const tieneCatalogo = (window.requerimientoItemsSeleccionados || []).length > 0;
+    if (tieneCatalogo) {
+      if (!confirm('Tienes ítems del catálogo en la lista. ¿Limpiarlos y cambiar a ítem nuevo?')) return;
+      window.requerimientoItemsSeleccionados = [];
+      if (resCat) resCat.innerHTML = '';
+    }
+
+    // UI: activar libre
+    btnLib.classList.add('active-lib');   btnLib.classList.remove('active-cat');
+    btnCat.classList.remove('active-cat'); btnCat.classList.remove('active-lib');
+    if (secCat) secCat.style.display = 'none';
+    if (secLib) secLib.style.display = 'block';
+    const cb = document.getElementById('usar-items-nuevos');
+    if (cb) cb.checked = true;
+
+    setTimeout(() => {
+      const desc = document.getElementById('libre-descripcion');
+      if (desc) desc.focus();
+    }, 80);
+  }
+
+  // Siempre re-renderizar la lista unificada
+  if (typeof renderItemsSeleccionados === 'function') renderItemsSeleccionados();
+  if (typeof renderLibresResumen === 'function') renderLibresResumen();
+};
+
+// ── Tabs de referencia (reemplaza radio buttons visualmente) ─
+function setRefTab(tipo) {
+  const linkRadio = document.getElementById('libre-ref-link');
+  const archRadio = document.getElementById('libre-ref-archivo');
+  const tabLink   = document.getElementById('tab-ref-link');
+  const tabArch   = document.getElementById('tab-ref-archivo');
+
+  if (tipo === 'link') {
+    if (linkRadio) { linkRadio.checked = true; linkRadio.dispatchEvent(new Event('change')); }
+    if (tabLink)   tabLink.classList.add('active');
+    if (tabArch)   tabArch.classList.remove('active');
+  } else {
+    if (archRadio) { archRadio.checked = true; archRadio.dispatchEvent(new Event('change')); }
+    if (tabArch)   tabArch.classList.add('active');
+    if (tabLink)   tabLink.classList.remove('active');
+  }
+}
+
+// ── Filtrado de departamentos según el área seleccionada ─────
+function filtrarDeptosPorArea(area) {
+  const sel  = document.getElementById('req-departamento');
+  const hint = document.getElementById('depto-hint');
+  if (!sel) return;
+
+  const areaData = (_areasCache || []).find(a => a.id === area);
+
+  sel.innerHTML = '';
+
+  if (!areaData) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Selecciona un área primero…';
+    sel.appendChild(opt);
+    if (hint) hint.textContent = '— selecciona un área primero';
+    return;
+  }
+
+  const optDefault = document.createElement('option');
+  optDefault.value = '';
+  optDefault.textContent = `Selecciona departamento de ${areaData.label}…`;
+  sel.appendChild(optDefault);
+
+  areaData.departamentos.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.nombre;
+    opt.textContent = d.nombre;
+    sel.appendChild(opt);
+  });
+
+  if (hint) hint.textContent = `— ${areaData.label}`;
+}
+</script>
+
 <script src="js/app.js"></script>
 <script src="js/pages/requerimientos/state.js"></script>
 <script src="js/pages/requerimientos/lista.js"></script>

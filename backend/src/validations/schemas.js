@@ -39,8 +39,8 @@ export const restablecerPasswordUsuarioSchema = z.object({
 export const crearRequerimientoSchema = z.object({
   titulo_solicitud: z.string().min(5, 'El título debe tener al menos 5 caracteres').trim(),
   notas: z.string().trim().optional().default(''),
-  area: z.enum(['ADMINISTRACION', 'PRODUCCION']).optional(),
-  departamento: z.enum(['ALMACEN', 'RH', 'IT', 'VENTAS', 'MTTO']).optional(),
+  area: z.string().trim().toUpperCase().min(1, 'Área requerida').optional(),
+  departamento: z.string().trim().toUpperCase().min(1).optional(),
   tipo: z.enum(['PARTES', 'SERVICIOS', 'FLETES']).optional(),
   requiere_cotizacion: z.coerce.boolean().optional().default(false),
   items: z.array(
@@ -74,8 +74,8 @@ export const crearRequerimientoSchema = z.object({
 export const actualizarRequerimientoSchema = z.object({
   titulo_solicitud: z.string().min(5, 'El título debe tener al menos 5 caracteres').trim().optional(),
   notas: z.string().trim().optional(),
-  area: z.enum(['ADMINISTRACION', 'PRODUCCION']).optional(),
-  departamento: z.enum(['ALMACEN', 'RH', 'IT', 'VENTAS', 'MTTO']).optional(),
+  area: z.string().trim().toUpperCase().min(1, 'Área requerida').optional(),
+  departamento: z.string().trim().toUpperCase().min(1).optional(),
   tipo: z.enum(['PARTES', 'SERVICIOS', 'FLETES']).optional(),
   requiere_cotizacion: z.coerce.boolean().optional(),
   datatextnow_id: z.string().trim().optional(),

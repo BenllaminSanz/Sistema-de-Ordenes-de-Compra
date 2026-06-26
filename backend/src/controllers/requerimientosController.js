@@ -25,7 +25,7 @@ async function listar(req, res) {
 
     res.json(resultado);
   } catch (err) {
-    console.error('[listar requerimientos]', err);
+    logger.error('[listar requerimientos]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -46,7 +46,7 @@ async function obtener(req, res) {
 
     res.json(req_);
   } catch (err) {
-    console.error('[obtener requerimiento]', err);
+    logger.error('[obtener requerimiento]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -107,9 +107,7 @@ async function crear(req, res) {
     const nuevo = await obtenerPorId(id);
     res.status(201).json(nuevo);
   } catch (err) {
-    console.error('=== ERROR CREAR REQUERIMIENTO ===');
-    console.error(err);
-    logger.error('Error al crear requerimiento', { 
+    logger.error('Error al crear requerimiento', {
       error: err.message, 
       stack: err.stack,
       userId: req.usuario?.id 
@@ -176,7 +174,7 @@ async function actualizar(req, res) {
     const actualizado = await obtenerPorId(req.params.id);
     res.json(actualizado);
   } catch (err) {
-    console.error('[actualizar requerimiento]', err);
+    logger.error('[actualizar requerimiento]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -282,7 +280,7 @@ async function subirReferenciaItem(req, res) {
       referencia_nombre: req.file.originalname,
     });
   } catch (err) {
-    console.error('[subirReferenciaItem]', err);
+    logger.error('[subirReferenciaItem]', err);
     res.status(500).json({ mensaje: 'Error al subir el archivo de referencia' });
   }
 }

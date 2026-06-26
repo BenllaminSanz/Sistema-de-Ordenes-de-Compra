@@ -16,6 +16,9 @@ cargarProveedores();
 
 let editandoId = null;
 
+// Cache local de proveedores para búsqueda client-side
+let _proveedoresData = [];
+
 // Delegación de eventos en la tabla de proveedores
 const tablaProveedores = document.getElementById('tabla-proveedores');
 if (tablaProveedores) {
@@ -37,56 +40,117 @@ async function cargarProveedores() {
   const contenedor = document.getElementById('tabla-proveedores');
   UI.spinner(contenedor);
   const soloActivos = document.getElementById('chk-activos').checked;
+  // Limpiar búsqueda al recargar
+  const inputBusq = document.getElementById('busq-proveedor');
+  if (inputBusq) inputBusq.value = '';
+
   try {
     const provs = await Api.get('/proveedores' + (soloActivos ? '?activos=true' : ''));
-
-    if (!provs.length) { UI.empty(contenedor, 'No hay proveedores registrados'); return; }
-
-    contenedor.innerHTML = `
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th style="width: 85px; min-width: 70px;">No.</th>
-            <th style="max-width: 200px;">Nombre</th>
-            <th>Email</th><th>Teléfono</th>
-            <th>RFC</th><th>Estado</th><th>Acciones</th>
-          </tr></thead>
-          <tbody>${provs.map(p => `
-            <tr>
-              <td style="width: 85px; min-width: 70px;"><code>${p.num_proveedor || '—'}</code></td>
-              <td class="fw-600" style="max-width: 200px;">${p.nombre}</td>
-              <td>${p.email}</td>
-              <td>${p.telefono || '—'}</td>
-              <td>${p.rfc || '—'}</td>
-              <td>${p.activo
-                    ? '<span class="badge badge-aprobado">Activo</span>'
-                    : '<span class="badge badge-rechazado">Inactivo</span>'}</td>
-              <td>
-                <div class="d-flex gap-2">
-                  <button class="btn btn-sm btn-outline" data-action="editar" data-id="${p.id}" title="Editar proveedor" style="padding:2px 6px;">
-                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  ${Auth.puedeHacer(['admin'])
-                    ? `<button class="btn btn-sm ${p.activo ? 'btn-danger' : 'btn-success'}" data-action="toggle" data-id="${p.id}" data-activo="${p.activo ? 'true' : 'false'}" 
-                         title="${p.activo ? 'Desactivar proveedor' : 'Activar proveedor'}" style="padding:2px 6px;">
-                         ${p.activo 
-                           ? `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>` 
-                           : `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><path d="M20 6L9 17l-5-5"/></svg>`}
-                       </button>`
-                    : ''}
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
+    _proveedoresData = provs;
+    renderTablaProveedores(provs);
   } catch (err) {
     UI.empty(contenedor, 'Error al cargar proveedores');
     Toast.error(err.mensaje || 'Error');
   }
+}
+
+/** Filtra el array en memoria y re-renderiza sin llamar al API */
+function filtrarProveedores(termino) {
+  const q = termino.trim().toLowerCase();
+  if (!q) {
+    renderTablaProveedores(_proveedoresData);
+    return;
+  }
+  const filtrados = _proveedoresData.filter(p =>
+    (p.nombre        || '').toLowerCase().includes(q) ||
+    (p.num_proveedor || '').toLowerCase().includes(q) ||
+    (p.email         || '').toLowerCase().includes(q) ||
+    (p.rfc           || '').toLowerCase().includes(q)
+  );
+  renderTablaProveedores(filtrados, _proveedoresData.length);
+}
+
+function renderTablaProveedores(provs, totalOriginal = null) {
+  const contenedor = document.getElementById('tabla-proveedores');
+  const contador   = document.getElementById('prov-contador');
+
+  // Actualizar contador
+  if (contador) {
+    const total = totalOriginal ?? provs.length;
+    contador.textContent = totalOriginal !== null && provs.length !== total
+      ? `${provs.length} de ${total} proveedores`
+      : `${total} proveedores`;
+  }
+
+  if (!provs.length) {
+    UI.empty(contenedor, totalOriginal !== null
+      ? 'Sin resultados para esa búsqueda'
+      : 'No hay proveedores registrados');
+    return;
+  }
+
+  contenedor.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:85px;min-width:70px">No.</th>
+          <th>Nombre</th>
+          <th>Email</th>
+          <th>Teléfono</th>
+          <th>RFC</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr></thead>
+        <tbody>${provs.map(p => `
+          <tr>
+            <td><code>${p.num_proveedor || '—'}</code></td>
+            <td class="fw-600">${p.nombre}</td>
+            <td>
+              ${p.email
+                ? `<span class="copy-text" data-copy="${p.email}"
+                        title="Clic para copiar"
+                        style="cursor:pointer;border-bottom:1px dashed var(--text-muted)"
+                   >${p.email}</span>`
+                : '—'}
+            </td>
+            <td>${p.telefono || '—'}</td>
+            <td>${p.rfc || '—'}</td>
+            <td>${p.activo
+                  ? '<span class="badge badge-aprobado">Activo</span>'
+                  : '<span class="badge badge-rechazado">Inactivo</span>'}</td>
+            <td>
+              <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline" data-action="editar" data-id="${p.id}"
+                        title="Editar proveedor" style="padding:2px 6px;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                ${Auth.puedeHacer(['admin'])
+                  ? `<button class="btn btn-sm ${p.activo ? 'btn-danger' : 'btn-success'}"
+                             data-action="toggle" data-id="${p.id}" data-activo="${p.activo ? 'true' : 'false'}"
+                             title="${p.activo ? 'Desactivar' : 'Activar'}" style="padding:2px 6px;">
+                       ${p.activo
+                         ? `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`
+                         : `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><path d="M20 6L9 17l-5-5"/></svg>`}
+                     </button>`
+                  : ''}
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Copiar al portapapeles al hacer clic en email
+  contenedor.querySelectorAll('.copy-text').forEach(el => {
+    el.addEventListener('click', () => {
+      navigator.clipboard.writeText(el.dataset.copy).then(() => {
+        Toast.success('Email copiado');
+      });
+    });
+  });
 }
 
 function normalizarNumProveedor(valor) {
@@ -110,7 +174,7 @@ async function abrirModalProveedor(id = null) {
       document.getElementById('prov-email').value     = p.email;
       document.getElementById('prov-telefono').value  = p.telefono || '';
       document.getElementById('prov-rfc').value       = p.rfc || '';
-      document.getElementById('prov-direccion').value = p.direccion || '';
+      document.getElementById('prov-notas').value = p.notas || '';
     } catch { Toast.error('Error al cargar proveedor'); return; }
   }
   UI.abrirModal('modal-proveedor');
@@ -126,8 +190,9 @@ document.getElementById('form-proveedor').addEventListener('submit', async e => 
   btn.disabled = true;
   document.getElementById('error-prov-numero').textContent = '';
 
-  const num_proveedor = normalizarNumProveedor(document.getElementById('prov-numero').value);
-  if (!/^\d{5}$/.test(num_proveedor)) {
+  const rawNum = document.getElementById('prov-numero').value.trim();
+  const num_proveedor = rawNum ? normalizarNumProveedor(rawNum) : null;
+  if (rawNum && !/^\d{5}$/.test(num_proveedor)) {
     document.getElementById('error-prov-numero').textContent =
       'El número de proveedor debe tener exactamente 5 dígitos';
     btn.disabled = false;
@@ -140,7 +205,7 @@ document.getElementById('form-proveedor').addEventListener('submit', async e => 
     email:     document.getElementById('prov-email').value,
     telefono:  document.getElementById('prov-telefono').value || null,
     rfc:       document.getElementById('prov-rfc').value || null,
-    direccion: document.getElementById('prov-direccion').value || null,
+    notas: document.getElementById('prov-notas').value || null,
   };
 
   try {

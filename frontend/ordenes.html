@@ -18,10 +18,23 @@
       <!-- ── Lista ─────────────────────────────────────────── -->
       <div id="vista-lista">
         <div class="card">
-          <div class="card-title">Órdenes de Compra</div>
-          <div id="oc-subtitle" style="font-size:13px;color:#64748b;margin-top:-4px;margin-bottom:8px;"></div>
+          <div class="page-header">
+            <div>
+              <h2 class="page-title">Órdenes de Compra</h2>
+              <p class="page-subtitle" id="oc-subtitle"></p>
+            </div>
+          </div>
 
           <div class="filters-bar">
+            <div class="search-wrap">
+              <svg class="search-icon" width="14" height="14" fill="none"
+                   stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="search" id="fil-busqueda-oc" class="form-control search-input"
+                     placeholder="Buscar por número OC o proveedor…"
+                     oninput="cargarOrdenes(1)">
+            </div>
             <select id="fil-estado" class="form-control">
               <option value="">Todos los estados</option>
               <option value="generada">Generada</option>

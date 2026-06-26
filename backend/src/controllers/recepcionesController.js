@@ -1,11 +1,12 @@
-import { listarPorOrden, crear as _crear, obtenerPorId, marcarEntregado as _marcarEntregado } from '../models/recepciones.js';
 import pool from '../config/db.js';
+import { listarPorOrden, crear as _crear, obtenerPorId, marcarEntregado as _marcarEntregado } from '../models/recepciones.js';
+import logger from '../utils/logger.js';
 
 async function listar(req, res) {
   try {
     res.json(await listarPorOrden(req.params.orden_id));
   } catch (err) {
-    console.error('[listar recepciones]', err);
+    logger.error('[listar recepciones]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -30,7 +31,7 @@ async function crear(req, res) {
       pendiente_po: resultado.pendientePo,
     });
   } catch (err) {
-    console.error('[crear recepcion]', err);
+    logger.error('[crear recepcion]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
@@ -60,7 +61,7 @@ async function marcarEntregado(req, res) {
     if (!afectados) return res.status(404).json({ mensaje: 'Recepción no encontrada' });
     res.json(await obtenerPorId(req.params.id));
   } catch (err) {
-    console.error('[marcarEntregado]', err);
+    logger.error('[marcarEntregado]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
