@@ -76,7 +76,7 @@
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
                 <div class="card-title mb-0">Recepciones</div>
                 <button class="btn btn-sm btn-outline" id="btn-nueva-recepcion"
-                        onclick="UI.abrirModal('modal-recepcion')">+ Registrar recepción</button>
+                        onclick="abrirRecepcion()">+ Registrar recepción</button>
               </div>
 
               <!-- Resumen de Avance para Cierre -->
@@ -120,18 +120,25 @@
 
 <!-- ── Modal: Registrar recepción ─────────────────────────────── -->
 <div class="modal-backdrop" id="modal-recepcion">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width: 720px;">
     <div class="modal-header">
-      <h3 class="modal-title">Registrar recepción</h3>
-      <button class="modal-close" onclick="UI.cerrarModal('modal-recepcion')">×</button>
+      <h3 class="modal-title" id="modal-recepcion-titulo">Registrar recepción</h3>
+      <button class="modal-close" onclick="cerrarModalRecepcion()">×</button>
     </div>
     <form id="form-recepcion">
+      <input type="hidden" id="rec-id" value="">
       <div class="form-group">
         <label class="form-label">Estado de recepción</label>
         <select id="rec-estado" class="form-control">
           <option value="recibido_completo">Recibido completo</option>
           <option value="recibido_parcial">Recibido parcial</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ítems recibidos</label>
+        <div id="rec-items-loading" class="text-muted text-sm" style="display:none;">Cargando ítems…</div>
+        <div id="rec-items-list" style="max-height:240px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px;"></div>
+        <small class="text-muted">Marca los ítems incluidos en esta recepción e indica la cantidad recibida.</small>
       </div>
       <div class="form-group">
         <label class="form-label">Transacción / ID en DataTextNow (opcional)</label>
@@ -143,9 +150,8 @@
         <textarea id="rec-notas" class="form-control" rows="2"></textarea>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline"
-                onclick="UI.cerrarModal('modal-recepcion')">Cancelar</button>
-        <button type="submit" class="btn btn-success">Confirmar recepción</button>
+        <button type="button" class="btn btn-outline" onclick="cerrarModalRecepcion()">Cancelar</button>
+        <button type="submit" class="btn btn-success" id="btn-guardar-recepcion">Confirmar recepción</button>
       </div>
     </form>
   </div>

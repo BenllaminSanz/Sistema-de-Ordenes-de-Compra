@@ -55,9 +55,11 @@ const verificarRol = (rolesPermitidos) => {
     };
 };
 
-// Alias para que puedas seguir usando autorizar('admin')
-const autorizar = (roles) => {
-    const rolesArray = Array.isArray(roles) ? roles : [roles];
+// Acepta autorizar('admin'), autorizar('contabilidad', 'admin') o autorizar(['contabilidad', 'admin'])
+const autorizar = (...roles) => {
+    const rolesArray = roles.length === 1 && Array.isArray(roles[0])
+        ? roles[0]
+        : roles;
     return verificarRol(rolesArray);
 };
 

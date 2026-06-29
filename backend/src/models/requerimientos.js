@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { validarAreaDepartamento } from '../config/departamentosStore.js';
 
 /**
  * Genera el consecutivo siguiente con formato REQ-YYYYT-NNN.
@@ -133,8 +134,10 @@ async function obtenerPorId(id) {
        c.codigo,
        c.descripcion,
        c.tipo,
+       c.unidad,
        c.costo_referencia,
        c.moneda,
+       c.proveedor_id,
        p.num_proveedor as proveedor_num,
        p.nombre as proveedor_nombre
      FROM requerimiento_items ri
@@ -161,6 +164,11 @@ async function obtenerPorId(id) {
      ORDER BY id ASC`,
     [id]
   );
+
+  const valDepto = await validarAreaDepartamento(req.area, req.departamento);
+  if (valDepto.ok && valDepto.departamento?.codigo) {
+    req.departamento_codigo = valDepto.departamento.codigo;
+  }
 
   return { ...req, historial, items, items_libres: itemsLibres };
 }

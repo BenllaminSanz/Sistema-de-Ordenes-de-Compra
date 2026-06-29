@@ -1,6 +1,7 @@
 import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar } from '../models/requerimientos.js';
 import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
+import { validarMismoProveedorCatalogo } from '../utils/catalogoItems.js';
 import logger from '../utils/logger.js';
 
 async function validarAreaDeptoReq(area, departamento) {
@@ -8,6 +9,24 @@ async function validarAreaDeptoReq(area, departamento) {
     return { ok: false, mensaje: 'Área y departamento son requeridos' };
   }
   return validarAreaDepartamento(area, departamento);
+}
+
+/** Transiciones permitidas por rol (admin puede todas las del modelo). */
+const TRANSICIONES_POR_ROL = {
+  solicitante: {
+    borrador: ['en_revision'],
+    incompleto: ['en_revision'],
+  },
+  contabilidad: {
+    en_revision: ['aprobado', 'incompleto', 'rechazado'],
+    aprobado: ['cerrado'],
+  },
+};
+
+function puedeCambiarEstadoRequerimiento(rol, estadoActual, estadoNuevo) {
+  if (rol === 'admin') return true;
+  const permitidas = TRANSICIONES_POR_ROL[rol]?.[estadoActual] || [];
+  return permitidas.includes(estadoNuevo);
 }
 
 // ─── GET /requerimientos ──────────────────────────────────────────────────────
@@ -103,6 +122,13 @@ async function crear(req, res) {
       return res.status(422).json({ mensaje: valAreaDepto.mensaje });
     }
 
+    if (tieneItemsEstructurados) {
+      const valProv = await validarMismoProveedorCatalogo(items);
+      if (!valProv.ok) {
+        return res.status(422).json({ mensaje: valProv.mensaje });
+      }
+    }
+
     const id = await _crear(
       { 
         titulo_solicitud, 
@@ -152,6 +178,13 @@ async function actualizar(req, res) {
       return res.status(400).json({ 
         mensaje: 'No se puede mezclar ítems del catálogo con ítems en texto libre en el mismo requerimiento. Un requerimiento debe ser solo de ítems existentes (del catálogo) o solo de ítems nuevos (libres para cotizar y dar de alta).' 
       });
+    }
+
+    if (tieneItemsEstructurados) {
+      const valProv = await validarMismoProveedorCatalogo(items);
+      if (!valProv.ok) {
+        return res.status(422).json({ mensaje: valProv.mensaje });
+      }
     }
 
     // Forzar requiere_cotizacion=true cuando se usan items_libres (libres siempre requieren cotización)
@@ -215,24 +248,25 @@ async function cambiarEstado(req, res) {
     // Zod ya comprobo que 'estado' existe y es válido
     const { estado, notas } = req.body;
 
+    const reqActual = await obtenerPorId(req.params.id);
+    if (!reqActual) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
+
     // Verificar ownership para solicitantes
-    if (req.usuario.rol === 'solicitante') {
-      const reqActual = await obtenerPorId(req.params.id);
-      if (!reqActual) {
-        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
-      }
-      if (reqActual.solicitante_id !== req.usuario.id) {
-        return res.status(403).json({ mensaje: 'No puedes cambiar el estado de requerimientos de otros usuarios' });
-      }
+    if (req.usuario.rol === 'solicitante' && reqActual.solicitante_id !== req.usuario.id) {
+      return res.status(403).json({ mensaje: 'No puedes cambiar el estado de requerimientos de otros usuarios' });
+    }
+
+    if (!puedeCambiarEstadoRequerimiento(req.usuario.rol, reqActual.estado, estado)) {
+      const rolLabel = req.usuario.rol === 'contabilidad' ? 'contabilidad' : req.usuario.rol;
+      return res.status(403).json({
+        mensaje: `Tu rol (${rolLabel}) no puede cambiar el requerimiento de '${reqActual.estado}' a '${estado}'`,
+      });
     }
 
     // === VALIDACIÓN PARA APROBAR REQUERIMIENTOS QUE NECESITAN COTIZACIÓN ===
     if (estado === 'aprobado') {
-      const reqActual = await obtenerPorId(req.params.id);
-      if (!reqActual) {
-        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
-      }
-
       if (reqActual.requiere_cotizacion) {
         const cotizaciones = await CotizacionModel.listarPorRequerimiento(req.params.id);
         const seleccionada = cotizaciones.find(c => 

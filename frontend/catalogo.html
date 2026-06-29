@@ -53,6 +53,9 @@
             <option value="SERVICIOS">Servicios</option>
             <option value="FLETES">Fletes</option>
           </select>
+          <select id="filtro-proveedor" class="form-control" onchange="filtrarCatalogo()">
+            <option value="">Todos los proveedores</option>
+          </select>
           <label class="chk-label">
             <input type="checkbox" id="chk-activos" checked onchange="cargarCatalogo()">
             Solo activos
@@ -99,6 +102,11 @@
         <label class="form-label">Descripción *</label>
         <textarea id="cat-descripcion" class="form-control" rows="3" required placeholder="Descripción detallada del artículo o servicio"></textarea>
         <small class="text-danger" id="error-cat-descripcion"></small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Unidad <span class="text-muted">(opcional)</span></label>
+        <input type="text" id="cat-unidad" class="form-control" placeholder="Ej: pza, kg, hr, servicio">
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">

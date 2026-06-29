@@ -21,6 +21,7 @@ import catalogoRoutes from "./src/routes/catalogo.route.js";
 import configRoutes from "./src/routes/config.route.js";
 import dashboardRoutes from "./src/routes/dashboard.route.js";
 import areasRoutes from "./src/routes/areas.route.js";
+import { runDbMigrations } from "./src/utils/dbMigrations.js";
 
 const app = express();
 
@@ -152,8 +153,15 @@ app.use((err, req, res, next) => {
 // ─── Servidor ──────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+runDbMigrations()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    logger.error('Error aplicando migraciones de BD', { error: err.message, stack: err.stack });
+    process.exit(1);
+  });
 
 export default app;

@@ -2,17 +2,28 @@ import pool from '../config/db.js';
 import * as Catalogo from './catalogo.js';
 import { formalizarCotizacionEnCatalogo } from './cotizaciones.js';
 import { validarCierreOrden } from '../utils/ocCierre.js';
+import { calcularTotalesCatalogoRequerimiento } from '../utils/catalogoItems.js';
 
-async function generarNumeroOC(conn) {
+/** Usa el consecutivo del requerimiento sin prefijo REQ- (ej. REQ-2026S-001 → 2026S-001). */
+async function generarNumeroOC(conn, requerimiento_id) {
+  const [[req]] = await conn.query(
+    'SELECT consecutivo FROM requerimientos WHERE id = ?',
+    [requerimiento_id]
+  );
+
+  if (req?.consecutivo) {
+    return req.consecutivo.replace(/^REQ-/i, '');
+  }
+
   const anio = new Date().getFullYear();
-  const prefijo = `OC-${anio}-`;
+  const prefijo = `${anio}-`;
   const [rows] = await conn.query(
     `SELECT numero_oc FROM ordenes_compra
      WHERE numero_oc LIKE ? ORDER BY id DESC LIMIT 1`,
     [`${prefijo}%`]
   );
   if (!rows.length) return `${prefijo}0001`;
-  const ultimo = parseInt(rows[0].numero_oc.split('-')[2], 10);
+  const ultimo = parseInt(rows[0].numero_oc.split('-').pop(), 10) || 0;
   return `${prefijo}${String(ultimo + 1).padStart(4, '0')}`;
 }
 
@@ -168,7 +179,7 @@ async function obtenerPorId(id) {
     items = cotItems.map(it => ({ ...it, origen: 'cotizacion' }));
   } else {
     const [catItems] = await pool.query(`
-      SELECT ri.id, c.codigo, c.descripcion, ri.cantidad, c.costo_referencia AS precio_unitario_referencia, 'catalogo' AS origen
+      SELECT ri.id, c.codigo, c.descripcion, c.unidad, ri.cantidad, c.costo_referencia AS precio_unitario_referencia, 'catalogo' AS origen
       FROM requerimiento_items ri
       JOIN catalogo c ON c.id = ri.catalogo_id
       WHERE ri.requerimiento_id = ?
@@ -195,10 +206,10 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
   try {
     await conn.beginTransaction();
 
-    const numero_oc = await generarNumeroOC(conn);
+    const numero_oc = await generarNumeroOC(conn, requerimiento_id);
 
     // Heredar proveedor, monto_total y moneda de la cotización (si existe).
-    // Esto hace que la OC "congele" los términos comerciales del proveedor elegido.
+    // Si no hay cotización, derivar del catálogo del requerimiento (costos de referencia).
     let proveedor_id = null;
     let monto_total = null;
     let moneda = 'MXN';
@@ -212,6 +223,13 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
         proveedor_id = cot.proveedor_id || null;
         monto_total = cot.monto_total || null;
         moneda = cot.moneda || 'MXN';
+      }
+    } else {
+      const totalesCat = await calcularTotalesCatalogoRequerimiento(requerimiento_id, conn);
+      if (totalesCat) {
+        proveedor_id = totalesCat.proveedor_id;
+        monto_total = totalesCat.monto_total;
+        moneda = totalesCat.moneda;
       }
     }
 

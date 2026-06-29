@@ -9,6 +9,8 @@ renderTopbar('Órdenes de Compra');
 
 let ocActual = null;
 let recepcionesActuales = [];
+let resumenItemsOc = [];
+let recepcionEditandoId = null;
 
 const ESTADOS_RECEPCION_LISTOS_CIERRE = ['entregado_solicitante', 'recibido_completo'];
 
@@ -53,30 +55,6 @@ function mensajeConfirmacionCierreRecepcion(evaluacion) {
       + 'el PO de DataTextNow.\n\n¿Deseas continuar?';
   }
   return null;
-}
-
-function mensajeConfirmacionEntregaSolicitante(evaluacion) {
-  if (evaluacion.ok) {
-    return 'Al confirmar que ya recibiste el material, das por cerrada tu Orden de Compra.\n\n'
-      + 'Esta acción es definitiva y no se puede deshacer.\n\n'
-      + '¿Confirmas que ya recibiste y deseas cerrar la OC?';
-  }
-  if (evaluacion.motivo === 'sin_po') {
-    return 'Al confirmar que ya recibiste el material, registras tu conformidad con la entrega.\n\n'
-      + 'La OC se cerrará cuando Contabilidad registre el PO de DataTextNow.\n\n'
-      + '¿Confirmas que ya recibiste?';
-  }
-  return 'Al confirmar que ya recibiste el material, registras tu conformidad con esta entrega.\n\n'
-    + '¿Confirmas que ya recibiste?';
-}
-
-function mensajeConfirmacionEntregaContabilidad(evaluacion) {
-  if (evaluacion.ok) {
-    return 'Se cumplen los requisitos para cerrar la Orden de Compra.\n\n'
-      + 'Al marcar como entregado al solicitante, la OC se cerrará automáticamente.\n\n'
-      + '¿Deseas continuar?';
-  }
-  return '¿Marcar esta recepción como entregada al solicitante?';
 }
 
 function actualizarAvisoCierreRecepcion() {
@@ -287,6 +265,8 @@ function volverLista() {
   document.getElementById('vista-detalle').style.display = 'none';
   ocActual = null;
   recepcionesActuales = [];
+  resumenItemsOc = [];
+  recepcionEditandoId = null;
   cargarOrdenes(1);
   history.replaceState(null, '', window.location.pathname);
 }
@@ -502,16 +482,206 @@ function renderAcciones(oc) {
     </div>`;
 }
 
-function abrirRecepcion() {
-  const poInput = document.getElementById('rec-datatextnow');
-  if (poInput && ocActual?.datatextnow_id && !poInput.value) {
-    poInput.value = ocActual.datatextnow_id;
+function cerrarModalRecepcion() {
+  recepcionEditandoId = null;
+  document.getElementById('rec-id').value = '';
+  document.getElementById('form-recepcion').reset();
+  document.getElementById('rec-items-list').innerHTML = '';
+  const titulo = document.getElementById('modal-recepcion-titulo');
+  const btn = document.getElementById('btn-guardar-recepcion');
+  if (titulo) titulo.textContent = 'Registrar recepción';
+  if (btn) btn.textContent = 'Confirmar recepción';
+  UI.cerrarModal('modal-recepcion');
+}
+
+async function cargarResumenItemsOc(ocId) {
+  try {
+    resumenItemsOc = await Api.get(`/ordenes-compra/${ocId}/recepciones/resumen-items`);
+  } catch (err) {
+    console.error('Error cargando resumen de ítems:', err);
+    resumenItemsOc = [];
   }
+  return resumenItemsOc;
+}
+
+function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
+  const contenedor = document.getElementById('rec-items-list');
+  if (!contenedor) return;
+
+  if (!itemsResumen.length) {
+    contenedor.innerHTML = '<div class="text-muted text-sm" style="padding:10px;">Esta OC no tiene ítems desglosados.</div>';
+    return;
+  }
+
+  const mapRec = {};
+  (itemsRecepcion || []).forEach(it => {
+    mapRec[it.item_key] = parseFloat(it.cantidad_recibida) || 0;
+  });
+
+  contenedor.innerHTML = `
+    <table style="width:100%; font-size:12px; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc;">
+          <th style="padding:6px 8px; text-align:center; width:36px;">✓</th>
+          <th style="padding:6px 8px; text-align:left;">Ítem</th>
+          <th style="padding:6px 8px; text-align:right;">Solic.</th>
+          <th style="padding:6px 8px; text-align:right;">Recib.</th>
+          <th style="padding:6px 8px; text-align:right;">Pend.</th>
+          <th style="padding:6px 8px; text-align:right; width:90px;">Esta recep.</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsResumen.map(it => {
+          const pendiente = Math.max(0, parseFloat(it.pendiente) || 0);
+          const prefill = mapRec[it.item_key] != null
+            ? mapRec[it.item_key]
+            : (recepcionEditandoId ? 0 : pendiente);
+          const checked = recepcionEditandoId
+            ? (mapRec[it.item_key] > 0)
+            : (pendiente > 0);
+          const desc = it.codigo
+            ? `<strong>${it.codigo}</strong> — ${it.descripcion}`
+            : it.descripcion;
+          return `
+            <tr class="rec-item-row" data-item-key="${it.item_key}" style="border-top:1px solid #e5e7eb;">
+              <td style="padding:6px 8px; text-align:center;">
+                <input type="checkbox" class="rec-item-check" ${checked ? 'checked' : ''}>
+              </td>
+              <td style="padding:6px 8px;">${desc}<div class="text-muted" style="font-size:10px;">${it.unidad || 'pieza'}</div></td>
+              <td style="padding:6px 8px; text-align:right;">${parseFloat(it.cantidad_solicitada || 0).toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right;">${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right;">${pendiente.toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right;">
+                <input type="number" class="form-control form-control-sm rec-item-cantidad"
+                       min="0" step="0.01" value="${prefill > 0 ? prefill : ''}"
+                       placeholder="0" style="width:84px; text-align:right;">
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  contenedor.querySelectorAll('.rec-item-check').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const row = chk.closest('.rec-item-row');
+      const input = row?.querySelector('.rec-item-cantidad');
+      if (!input) return;
+      if (!chk.checked) {
+        input.value = '';
+        input.disabled = true;
+      } else {
+        input.disabled = false;
+        if (!input.value) {
+          const pend = row.querySelector('td:nth-child(5)')?.textContent?.replace(/,/g, '') || '0';
+          input.value = parseFloat(pend) || '';
+        }
+      }
+    });
+    chk.dispatchEvent(new Event('change'));
+  });
+}
+
+function recolectarItemsRecepcionFormulario() {
+  const items = [];
+  document.querySelectorAll('#rec-items-list .rec-item-row').forEach(row => {
+    const check = row.querySelector('.rec-item-check');
+    if (!check?.checked) return;
+
+    const cantidad = parseFloat(row.querySelector('.rec-item-cantidad')?.value) || 0;
+    if (cantidad <= 0) return;
+
+    const key = row.dataset.itemKey;
+    const resumen = (resumenItemsOc || []).find(i => i.item_key === key) || {};
+
+    items.push({
+      item_key: key,
+      descripcion: resumen.descripcion || null,
+      codigo: resumen.codigo || null,
+      cantidad_solicitada: parseFloat(resumen.cantidad_solicitada) || 0,
+      cantidad_recibida: cantidad,
+      unidad: resumen.unidad || null,
+    });
+  });
+  return items;
+}
+
+async function abrirRecepcion(recepcion = null) {
+  if (!ocActual) return;
+
+  recepcionEditandoId = recepcion?.id || null;
+  document.getElementById('rec-id').value = recepcionEditandoId || '';
+  document.getElementById('form-recepcion').reset();
+
+  const titulo = document.getElementById('modal-recepcion-titulo');
+  const btn = document.getElementById('btn-guardar-recepcion');
+  if (titulo) titulo.textContent = recepcionEditandoId ? 'Editar recepción' : 'Registrar recepción';
+  if (btn) btn.textContent = recepcionEditandoId ? 'Guardar cambios' : 'Confirmar recepción';
+
+  if (recepcion) {
+    document.getElementById('rec-estado').value = recepcion.estado || 'recibido_completo';
+    document.getElementById('rec-notas').value = recepcion.notas || '';
+    document.getElementById('rec-datatextnow').value = recepcion.datatextnow_id || ocActual.datatextnow_id || '';
+  } else {
+    const poInput = document.getElementById('rec-datatextnow');
+    if (poInput && ocActual.datatextnow_id) poInput.value = ocActual.datatextnow_id;
+  }
+
+  const loading = document.getElementById('rec-items-loading');
+  if (loading) loading.style.display = 'block';
+  document.getElementById('rec-items-list').innerHTML = '';
+
+  await cargarResumenItemsOc(ocActual.id);
+  if (loading) loading.style.display = 'none';
+  renderLineasRecepcionModal(resumenItemsOc, recepcion?.items || []);
+
   actualizarAvisoCierreRecepcion();
   UI.abrirModal('modal-recepcion');
 }
 
+async function editarRecepcion(recId) {
+  if (!Auth.puedeHacer(['contabilidad', 'admin'])) return;
+  const recepcion = (recepcionesActuales || []).find(r => r.id === recId);
+  if (!recepcion) return Toast.error('Recepción no encontrada');
+  await abrirRecepcion(recepcion);
+}
+
+async function eliminarRecepcion(recId) {
+  if (!Auth.puedeHacer(['contabilidad', 'admin'])) return;
+  if (!confirm('¿Eliminar esta recepción?\nSe actualizarán los avances de ítems recibidos.')) return;
+
+  try {
+    await Api.delete(`/ordenes-compra/${ocActual.id}/recepciones/${recId}`);
+    Toast.success('Recepción eliminada');
+    abrirDetalle(ocActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al eliminar recepción');
+  }
+}
+
 function prepararCambioEstado(estado, label) {
+  if (estado === 'distribuida') {
+    const registrar = confirm(
+      '¿Deseas registrar una recepción ahora?\n\n'
+      + '• Aceptar: marcar como distribuida y abrir el registro de recepción (la OC pasará a "En proceso").\n'
+      + '• Cancelar: solo marcar como distribuida.'
+    );
+
+    (async () => {
+      try {
+        await Api.patch(`/ordenes-compra/${ocActual.id}/estado`, {
+          estado: 'distribuida',
+          notas: '',
+        });
+        Toast.success('OC marcada como distribuida');
+        await abrirDetalle(ocActual.id);
+        if (registrar) await abrirRecepcion();
+      } catch (err) {
+        Toast.error(err.mensaje || 'Error al cambiar estado');
+      }
+    })();
+    return;
+  }
+
   document.getElementById('modal-estado-titulo').textContent = label;
   document.getElementById('estado-notas').value = '';
   UI.abrirModal('modal-estado');
@@ -538,26 +708,29 @@ async function cargarRecepciones(ocId) {
   try {
     recs = await Api.get(`/ordenes-compra/${ocId}/recepciones`);
     recepcionesActuales = recs;
+    await cargarResumenItemsOc(ocId);
+
+    const esContab = Auth.puedeHacer(['contabilidad', 'admin']);
 
     if (!recs.length) {
       contenedor.innerHTML = '<p class="text-muted text-sm">Sin recepciones registradas</p>';
     } else {
       contenedor.innerHTML = recs.map(r => {
-        const puedeConfirmar = r.estado !== 'entregado_solicitante'
-          && (Auth.puedeHacer(['contabilidad', 'admin'])
-            || (Auth.getUsuario()?.id === ocActual?.solicitante_id));
-        const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
-        const recsProyectadas = recs.map(x =>
-          x.id === r.id ? { ...x, estado: 'entregado_solicitante' } : x
-        );
-        const evalEntrega = evaluarCierreOc(ocActual, recsProyectadas);
-        const avisoSolicitante = esSolicitante && puedeConfirmar
-          ? (evalEntrega.ok
-            ? '<p class="text-sm mt-2" style="font-size:11px;color:#b45309;margin-bottom:0;">'
-              + '⚠️ Al confirmar, das por <strong>recibida y cerrada</strong> tu Orden de Compra.</p>'
-            : '<p class="text-sm mt-2" style="font-size:11px;color:#64748b;margin-bottom:0;">'
-              + 'Al confirmar, registras que ya recibiste este material.</p>')
+        const itemsHtml = (r.items && r.items.length)
+          ? `<ul style="margin:8px 0 0; padding-left:16px; font-size:12px; color:#475569;">
+              ${r.items.map(it => `
+                <li>${it.codigo ? `<strong>${it.codigo}</strong> — ` : ''}${it.descripcion || 'Ítem'}
+                    · <strong>${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}</strong>
+                    ${it.unidad ? it.unidad : ''}
+                </li>`).join('')}
+            </ul>`
           : '';
+
+        const accionesContab = esContab ? `
+          <div class="d-flex gap-1 mt-2">
+            <button class="btn btn-sm btn-outline" data-action="editar-recepcion" data-rec-id="${r.id}">Editar</button>
+            <button class="btn btn-sm btn-danger" data-action="eliminar-recepcion" data-rec-id="${r.id}">Eliminar</button>
+          </div>` : '';
 
         return `
         <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px">
@@ -570,12 +743,8 @@ async function cargarRecepciones(ocId) {
             ${r.datatextnow_id ? ' · Trans. DataTextNow: ' + r.datatextnow_id : ''}
           </div>
           ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
-          ${puedeConfirmar
-            ? `<button class="btn btn-sm btn-outline mt-2"
-                       data-action="marcar-entregado" data-rec-id="${r.id}">
-                ${esSolicitante ? 'Confirmar que recibí' : 'Marcar entregado al solicitante'}
-              </button>${avisoSolicitante}`
-            : ''}
+          ${itemsHtml}
+          ${accionesContab}
         </div>`;
       }).join('');
     }
@@ -583,16 +752,18 @@ async function cargarRecepciones(ocId) {
     contenedor.innerHTML = '<p class="text-muted text-sm">Error al cargar recepciones</p>';
   }
 
-  // Siempre renderizar el resumen (incluso si no hay recepciones)
   renderResumenAvance(recs);
 
-  // Delegación para marcar entregado
   const listaRec = document.getElementById('lista-recepciones');
   if (listaRec && !listaRec.dataset.delegateAttached) {
     listaRec.dataset.delegateAttached = 'true';
-    window.delegate(listaRec, 'button[data-action="marcar-entregado"]', 'click', (e, btn) => {
-      const recId = parseInt(btn.dataset.recId);
-      if (recId) marcarEntregado(recId);
+    window.delegate(listaRec, 'button[data-action="editar-recepcion"]', 'click', (e, btn) => {
+      const recId = parseInt(btn.dataset.recId, 10);
+      if (recId) editarRecepcion(recId);
+    });
+    window.delegate(listaRec, 'button[data-action="eliminar-recepcion"]', 'click', (e, btn) => {
+      const recId = parseInt(btn.dataset.recId, 10);
+      if (recId) eliminarRecepcion(recId);
     });
   }
 
@@ -600,9 +771,11 @@ async function cargarRecepciones(ocId) {
     const closeBtn = document.querySelector('#panel-acciones button[data-estado="cerrada"]');
     const tienePO = !!(ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
       || recs.some(r => r.datatextnow_id && String(r.datatextnow_id).trim());
-    const listasParaCierre = recs.length > 0 && recs.every(r =>
-      r.estado === 'entregado_solicitante' || r.estado === 'recibido_completo'
-    );
+    const itemsCompletos = (resumenItemsOc || []).length > 0
+      && (resumenItemsOc || []).every(it => (parseFloat(it.pendiente) || 0) <= 0);
+    const listasParaCierre = itemsCompletos || (recs.length > 0 && recs.every(r =>
+      r.estado === 'recibido_completo'
+    ));
 
     if (closeBtn) {
       if (!listasParaCierre || !tienePO) {
@@ -625,90 +798,93 @@ function renderResumenAvance(recepciones) {
   const contenedor = document.getElementById('resumen-avance-oc');
   if (!contenedor || !ocActual) return;
 
-  const total = recepciones.length;
-  if (total === 0) {
-    contenedor.innerHTML = `
-      <div style="font-weight:600; margin-bottom:4px;">Avance para cierre</div>
-      <div style="color:#64748b;">Aún no hay recepciones registradas.</div>
-    `;
-    return;
-  }
-
-  const listas = recepciones.filter(r =>
-    r.estado === 'entregado_solicitante' || r.estado === 'recibido_completo'
-  ).length;
-  const porcentaje = Math.round((listas / total) * 100);
+  const items = resumenItemsOc || [];
+  const totalRecep = recepciones.length;
 
   let mensaje = '';
   let color = '#166534';
+  let porcentaje = 0;
 
-  const tienePO = !!(ocActual && ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
+  const tienePO = !!(ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
     || recepciones.some(r => r.datatextnow_id && String(r.datatextnow_id).trim());
-  const puedeCerrar = (listas === total) && tienePO;
 
-  if (ocActual.estado === 'cerrada') {
-    mensaje = '✅ La OC está cerrada.';
-    color = '#166534';
-  } else if (listas === total) {
-    if (tienePO) {
-      mensaje = '✅ Recepciones completas. La OC puede cerrarse (o se cerrará automáticamente al registrar recibido completo).';
-      color = '#166534';
+  if (items.length) {
+    const completos = items.filter(it => (parseFloat(it.pendiente) || 0) <= 0).length;
+    porcentaje = Math.round((completos / items.length) * 100);
+
+    if (ocActual.estado === 'cerrada') {
+      mensaje = '✅ La OC está cerrada.';
+    } else if (completos === items.length) {
+      mensaje = tienePO
+        ? '✅ Todos los ítems recibidos. La OC puede cerrarse.'
+        : '✅ Ítems completos, pero <strong>falta el PO de DataTextNow</strong> para cerrar la OC.';
+      color = tienePO ? '#166534' : '#854d0e';
     } else {
-      mensaje = '✅ Recepciones registradas, pero <strong>falta el PO de DataTextNow</strong> para poder cerrar la OC.';
+      mensaje = `<strong>${completos}</strong> de <strong>${items.length}</strong> ítems completamente recibidos.`;
       color = '#854d0e';
     }
+  } else if (totalRecep === 0) {
+    mensaje = 'Aún no hay recepciones registradas.';
+    color = '#64748b';
   } else {
-    mensaje = `Hay <strong>${total - listas}</strong> recepción(es) parcial(es) pendientes de completar.`;
-    color = '#854d0e';
+    const listas = recepciones.filter(r => r.estado === 'recibido_completo').length;
+    porcentaje = Math.round((listas / totalRecep) * 100);
+    mensaje = `${listas} de ${totalRecep} recepción(es) marcadas como completas.`;
+    color = listas === totalRecep ? '#166534' : '#854d0e';
   }
+
+  const tablaItems = items.length ? `
+    <table style="width:100%; font-size:11.5px; border-collapse:collapse; margin-top:10px;">
+      <thead>
+        <tr style="background:#e2e8f0;">
+          <th style="text-align:left; padding:4px 6px;">Ítem</th>
+          <th style="text-align:right; padding:4px 6px;">Solicitado</th>
+          <th style="text-align:right; padding:4px 6px;">Recibido</th>
+          <th style="text-align:right; padding:4px 6px;">Pendiente</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(it => {
+          const pend = parseFloat(it.pendiente) || 0;
+          const rowColor = pend <= 0 ? '#166534' : '#b45309';
+          return `
+            <tr>
+              <td style="padding:4px 6px; border-top:1px solid #e2e8f0;">
+                ${it.codigo ? `<strong>${it.codigo}</strong> — ` : ''}${it.descripcion}
+              </td>
+              <td style="padding:4px 6px; border-top:1px solid #e2e8f0; text-align:right;">
+                ${parseFloat(it.cantidad_solicitada || 0).toLocaleString('es-MX')} ${it.unidad || ''}
+              </td>
+              <td style="padding:4px 6px; border-top:1px solid #e2e8f0; text-align:right;">
+                ${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}
+              </td>
+              <td style="padding:4px 6px; border-top:1px solid #e2e8f0; text-align:right; color:${rowColor}; font-weight:600;">
+                ${pend.toLocaleString('es-MX')}
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>` : '';
 
   contenedor.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-      <div style="font-weight:600;">Avance para cierre de OC</div>
-      <div style="font-weight:700; color:#185FA5;">${listas} / ${total}</div>
+      <div style="font-weight:600;">Avance de recepción por ítem</div>
+      ${items.length ? `<div style="font-weight:700; color:#185FA5;">${porcentaje}%</div>` : ''}
     </div>
 
     <div style="background:#e2e8f0; height:10px; border-radius:5px; overflow:hidden; margin-bottom:8px;">
       <div style="width:${porcentaje}%; height:100%; background:${color}; transition: width 0.4s ease;"></div>
     </div>
 
-    <div style="font-size:12.5px; color:#475569;">
-      ${mensaje}
-    </div>
+    <div style="font-size:12.5px; color:#475569;">${mensaje}</div>
+    ${tablaItems}
 
-    <div style="margin-top:6px; font-size:11px; color:#64748b;">
-      Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong><br>
-      Responsable de confirmar: <strong>${ocActual.solicitante_nombre || '—'}</strong>
-      ${!tienePO ? '<br><span style="color:#b45309">⚠️ Falta PO de DataTextNow (Contabilidad debe registrarlo para permitir cierre)</span>' : ''}
+    <div style="margin-top:8px; font-size:11px; color:#64748b;">
+      Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong>
+      · Recepciones registradas: <strong>${totalRecep}</strong>
+      ${!tienePO ? '<br><span style="color:#b45309">⚠️ Falta PO de DataTextNow para permitir cierre</span>' : ''}
     </div>
   `;
-}
-
-async function marcarEntregado(recId) {
-  const recsProyectadas = (recepcionesActuales || []).map(r =>
-    r.id === recId ? { ...r, estado: 'entregado_solicitante' } : r
-  );
-  const evaluacion = evaluarCierreOc(ocActual, recsProyectadas);
-  const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
-  const mensaje = esSolicitante
-    ? mensajeConfirmacionEntregaSolicitante(evaluacion)
-    : mensajeConfirmacionEntregaContabilidad(evaluacion);
-
-  if (!confirm(mensaje)) return;
-
-  try {
-    await Api.patch(`/ordenes-compra/${ocActual.id}/recepciones/${recId}/entregar`, {});
-    if (evaluacion.ok) {
-      Toast.success(esSolicitante
-        ? 'Recepción confirmada — tu OC ha sido cerrada'
-        : 'Entrega confirmada — OC cerrada automáticamente');
-    } else {
-      Toast.success(esSolicitante ? 'Recepción confirmada' : 'Marcado como entregado');
-    }
-    abrirDetalle(ocActual.id);
-  } catch (err) {
-    Toast.error(err.mensaje || 'Error al actualizar');
-  }
 }
 
 document.getElementById('form-recepcion').addEventListener('submit', async e => {
@@ -716,9 +892,16 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
 
   const estado = document.getElementById('rec-estado').value;
   const poNuevo = document.getElementById('rec-datatextnow').value || null;
+  const notas = document.getElementById('rec-notas').value || null;
+  const items = recolectarItemsRecepcionFormulario();
   const esCompleta = estado !== 'recibido_parcial';
+  const editId = recepcionEditandoId || parseInt(document.getElementById('rec-id')?.value, 10) || null;
 
-  if (esCompleta && ocActual?.estado !== 'cerrada') {
+  if (!items.length) {
+    return Toast.error('Selecciona al menos un ítem con cantidad recibida mayor a 0');
+  }
+
+  if (!editId && esCompleta && ocActual?.estado !== 'cerrada') {
     const recsProyectadas = [
       ...(recepcionesActuales || []),
       { estado: 'recibido_completo', datatextnow_id: poNuevo },
@@ -728,25 +911,30 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
     if (mensaje && !confirm(mensaje)) return;
   }
 
-  try {
-    const resp = await Api.post(`/ordenes-compra/${ocActual.id}/recepciones`, {
-      estado,
-      datatextnow_id: poNuevo,
-      notas:         document.getElementById('rec-notas').value || null,
-    });
-    UI.cerrarModal('modal-recepcion');
+  const payload = { estado, datatextnow_id: poNuevo, notas, items };
 
-    if (resp.oc_cerrada) {
-      Toast.success('Recepción registrada y OC cerrada automáticamente');
-    } else if (resp.pendiente_po) {
-      Toast.info('Recepción registrada. Registra el PO de DataTextNow para cerrar la OC.');
+  try {
+    let resp;
+    if (editId) {
+      resp = await Api.put(`/ordenes-compra/${ocActual.id}/recepciones/${editId}`, payload);
+      cerrarModalRecepcion();
+      Toast.success('Recepción actualizada');
     } else {
-      Toast.success('Recepción registrada');
+      resp = await Api.post(`/ordenes-compra/${ocActual.id}/recepciones`, payload);
+      cerrarModalRecepcion();
+
+      if (resp.oc_cerrada) {
+        Toast.success('Recepción registrada y OC cerrada automáticamente');
+      } else if (resp.pendiente_po) {
+        Toast.info('Recepción registrada. Registra el PO de DataTextNow para cerrar la OC.');
+      } else {
+        Toast.success('Recepción registrada');
+      }
     }
 
     abrirDetalle(ocActual.id);
   } catch (err) {
-    Toast.error(err.mensaje || 'Error al registrar recepción');
+    Toast.error(err.mensaje || 'Error al guardar recepción');
   }
 });
 
@@ -760,5 +948,10 @@ const busqOcInput = document.getElementById('fil-busqueda-oc');
 if (busqOcInput) {
   busqOcInput.addEventListener('input', window.debounce(() => cargarOrdenes(1), 300));
 }
+
+window.abrirRecepcion = abrirRecepcion;
+window.cerrarModalRecepcion = cerrarModalRecepcion;
+window.editarRecepcion = editarRecepcion;
+window.eliminarRecepcion = eliminarRecepcion;
 
 

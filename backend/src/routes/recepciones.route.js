@@ -1,15 +1,16 @@
-import express from 'express';
-const router = express.Router({ mergeParams: true });
-import { listar, crear, marcarEntregado } from '../controllers/recepcionesController.js';
+import { Router } from 'express';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
+import { listar, resumenItems, crear, actualizar, eliminar } from '../controllers/recepcionesController.js';
+
+const router = Router({ mergeParams: true });
 
 router.use(autenticar);
 
-// GET  /api/ordenes-compra/:orden_id/recepciones
-router.get('/',    listar);
-// POST /api/ordenes-compra/:orden_id/recepciones
-router.post('/',   autorizar('contabilidad','admin'), crear);
-// PATCH /api/ordenes-compra/:orden_id/recepciones/:id/entregar
-router.patch('/:id/entregar', autorizar('contabilidad','admin','solicitante'), marcarEntregado);
+router.get('/', listar);
+router.get('/resumen-items', resumenItems);
+
+router.post('/', autorizar('contabilidad', 'admin'), crear);
+router.put('/:id', autorizar('contabilidad', 'admin'), actualizar);
+router.delete('/:id', autorizar('contabilidad', 'admin'), eliminar);
 
 export default router;

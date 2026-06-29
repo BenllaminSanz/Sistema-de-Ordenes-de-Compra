@@ -34,14 +34,11 @@ async function contarRecepciones(conn, ocId) {
   return row?.cnt || 0;
 }
 
-/**
- * Estados de recepción que permiten cerrar la OC sin confirmación del solicitante.
- */
 function recepcionListaParaCierre(estado) {
-  return ['entregado_solicitante', 'recibido_completo'].includes(estado);
+  return ['recibido_completo', 'recibido_parcial'].includes(estado);
 }
 
-async function validarCierreOrden(conn, ocId) {
+async function validarCierreOrden(conn, ocId, { permitirParcial = true } = {}) {
   const total = await contarRecepciones(conn, ocId);
   if (total === 0) {
     return {
@@ -50,19 +47,21 @@ async function validarCierreOrden(conn, ocId) {
     };
   }
 
-  const [pendientes] = await conn.query(
-    `SELECT COUNT(*) AS cnt
-     FROM recepciones
-     WHERE orden_compra_id = ?
-       AND estado NOT IN ('entregado_solicitante', 'recibido_completo')`,
-    [ocId]
-  );
+  if (!permitirParcial) {
+    const [pendientes] = await conn.query(
+      `SELECT COUNT(*) AS cnt
+       FROM recepciones
+       WHERE orden_compra_id = ?
+         AND estado = 'recibido_parcial'`,
+      [ocId]
+    );
 
-  if ((pendientes[0]?.cnt || 0) > 0) {
-    return {
-      ok: false,
-      mensaje: 'No se puede cerrar la OC: hay recepciones parciales pendientes de completar o confirmar.',
-    };
+    if ((pendientes[0]?.cnt || 0) > 0) {
+      return {
+        ok: false,
+        mensaje: 'No se puede cerrar la OC: hay recepciones parciales pendientes de completar.',
+      };
+    }
   }
 
   const po = await resolverPoOrden(conn, ocId);

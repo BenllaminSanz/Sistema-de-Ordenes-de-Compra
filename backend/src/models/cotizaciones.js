@@ -14,7 +14,7 @@ async function listarPorRequerimiento(requerimiento_id, incluirItems = true) {
     // Cargar items para todas las cotizaciones de una sola vez (evita N+1)
     const cotIds = rows.map(r => r.id);
     const [itemsRows] = await pool.query(`
-      SELECT cotizacion_id, id, descripcion, cantidad, unidad, precio_unitario, notas_item
+      SELECT cotizacion_id, id, descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario, notas_item
       FROM cotizacion_items
       WHERE cotizacion_id IN (?)
       ORDER BY cotizacion_id, id ASC
@@ -59,7 +59,7 @@ async function obtenerPorId(id) {
 
 async function listarItems(cotizacion_id) {
   const [rows] = await pool.query(`
-    SELECT id, descripcion, cantidad, unidad, precio_unitario, notas_item
+    SELECT id, descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario, notas_item
     FROM cotizacion_items
     WHERE cotizacion_id = ?
     ORDER BY id ASC
@@ -102,14 +102,16 @@ async function crear(datos, items = []) {
         const precio = item.precio_unitario != null ? parseFloat(item.precio_unitario) : 0;
         await conn.query(`
           INSERT INTO cotizacion_items 
-            (cotizacion_id, descripcion, cantidad, unidad, precio_unitario, notas_item)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+            (cotizacion_id, descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario, notas_item)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             cotizacionId,
             item.descripcion,
+            item.codigo_catalogo || null,
+            item.catalogo_id || null,
             cantidad,
             item.unidad || 'pieza',
-            isNaN(precio) ? 0 : Math.round(precio * 100) / 100,  // 2 decimales
+            isNaN(precio) ? 0 : Math.round(precio * 100) / 100,
             item.notas_item || null
           ]);
       }
@@ -227,14 +229,16 @@ async function actualizar(id, datos, items = null) {
         const precio = item.precio_unitario != null ? parseFloat(item.precio_unitario) : 0;
         await conn.query(`
           INSERT INTO cotizacion_items 
-            (cotizacion_id, descripcion, cantidad, unidad, precio_unitario, notas_item)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+            (cotizacion_id, descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario, notas_item)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             id,
             item.descripcion,
+            item.codigo_catalogo || null,
+            item.catalogo_id || null,
             cantidad,
             item.unidad || 'pieza',
-            isNaN(precio) ? 0 : Math.round(precio * 100) / 100,  // limitar a 2 decimales
+            isNaN(precio) ? 0 : Math.round(precio * 100) / 100,
             item.notas_item || null
           ]
         );

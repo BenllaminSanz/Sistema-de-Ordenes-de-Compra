@@ -1,0 +1,86 @@
+import pool from '../config/db.js';
+import logger from './logger.js';
+
+async function tableExists(table) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS cnt
+     FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table]
+  );
+  return (rows[0]?.cnt || 0) > 0;
+}
+
+async function columnExists(table, column) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS cnt
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+  return (rows[0]?.cnt || 0) > 0;
+}
+
+async function getColumnType(table, column) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_TYPE
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [table, column]
+  );
+  return rows[0]?.COLUMN_TYPE || null;
+}
+
+async function addColumnIfMissing(table, column, definition) {
+  if (await columnExists(table, column)) return;
+  await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  logger.info(`[migrate] Columna ${table}.${column} agregada`);
+}
+
+async function ensureRecepcionItemsTable() {
+  if (await tableExists('recepcion_items')) return;
+
+  const recepcionIdType = await getColumnType('recepciones', 'id');
+  if (!recepcionIdType) {
+    throw new Error('No se encontró la tabla recepciones — no se puede crear recepcion_items');
+  }
+
+  // Debe coincidir exactamente con recepciones.id (p. ej. int unsigned)
+  const fkType = recepcionIdType.includes('unsigned') ? 'INT UNSIGNED' : 'INT';
+
+  await pool.query(`
+    CREATE TABLE recepcion_items (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      recepcion_id ${fkType} NOT NULL,
+      item_key VARCHAR(64) NOT NULL,
+      descripcion VARCHAR(500) NULL,
+      codigo VARCHAR(100) NULL,
+      cantidad_solicitada DECIMAL(14,3) NOT NULL DEFAULT 0,
+      cantidad_recibida DECIMAL(14,3) NOT NULL DEFAULT 0,
+      unidad VARCHAR(50) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_recepcion_items_rec (recepcion_id),
+      CONSTRAINT fk_recepcion_items_rec FOREIGN KEY (recepcion_id)
+        REFERENCES recepciones(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  logger.info('[migrate] Tabla recepcion_items creada');
+}
+
+export async function runDbMigrations() {
+  await ensureRecepcionItemsTable();
+
+  const catalogoIdType = await getColumnType('catalogo', 'id');
+  const catFk = catalogoIdType?.includes('unsigned') ? 'INT UNSIGNED' : 'INT';
+
+  await addColumnIfMissing('cotizacion_items', 'codigo_catalogo', 'VARCHAR(100) NULL AFTER descripcion');
+  await addColumnIfMissing('cotizacion_items', 'catalogo_id', `${catFk} NULL AFTER codigo_catalogo`);
+
+  logger.info('[migrate] Migraciones aplicadas');
+}

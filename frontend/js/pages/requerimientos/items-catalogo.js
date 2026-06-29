@@ -16,6 +16,7 @@ if (reqTipoSelect) {
     if (reqTipoSelect.value) {
       window.requerimientoItemsSeleccionados = [];
       window.requerimientoItemsLibres = [];
+      desbloquearFiltroProveedorCatalogo();
       renderItemsSeleccionados();
       renderLibresResumen();
 
@@ -113,7 +114,29 @@ window.actualizarCantidadItem = function(index, nuevaCantidad) {
 window.eliminarItemSeleccionado = function(index) {
   window.requerimientoItemsSeleccionados.splice(index, 1);
   renderItemsSeleccionados();
+  if (!window.requerimientoItemsSeleccionados.length) {
+    desbloquearFiltroProveedorCatalogo();
+  }
 };
+
+function bloquearFiltroProveedorCatalogo(proveedorId) {
+  const select = document.getElementById('filtro-proveedor-catalogo');
+  if (!select || proveedorId == null || proveedorId === '') return;
+
+  select.value = String(proveedorId);
+  select.disabled = true;
+  select.title = 'Proveedor fijado al del primer ítem agregado';
+}
+
+function desbloquearFiltroProveedorCatalogo() {
+  const select = document.getElementById('filtro-proveedor-catalogo');
+  if (!select) return;
+
+  select.disabled = false;
+  select.title = '';
+}
+
+window.desbloquearFiltroProveedorCatalogo = desbloquearFiltroProveedorCatalogo;
 
 async function buscarEnCatalogo() {
   const input     = document.getElementById('busqueda-catalogo');
@@ -177,7 +200,7 @@ async function buscarEnCatalogo() {
             ${!yaSeleccionado ? `
               <input type="number" id="qty-${item.id}" class="form-control cat-qty" value="1" min="1" step="1" title="Cantidad">
               <button type="button" class="btn btn-sm btn-primary"
-                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}')">
+                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}', ${item.proveedor_id != null ? item.proveedor_id : 'null'})">
                 + Agregar
               </button>
             ` : `
@@ -207,7 +230,7 @@ async function buscarEnCatalogo() {
   }
 }
 
-window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo, moneda = 'MXN') {
+window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo, moneda = 'MXN', proveedor_id = null) {
   const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
 
   if (tieneLibres) {
@@ -220,7 +243,19 @@ window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo
   }
 
   if (!window.requerimientoItemsSeleccionados) window.requerimientoItemsSeleccionados = [];
-  if (window.requerimientoItemsSeleccionados.find(i => i.catalogo_id === catalogo_id)) return;
+
+  const provNuevo = proveedor_id != null && proveedor_id !== '' ? parseInt(proveedor_id, 10) : null;
+  const itemsActuales = window.requerimientoItemsSeleccionados;
+
+  if (itemsActuales.length > 0) {
+    const provPrimer = itemsActuales[0].proveedor_id != null ? parseInt(itemsActuales[0].proveedor_id, 10) : null;
+    if (provPrimer !== provNuevo) {
+      Toast.error('Todos los ítems del catálogo deben ser del mismo proveedor');
+      return;
+    }
+  }
+
+  if (itemsActuales.find(i => i.catalogo_id === catalogo_id)) return;
 
   const qtyInput  = document.getElementById(`qty-${catalogo_id}`);
   const cantidad  = qtyInput ? parseFloat(qtyInput.value) || 1 : 1;
@@ -231,8 +266,13 @@ window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo
     descripcion,
     costo_referencia: costo != null ? parseFloat(costo) : null,
     moneda: moneda || 'MXN',
+    proveedor_id: provNuevo,
     cantidad: Math.max(1, Math.round(cantidad))
   });
+
+  if (itemsActuales.length === 0 && provNuevo != null) {
+    bloquearFiltroProveedorCatalogo(provNuevo);
+  }
 
   renderItemsSeleccionados();
 

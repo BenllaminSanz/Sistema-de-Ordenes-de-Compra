@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   cargarProveedoresParaSelect();
+  cargarProveedoresParaFiltro();
   cargarCatalogo();
 });
 
@@ -49,16 +50,18 @@ async function cargarCatalogo() {
 
 // Filtrado client-side por búsqueda + tipo
 function filtrarCatalogo(termino) {
-  const q    = (termino ?? document.getElementById('busqueda')?.value ?? '').trim().toLowerCase();
-  const tipo = document.getElementById('filtro-tipo')?.value || '';
+  const q          = (termino ?? document.getElementById('busqueda')?.value ?? '').trim().toLowerCase();
+  const tipo       = document.getElementById('filtro-tipo')?.value || '';
+  const proveedor  = document.getElementById('filtro-proveedor')?.value || '';
 
   const filtrados = _catalogoData.filter(item => {
     const matchTipo = !tipo || item.tipo === tipo;
+    const matchProv = !proveedor || String(item.proveedor_id) === String(proveedor);
     const matchQ    = !q ||
       (item.codigo      || '').toLowerCase().includes(q) ||
       (item.descripcion || '').toLowerCase().includes(q) ||
       (item.proveedor_nombre || '').toLowerCase().includes(q);
-    return matchTipo && matchQ;
+    return matchTipo && matchProv && matchQ;
   });
 
   renderTablaCatalogo(filtrados, _catalogoData.length);
@@ -121,10 +124,13 @@ function renderTablaCatalogo(items, totalOriginal = null) {
         </button>
       </div>` : '';
 
+    const unidad = item.unidad || '—';
+
     return `<tr>
       <td><strong>${item.codigo}</strong></td>
       <td style="max-width:280px">${item.descripcion || '—'}</td>
       <td>${tipoBadge(item.tipo)}</td>
+      <td>${unidad}</td>
       <td style="text-align:right">${costo}</td>
       <td><span style="font-size:11px;font-weight:600;color:var(--muted)">${moneda}</span></td>
       <td>${provCell}</td>
@@ -137,7 +143,7 @@ function renderTablaCatalogo(items, totalOriginal = null) {
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Código</th><th>Descripción</th><th>Tipo</th>
+          <th>Código</th><th>Descripción</th><th>Tipo</th><th>Unidad</th>
           <th style="text-align:right">Costo ref.</th><th>Moneda</th>
           <th>Proveedor</th><th>Estado</th>
           ${esAdminCatalogo ? '<th>Acciones</th>' : ''}
@@ -147,26 +153,52 @@ function renderTablaCatalogo(items, totalOriginal = null) {
     </div>`;
 }
 
+async function cargarProveedoresLista() {
+  if (proveedoresCache.length) return proveedoresCache;
+
+  try {
+    proveedoresCache = await Api.get('/proveedores?soloActivos=true');
+  } catch (err) {
+    console.warn('No se pudieron cargar proveedores');
+    proveedoresCache = [];
+  }
+
+  return proveedoresCache;
+}
+
 // Cargar proveedores para el selector del modal
 async function cargarProveedoresParaSelect() {
   if (!esAdminCatalogo) return;
 
-  try {
-    const proveedores = await Api.get('/proveedores?soloActivos=true');
-    proveedoresCache = proveedores;
+  const proveedores = await cargarProveedoresLista();
+  const select = document.getElementById('cat-proveedor');
+  if (select) {
+    select.innerHTML = '<option value="">Sin proveedor asignado</option>';
+    proveedores.forEach(p => {
+      const option = document.createElement('option');
+      option.value = p.id;
+      option.textContent = UI.labelProveedor(p);
+      select.appendChild(option);
+    });
+  }
+}
 
-    const select = document.getElementById('cat-proveedor');
-    if (select) {
-      select.innerHTML = '<option value="">Sin proveedor asignado</option>';
-      proveedores.forEach(p => {
-        const option = document.createElement('option');
-        option.value = p.id;
-        option.textContent = UI.labelProveedor(p);
-        select.appendChild(option);
-      });
-    }
-  } catch (err) {
-    console.warn('No se pudieron cargar proveedores para el selector');
+async function cargarProveedoresParaFiltro() {
+  const proveedores = await cargarProveedoresLista();
+  const filtro = document.getElementById('filtro-proveedor');
+  if (!filtro) return;
+
+  const previo = filtro.value;
+  filtro.innerHTML = '<option value="">Todos los proveedores</option>';
+  proveedores.forEach(p => {
+    const option = document.createElement('option');
+    option.value = p.id;
+    option.textContent = UI.labelProveedor(p);
+    filtro.appendChild(option);
+  });
+
+  if (previo && [...filtro.options].some(o => String(o.value) === String(previo))) {
+    filtro.value = previo;
   }
 }
 
@@ -190,6 +222,7 @@ function abrirModalCatalogo(item = null) {
     document.getElementById('cat-descripcion').value = item.descripcion || '';
     document.getElementById('cat-costo').value = item.costo_referencia || '';
     document.getElementById('cat-moneda').value = item.moneda || 'MXN';
+    document.getElementById('cat-unidad').value = item.unidad || '';
     document.getElementById('cat-proveedor').value = item.proveedor_id || '';
   } else {
     titulo.textContent = 'Nuevo elemento del catálogo';
@@ -252,6 +285,7 @@ async function guardarCatalogo(e) {
   const descripcion = document.getElementById('cat-descripcion').value.trim();
   const costoStr = document.getElementById('cat-costo').value;
   const moneda = document.getElementById('cat-moneda').value || 'MXN';
+  const unidad = document.getElementById('cat-unidad').value.trim() || null;
   const proveedor_id = document.getElementById('cat-proveedor').value || null;
 
   let tieneErrores = false;
@@ -289,6 +323,7 @@ async function guardarCatalogo(e) {
     tipo,
     codigo,
     descripcion,
+    unidad,
     costo_referencia: costo,
     moneda,
     proveedor_id

@@ -386,7 +386,15 @@ async function editarCotizacion(cotizacionId) {
 
     await cargarProveedoresEnModal();
 
-    document.getElementById('cot_proveedor_id').value  = c.proveedor_id || '';
+    const provLabel = UI.labelProveedor(c) || '';
+    if (typeof setProveedorCotizacion === 'function') {
+      setProveedorCotizacion(c.proveedor_id || '', provLabel);
+    } else {
+      const hidden = document.getElementById('cot_proveedor_id');
+      const busq   = document.getElementById('cot_proveedor_busqueda');
+      if (hidden) hidden.value = c.proveedor_id || '';
+      if (busq) busq.value = provLabel;
+    }
     document.getElementById('cot_fecha_envio').value   = c.fecha_envio ? c.fecha_envio.substring(0, 10) : '';
     document.getElementById('cot_moneda').value        = c.moneda || 'MXN';
     document.getElementById('cot_notas').value         = c.notas || '';

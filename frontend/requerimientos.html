@@ -570,7 +570,11 @@
         <div class="form-row">
           <div class="form-group flex-1">
             <label class="form-label">Proveedor <span class="text-danger">*</span></label>
-            <select id="cot_proveedor_id" class="form-control" required></select>
+            <input type="text" id="cot_proveedor_busqueda" class="form-control"
+                   list="cot_proveedores_list" placeholder="Buscar por número o nombre…"
+                   autocomplete="off" required>
+            <input type="hidden" id="cot_proveedor_id">
+            <datalist id="cot_proveedores_list"></datalist>
           </div>
           <div class="form-group">
             <label class="form-label">Fecha de Envío <span class="text-danger">*</span></label>
@@ -616,7 +620,8 @@
             <table class="table table-sm" id="tabla-items-cot">
               <thead class="table-light">
                 <tr>
-                  <th width="52%">Descripción</th>
+                  <th width="10%">Nº ítem</th>
+                  <th width="42%">Descripción</th>
                   <th width="8%">Cantidad</th>
                   <th width="10%">Unidad</th>
                   <th width="13%">Precio Unitario</th>
@@ -826,6 +831,7 @@ window.seleccionarModoItems = function(modo) {
     if (tieneCatalogo) {
       if (!confirm('Tienes ítems del catálogo en la lista. ¿Limpiarlos y cambiar a ítem nuevo?')) return;
       window.requerimientoItemsSeleccionados = [];
+      if (typeof desbloquearFiltroProveedorCatalogo === 'function') desbloquearFiltroProveedorCatalogo();
       if (resCat) resCat.innerHTML = '';
     }
 

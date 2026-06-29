@@ -53,7 +53,7 @@ function renderDetalle(req) {
       <tr><td style="padding:6px 0;color:#6b7280">Área</td>
           <td>${req.area || '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Departamento</td>
-          <td>${req.departamento || '—'}</td></tr>
+          <td>${req.departamento ? `${req.departamento}${req.departamento_codigo ? ` (${req.departamento_codigo})` : ''}` : '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
           <td>${UI.badge(req.estado)}</td></tr>
       ${req.oc_id || req.oc_numero ? `
@@ -316,6 +316,23 @@ async function imprimirRequerimiento() {
     }
   }
 
+  const firmasHtml = `
+    <div class="print-firmas">
+      <div class="print-firma-col">
+        <div class="print-firma-linea"></div>
+        <div class="print-firma-label">Solicitante</div>
+        <div class="print-firma-nombre">${requerimientoActual.solicitante_nombre || '—'}</div>
+      </div>
+      <div class="print-firma-col">
+        <div class="print-firma-linea"></div>
+        <div class="print-firma-label">Quien autorizó</div>
+      </div>
+      <div class="print-firma-col">
+        <div class="print-firma-linea"></div>
+        <div class="print-firma-label">Quien aprobó</div>
+      </div>
+    </div>`;
+
   const ventana = window.open('', '_blank', 'width=800,height=600');
   ventana.document.write(`
     <html>
@@ -326,6 +343,36 @@ async function imprimirRequerimiento() {
           body { padding: 30px; background: white; color: black; font-family: Arial, sans-serif; }
           .no-print, .btn, #sidebar, #topbar { display: none !important; }
           .card { border: 1px solid #000; box-shadow: none; padding: 20px; }
+          .print-firmas {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            margin-top: 48px;
+            padding-top: 12px;
+            page-break-inside: avoid;
+          }
+          .print-firma-col {
+            flex: 1;
+            text-align: center;
+            min-width: 0;
+          }
+          .print-firma-linea {
+            border-top: 1px solid #000;
+            margin: 0 8px 8px;
+            height: 1px;
+          }
+          .print-firma-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            color: #374151;
+            margin-bottom: 4px;
+          }
+          .print-firma-nombre {
+            font-size: 12px;
+            color: #111827;
+          }
         </style>
       </head>
       <body>
@@ -333,6 +380,7 @@ async function imprimirRequerimiento() {
         <hr>
         ${detalleElement.innerHTML}
         ${cotizacionHtml}
+        ${firmasHtml}
       </body>
     </html>
   `);

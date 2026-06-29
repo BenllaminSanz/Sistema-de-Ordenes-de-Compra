@@ -1,5 +1,46 @@
 // ── MODAL DE COTIZACIÓN ───────────────────────────────────────
 
+let _proveedoresCotizacionCache = [];
+
+function resolverProveedorCotizacionId() {
+  const hidden = document.getElementById('cot_proveedor_id');
+  const input  = document.getElementById('cot_proveedor_busqueda');
+  if (!input) return null;
+
+  const texto = input.value.trim();
+  if (!texto) {
+    if (hidden) hidden.value = '';
+    return null;
+  }
+
+  const exacto = _proveedoresCotizacionCache.find(p => UI.labelProveedor(p) === texto);
+  if (exacto) {
+    if (hidden) hidden.value = exacto.id;
+    return exacto.id;
+  }
+
+  const parcial = _proveedoresCotizacionCache.find(p => {
+    const label = UI.labelProveedor(p).toLowerCase();
+    return label.includes(texto.toLowerCase());
+  });
+
+  if (parcial) {
+    input.value = UI.labelProveedor(parcial);
+    if (hidden) hidden.value = parcial.id;
+    return parcial.id;
+  }
+
+  if (hidden) hidden.value = '';
+  return null;
+}
+
+function setProveedorCotizacion(proveedorId, labelTexto) {
+  const hidden = document.getElementById('cot_proveedor_id');
+  const input  = document.getElementById('cot_proveedor_busqueda');
+  if (hidden) hidden.value = proveedorId || '';
+  if (input) input.value = labelTexto || '';
+}
+
 function abrirModalCotizacion() {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para crear cotizaciones');
   if (!requerimientoActual)          return Toast.error('No se encontró el requerimiento');
@@ -29,6 +70,7 @@ function prepararModalCotizacion(req) {
 function cerrarModalCotizacion() {
   document.getElementById('modal-cotizacion').style.display = 'none';
   document.getElementById('form-cotizacion').reset();
+  setProveedorCotizacion('', '');
   document.querySelector('#tabla-items-cot tbody').innerHTML = '';
   cotizacionEditandoId = null;
 
@@ -41,7 +83,7 @@ async function guardarCotizacionOriginal() {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para guardar cotizaciones');
 
   const reqId       = document.getElementById('cot_req_id').value;
-  const proveedor_id = document.getElementById('cot_proveedor_id').value;
+  const proveedor_id = resolverProveedorCotizacionId();
   const fecha_envio  = document.getElementById('cot_fecha_envio').value;
   const moneda       = document.getElementById('cot_moneda').value;
   const notas        = document.getElementById('cot_notas').value.trim();
@@ -81,11 +123,17 @@ async function guardarCotizacionOriginal() {
         cantidad        = Math.max(1, Math.round(cantidad));
         precio_unitario = redondear2(precio_unitario);
 
+        const codigoCatalogo = row.querySelector('.item-codigo-catalogo')?.value.trim() || null;
+        const catalogoIdRaw  = row.querySelector('.item-catalogo-id')?.value;
+        const catalogo_id    = catalogoIdRaw ? parseInt(catalogoIdRaw, 10) : null;
+
         datos.items.push({
           descripcion,
           cantidad,
-          unidad:         row.querySelector('.item-unidad').value,
-          precio_unitario
+          unidad: row.querySelector('.item-unidad').value,
+          precio_unitario,
+          codigo_catalogo: codigoCatalogo,
+          catalogo_id: Number.isFinite(catalogo_id) ? catalogo_id : null,
         });
       });
 
@@ -134,7 +182,7 @@ function prepararConfirmacionEnvioCotizacion() {
     return;
   }
 
-  const proveedor_id = document.getElementById('cot_proveedor_id').value;
+  const proveedor_id = resolverProveedorCotizacionId();
   const fecha_envio  = document.getElementById('cot_fecha_envio').value;
 
   if (!proveedor_id || !fecha_envio) return Toast.error('Proveedor y Fecha de Envío son obligatorios');
@@ -240,14 +288,24 @@ async function confirmarProgramarEnvioFuturo() {
 async function cargarProveedoresEnModal() {
   try {
     const proveedores = await Api.get('/proveedores?activos=true');
-    const select      = document.getElementById('cot_proveedor_id');
-    select.innerHTML  = '<option value="">Selecciona proveedor...</option>';
-    proveedores.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = UI.labelProveedor(p);
-      select.appendChild(opt);
-    });
+    _proveedoresCotizacionCache = proveedores || [];
+
+    const datalist = document.getElementById('cot_proveedores_list');
+    if (datalist) {
+      datalist.innerHTML = '';
+      _proveedoresCotizacionCache.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = UI.labelProveedor(p);
+        datalist.appendChild(opt);
+      });
+    }
+
+    const busqueda = document.getElementById('cot_proveedor_busqueda');
+    if (busqueda && !busqueda.dataset.boundResolver) {
+      busqueda.dataset.boundResolver = 'true';
+      busqueda.addEventListener('change', resolverProveedorCotizacionId);
+      busqueda.addEventListener('blur', resolverProveedorCotizacionId);
+    }
   } catch (e) {
     console.error('Error cargando proveedores:', e);
   }
@@ -331,11 +389,13 @@ function prellenarItemsCotizacionDesdeReq(req) {
 
   const itemsFuente = tieneLibres
     ? req.items_libres.map(l => ({ descripcion: l.descripcion || '', cantidad: Math.max(1, Math.round(l.cantidad || 1)), unidad: l.unidad || 'pieza', precio_unitario: '' }))
-    : req.items.map(i => ({ 
-        descripcion: i.descripcion || i.codigo || '', 
-        cantidad: Math.max(1, Math.round(i.cantidad || 1)), 
-        unidad: 'pieza', 
-        precio_unitario: '',
+    : req.items.map(i => ({
+        descripcion: i.descripcion || i.codigo || '',
+        cantidad: Math.max(1, Math.round(i.cantidad || 1)),
+        unidad: i.unidad || 'pieza',
+        precio_unitario: i.costo_referencia != null ? i.costo_referencia : '',
+        codigo_catalogo: i.codigo || '',
+        catalogo_id: i.catalogo_id || null,
         proveedor_num: i.proveedor_num || '',
         proveedor_nombre: i.proveedor_nombre || ''
       }));
@@ -352,7 +412,13 @@ function crearFilaItem(itemData = {}) {
     ? `<div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1;">Prov: <strong>${itemData.proveedor_num || ''}${itemData.proveedor_nombre ? ' — ' + itemData.proveedor_nombre : ''}</strong></div>`
     : '';
 
+  const codigoCatalogo = (itemData.codigo_catalogo || itemData.codigo || '').replace(/"/g, '&quot;');
+
   row.innerHTML = `
+    <td style="vertical-align: top;">
+      <input type="text" class="form-control item-codigo-catalogo" placeholder="Código" value="${codigoCatalogo}" title="Nº ítem / código catálogo">
+      <input type="hidden" class="item-catalogo-id" value="${itemData.catalogo_id || ''}">
+    </td>
     <td style="vertical-align: top;">
       <input type="text" class="form-control item-desc" placeholder="Ej: Tornillos hexagonales 1/2" value="${itemData.descripcion || ''}" required>
       ${provInfo}

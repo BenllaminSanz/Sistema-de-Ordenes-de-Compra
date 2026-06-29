@@ -1,5 +1,20 @@
 import pool from '../config/db.js';
 import { validarCierreOrden } from '../utils/ocCierre.js';
+import { obtenerPorId as obtenerOcPorId } from './ordenes.js';
+
+async function cargarItemsRecepcion(recepcionIds) {
+  if (!recepcionIds.length) return {};
+  const [rows] = await pool.query(
+    `SELECT * FROM recepcion_items WHERE recepcion_id IN (?) ORDER BY id ASC`,
+    [recepcionIds]
+  );
+  const map = {};
+  for (const row of rows) {
+    if (!map[row.recepcion_id]) map[row.recepcion_id] = [];
+    map[row.recepcion_id].push(row);
+  }
+  return map;
+}
 
 async function listarPorOrden(orden_compra_id) {
   const [rows] = await pool.query(
@@ -10,7 +25,9 @@ async function listarPorOrden(orden_compra_id) {
      ORDER BY r.created_at DESC`,
     [orden_compra_id]
   );
-  return rows;
+
+  const itemsMap = await cargarItemsRecepcion(rows.map(r => r.id));
+  return rows.map(r => ({ ...r, items: itemsMap[r.id] || [] }));
 }
 
 async function obtenerPorId(id) {
@@ -21,7 +38,13 @@ async function obtenerPorId(id) {
      WHERE r.id = ?`,
     [id]
   );
-  return rec || null;
+  if (!rec) return null;
+
+  const [items] = await pool.query(
+    `SELECT * FROM recepcion_items WHERE recepcion_id = ? ORDER BY id ASC`,
+    [id]
+  );
+  return { ...rec, items };
 }
 
 async function registrarHistorialOc(conn, ocId, estadoAnterior, estadoNuevo, usuarioId, notas) {
@@ -31,6 +54,46 @@ async function registrarHistorialOc(conn, ocId, estadoAnterior, estadoNuevo, usu
      VALUES ('orden_compra', ?, ?, ?, ?, ?)`,
     [ocId, estadoAnterior, estadoNuevo, usuarioId, notas]
   );
+}
+
+async function insertarItemsRecepcion(conn, recepcionId, items = []) {
+  for (const item of items) {
+    const recibida = parseFloat(item.cantidad_recibida) || 0;
+    if (recibida <= 0) continue;
+    await conn.query(
+      `INSERT INTO recepcion_items
+         (recepcion_id, item_key, descripcion, codigo, cantidad_solicitada, cantidad_recibida, unidad)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        recepcionId,
+        item.item_key,
+        item.descripcion || null,
+        item.codigo || null,
+        parseFloat(item.cantidad_solicitada) || 0,
+        recibida,
+        item.unidad || null,
+      ]
+    );
+  }
+}
+
+async function asegurarEstadoEnProceso(conn, ocId, estadoAnterior, usuarioId) {
+  if (['distribuida', 'generada'].includes(estadoAnterior)) {
+    await conn.query(
+      `UPDATE ordenes_compra SET estado = 'en_proceso' WHERE id = ? AND estado IN ('generada', 'distribuida')`,
+      [ocId]
+    );
+    await registrarHistorialOc(
+      conn,
+      ocId,
+      estadoAnterior,
+      'en_proceso',
+      usuarioId,
+      'Recepción registrada — OC en proceso'
+    );
+    return 'en_proceso';
+  }
+  return estadoAnterior;
 }
 
 async function crear(datos, recibido_por) {
@@ -61,6 +124,10 @@ async function crear(datos, recibido_por) {
     );
     const recepcionId = result.insertId;
 
+    if (Array.isArray(datos.items) && datos.items.length > 0) {
+      await insertarItemsRecepcion(conn, recepcionId, datos.items);
+    }
+
     if (datos.datatextnow_id) {
       await conn.query(
         'UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?',
@@ -69,46 +136,57 @@ async function crear(datos, recibido_por) {
     }
 
     let cerrada = false;
+    let estadoOc = ocAntes.estado;
 
-    if (esCompleta) {
-      const validacion = await validarCierreOrden(conn, datos.orden_compra_id);
-      const estadoAnterior = ocAntes.estado;
+    estadoOc = await asegurarEstadoEnProceso(conn, datos.orden_compra_id, ocAntes.estado, recibido_por);
 
+    if (esCompleta && datos.cerrar_oc) {
+      const validacion = await validarCierreOrden(conn, datos.orden_compra_id, { permitirParcial: true });
       if (validacion.ok) {
         cerrada = true;
         await conn.query(
-          `UPDATE recepciones
-           SET estado = 'entregado_solicitante', fecha_entrega = NOW()
-           WHERE id = ?`,
-          [recepcionId]
-        );
-
-        await conn.query(
           `UPDATE ordenes_compra
            SET estado = 'cerrada', datatextnow_id = COALESCE(datatextnow_id, ?)
-           WHERE id = ? AND estado IN ('distribuida', 'en_proceso', 'recibida')`,
+           WHERE id = ? AND estado NOT IN ('cerrada', 'cancelada')`,
           [validacion.po, datos.orden_compra_id]
         );
-
         await registrarHistorialOc(
           conn,
           datos.orden_compra_id,
-          estadoAnterior,
+          estadoOc,
+          'cerrada',
+          recibido_por,
+          'Recepción completa — OC cerrada'
+        );
+      }
+    } else if (esCompleta) {
+      const validacion = await validarCierreOrden(conn, datos.orden_compra_id, { permitirParcial: true });
+      if (validacion.ok) {
+        cerrada = true;
+        await conn.query(
+          `UPDATE ordenes_compra
+           SET estado = 'cerrada', datatextnow_id = COALESCE(datatextnow_id, ?)
+           WHERE id = ? AND estado NOT IN ('cerrada', 'cancelada')`,
+          [validacion.po, datos.orden_compra_id]
+        );
+        await registrarHistorialOc(
+          conn,
+          datos.orden_compra_id,
+          estadoOc,
           'cerrada',
           recibido_por,
           'Recepción completa registrada — OC cerrada automáticamente'
         );
-      } else {
+      } else if (estadoOc !== 'recibida') {
         await conn.query(
           `UPDATE ordenes_compra SET estado = 'recibida'
            WHERE id = ? AND estado IN ('distribuida', 'en_proceso')`,
           [datos.orden_compra_id]
         );
-
         await registrarHistorialOc(
           conn,
           datos.orden_compra_id,
-          estadoAnterior,
+          estadoOc,
           'recibida',
           recibido_por,
           `Recepción completa registrada${validacion.mensaje.includes('DataTextNow') ? ' — pendiente PO DataTextNow para cierre' : ''}`
@@ -126,51 +204,60 @@ async function crear(datos, recibido_por) {
   }
 }
 
-async function marcarEntregado(id, usuarioId) {
+async function actualizar(id, datos, usuarioId) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const [result] = await conn.query(
-      `UPDATE recepciones
-       SET estado = 'entregado_solicitante', fecha_entrega = NOW()
-       WHERE id = ?`,
-      [id]
-    );
-    if (!result.affectedRows) {
+    const rec = await obtenerPorId(id);
+    if (!rec) throw { status: 404, mensaje: 'Recepción no encontrada' };
+
+    const campos = [];
+    const params = [];
+
+    if (datos.estado !== undefined) { campos.push('estado = ?'); params.push(datos.estado); }
+    if (datos.notas !== undefined) { campos.push('notas = ?'); params.push(datos.notas); }
+    if (datos.datatextnow_id !== undefined) { campos.push('datatextnow_id = ?'); params.push(datos.datatextnow_id); }
+
+    if (campos.length) {
+      params.push(id);
+      await conn.query(`UPDATE recepciones SET ${campos.join(', ')} WHERE id = ?`, params);
+    }
+
+    if (Array.isArray(datos.items)) {
+      await conn.query('DELETE FROM recepcion_items WHERE recepcion_id = ?', [id]);
+      await insertarItemsRecepcion(conn, id, datos.items);
+    }
+
+    if (datos.datatextnow_id) {
+      await conn.query(
+        'UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?',
+        [datos.datatextnow_id, rec.orden_compra_id]
+      );
+    }
+
+    await conn.commit();
+    return await obtenerPorId(id);
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function eliminar(id) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const rec = await obtenerPorId(id);
+    if (!rec) {
       await conn.rollback();
       return 0;
     }
 
-    const [[rec]] = await conn.query(
-      'SELECT orden_compra_id FROM recepciones WHERE id = ?',
-      [id]
-    );
-
-    const [[oc]] = await conn.query(
-      'SELECT estado FROM ordenes_compra WHERE id = ?',
-      [rec.orden_compra_id]
-    );
-
-    const validacion = await validarCierreOrden(conn, rec.orden_compra_id);
-    if (validacion.ok && oc.estado !== 'cerrada') {
-      await conn.query(
-        `UPDATE ordenes_compra
-         SET estado = 'cerrada', datatextnow_id = COALESCE(datatextnow_id, ?)
-         WHERE id = ? AND estado IN ('recibida', 'en_proceso', 'distribuida')`,
-        [validacion.po, rec.orden_compra_id]
-      );
-
-      await registrarHistorialOc(
-        conn,
-        rec.orden_compra_id,
-        oc.estado,
-        'cerrada',
-        usuarioId,
-        'Entregado al solicitante — OC cerrada automáticamente'
-      );
-    }
-
+    await conn.query('DELETE FROM recepcion_items WHERE recepcion_id = ?', [id]);
+    const [result] = await conn.query('DELETE FROM recepciones WHERE id = ?', [id]);
     await conn.commit();
     return result.affectedRows;
   } catch (err) {
@@ -181,4 +268,45 @@ async function marcarEntregado(id, usuarioId) {
   }
 }
 
-export { listarPorOrden, obtenerPorId, crear, marcarEntregado };
+/** Ítems de la OC con cantidades solicitadas y recibidas acumuladas. */
+async function resumenItemsOrden(orden_compra_id) {
+  const oc = await obtenerOcPorId(orden_compra_id);
+  if (!oc) return [];
+
+  const recepciones = await listarPorOrden(orden_compra_id);
+  const acumulado = {};
+
+  for (const rec of recepciones) {
+    for (const it of rec.items || []) {
+      acumulado[it.item_key] = (acumulado[it.item_key] || 0) + (parseFloat(it.cantidad_recibida) || 0);
+    }
+  }
+
+  return (oc.items || []).map((it, idx) => {
+    const key = it.origen === 'cotizacion'
+      ? `cot-${it.id}`
+      : it.origen === 'libres'
+        ? `lib-${it.id}`
+        : `cat-${it.id || idx}`;
+    const solicitada = parseFloat(it.cantidad) || 0;
+    const recibida = acumulado[key] || 0;
+    return {
+      item_key: key,
+      codigo: it.codigo || null,
+      descripcion: it.descripcion,
+      unidad: it.unidad || 'pieza',
+      cantidad_solicitada: solicitada,
+      cantidad_recibida: recibida,
+      pendiente: Math.max(0, solicitada - recibida),
+    };
+  });
+}
+
+export {
+  listarPorOrden,
+  obtenerPorId,
+  crear,
+  actualizar,
+  eliminar,
+  resumenItemsOrden,
+};
