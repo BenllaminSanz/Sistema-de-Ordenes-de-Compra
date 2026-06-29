@@ -248,6 +248,15 @@
               <h2 class="page-title">Requerimientos</h2>
             </div>
             <div class="page-header-actions">
+              <button class="btn btn-outline btn-sm" id="btn-exportar"
+                      onclick="exportarRequerimientos(this)" title="Exportar todos los requerimientos a Excel">
+                ↓ Exportar Excel
+              </button>
+              <button class="btn btn-outline btn-sm" id="btn-importar"
+                      onclick="UI.abrirModal('modal-importar-excel')" title="Importar requerimientos desde Excel"
+                      style="display:none">
+                ↑ Importar Excel
+              </button>
               <button class="btn btn-primary btn-sm" id="btn-nuevo"
                       onclick="abrirEditorRequerimiento()">+ Nuevo requerimiento</button>
             </div>
@@ -324,6 +333,41 @@
       </div>
 
     </main>
+  </div>
+</div>
+
+<!-- ── Modal: Importar Excel ──────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-importar-excel">
+  <div class="modal-box" style="max-width:520px;width:95vw">
+    <div class="modal-header">
+      <h3 class="modal-title">Importar requerimientos desde Excel</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-importar-excel')">×</button>
+    </div>
+    <div style="padding:20px 24px">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">
+        El archivo debe tener hojas <strong>SERVICIOS</strong> y/o <strong>PARTES</strong>
+        con el mismo formato del archivo histórico. Solo se importarán registros nuevos
+        (que no existan aún en el sistema).
+      </p>
+      <div class="form-group">
+        <label class="form-label">Archivo Excel (.xlsx)</label>
+        <input type="file" id="imp-archivo" accept=".xlsx,.xls"
+               class="form-control" onchange="imp_preview(this)">
+      </div>
+      <div id="imp-preview" style="display:none;margin-top:8px;font-size:12.5px;
+                                    background:var(--bg-alt);border-radius:6px;padding:10px 12px;
+                                    border:1px solid var(--border)">
+        <span id="imp-nombre" style="font-weight:600"></span>
+      </div>
+      <div id="imp-resultado" style="display:none;margin-top:14px;font-size:13px;
+                                      border-radius:6px;padding:10px 14px;line-height:1.5"></div>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="UI.cerrarModal('modal-importar-excel')">Cancelar</button>
+      <button class="btn btn-primary" id="imp-btn-importar" onclick="ejecutarImport()">
+        Importar
+      </button>
+    </div>
   </div>
 </div>
 
@@ -969,6 +1013,7 @@ window.filtrarFiltroDeptosPorArea = filtrarFiltroDeptosPorArea;
 <script src="js/pages/requerimientos/items-libres.js"></script>
 <script src="js/pages/requerimientos/cotizaciones.js"></script>
 <script src="js/pages/requerimientos/modal-cotizacion.js"></script>
+<script src="js/pages/requerimientos/excel.js"></script>
 <script src="js/pages/requerimientos/index.js"></script>
 </body>
 </html>

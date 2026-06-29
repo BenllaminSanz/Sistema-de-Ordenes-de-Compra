@@ -10,7 +10,9 @@ import {
   actualizar,
   cambiarEstado,
   eliminar,
-  subirReferenciaItem
+  subirReferenciaItem,
+  exportarExcel,
+  importarExcel,
 } from '../controllers/requerimientosController.js';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
 import { validate } from '../validations/validationMiddleware.js';
@@ -50,9 +52,38 @@ const uploadReferenciaItem = multer({
   },
 });
 
+const TIPOS_EXCEL = new Set([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+]);
+
+const uploadExcel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (TIPOS_EXCEL.has(file.mimetype) || file.originalname.match(/\.xlsx?$/i)) cb(null, true);
+    else cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls)'), false);
+  },
+});
+
 router.use(autenticar);
 
 router.get('/', listar);
+
+// Exportar e importar deben ir ANTES de /:id para no ser capturados como parámetro
+router.get('/exportar', exportarExcel);
+
+router.post(
+  '/importar',
+  autorizar('contabilidad', 'admin'),
+  (req, res, next) => {
+    uploadExcel.single('archivo')(req, res, (err) => {
+      if (err) return res.status(400).json({ mensaje: err.message || 'Archivo no válido' });
+      next();
+    });
+  },
+  importarExcel
+);
 
 router.post(
   '/referencia-item',

@@ -57,17 +57,53 @@ function mensajeConfirmacionCierreRecepcion(evaluacion) {
   return null;
 }
 
+function calcularEstadoRecepcion() {
+  let algunoParcial = false;
+  document.querySelectorAll('#rec-items-list .rec-item-row').forEach(row => {
+    const chk = row.querySelector('.rec-item-check');
+    if (!chk?.checked) return;
+    const cantidad  = parseFloat(row.querySelector('.rec-item-cantidad')?.value || 0);
+    const pendiente = parseFloat(row.dataset.pendiente || 0);
+    if (cantidad < pendiente) algunoParcial = true;
+  });
+  return algunoParcial ? 'recibido_parcial' : 'recibido_completo';
+}
+
+function recalcEstadoAuto() {
+  const el = document.getElementById('rec-estado-auto');
+  if (!el) return;
+
+  let algunoMarcado = false;
+  let algunoParcial = false;
+  document.querySelectorAll('#rec-items-list .rec-item-row').forEach(row => {
+    const chk = row.querySelector('.rec-item-check');
+    if (!chk?.checked) return;
+    algunoMarcado = true;
+    const cantidad  = parseFloat(row.querySelector('.rec-item-cantidad')?.value || 0);
+    const pendiente = parseFloat(row.dataset.pendiente || 0);
+    if (cantidad < pendiente) algunoParcial = true;
+  });
+
+  if (!algunoMarcado) { el.innerHTML = ''; return; }
+
+  if (algunoParcial) {
+    el.innerHTML = '<span style="color:#854d0e;font-weight:600">⚠ Entrega parcial</span> — algunos ítems quedan pendientes de recibir.';
+  } else {
+    el.innerHTML = '<span style="color:#166534;font-weight:600">✓ Entrega completa</span> — todos los ítems pendientes quedarán cubiertos.';
+  }
+  actualizarAvisoCierreRecepcion();
+}
+
 function actualizarAvisoCierreRecepcion() {
   const aviso = document.getElementById('rec-aviso-cierre');
   if (!aviso || !ocActual) return;
 
-  const estado = document.getElementById('rec-estado')?.value;
-  const poNuevo = document.getElementById('rec-datatextnow')?.value || null;
+  if (ocActual.estado === 'cerrada') { aviso.style.display = 'none'; return; }
 
-  if (estado === 'recibido_parcial' || ocActual.estado === 'cerrada') {
-    aviso.style.display = 'none';
-    return;
-  }
+  const estado  = calcularEstadoRecepcion();
+  const poNuevo = ocActual?.datatextnow_id || null;
+
+  if (estado === 'recibido_parcial') { aviso.style.display = 'none'; return; }
 
   const recsProyectadas = [
     ...(recepcionesActuales || []),
@@ -77,22 +113,15 @@ function actualizarAvisoCierreRecepcion() {
 
   if (evaluacion.ok) {
     aviso.style.display = 'block';
-    aviso.innerHTML = '<strong>Atención:</strong> Al confirmar esta recepción completa, '
-      + 'la Orden de Compra <strong>se cerrará automáticamente</strong>.';
+    aviso.innerHTML = '<strong>Atención:</strong> Esta entrega completa '
+      + 'cerrará la Orden de Compra <strong>automáticamente</strong>.';
     return;
   }
 
   if (evaluacion.motivo === 'sin_po') {
     aviso.style.display = 'block';
-    aviso.innerHTML = 'La recepción se registrará, pero la OC <strong>no se cerrará</strong> '
+    aviso.innerHTML = 'La entrega se registrará, pero la OC <strong>no se cerrará</strong> '
       + 'hasta registrar el PO de DataTextNow (en este formulario o en la OC).';
-    return;
-  }
-
-  if (evaluacion.motivo === 'recepciones_pendientes') {
-    aviso.style.display = 'block';
-    aviso.innerHTML = 'Hay recepciones parciales pendientes. La OC <strong>no se cerrará</strong> '
-      + 'hasta completar todas las recepciones y contar con el PO de DataTextNow.';
     return;
   }
 
@@ -216,7 +245,7 @@ async function cargarOrdenes(pagina) {
               <td>${o.consecutivo}</td>
               <td>${o.tipo}</td>
               <td>${UI.labelProveedor(o)}</td>
-              <td>${o.monto_total
+              <td>${o.monto_total != null
                     ? '$' + Number(o.monto_total).toLocaleString('es-MX') + ' ' + o.moneda
                     : '—'}</td>
               <td>${getColumnaValor(o)}</td>
@@ -319,7 +348,7 @@ function renderDetalle(oc) {
       <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
           <td>${UI.labelProveedor(oc)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Monto</td>
-          <td>${oc.monto_total
+          <td>${oc.monto_total != null
                 ? '$' + Number(oc.monto_total).toLocaleString('es-MX') + ' ' + oc.moneda
                 : '—'}</td></tr>
       ${mostrarAutorizadoRow ? `
@@ -355,56 +384,99 @@ function renderDetalle(oc) {
       <p style="margin:0;line-height:1.6;font-size:13px">${oc.descripcion}</p>
     </div>
 
-    ${oc.items && oc.items.length > 0 ? `
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
-      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Ítems / Líneas de la OC ${oc.cotizacion_id ? '(según cotización seleccionada)' : '(según requerimiento — sin cotización)'}</div>
-      <table style="width:100%; font-size:12px; border-collapse:collapse;">
-        <thead><tr style="background:#f8f9fa">
-          <th style="text-align:left;padding:3px 4px;">Descripción</th>
-          <th style="text-align:right;padding:3px 4px;">Cant.</th>
-          <th style="text-align:right;padding:3px 4px;">Precio unit.</th>
-        </tr></thead>
-        <tbody>
-          ${oc.items.map(it => {
-            const desc = it.descripcion || (it.codigo ? (it.codigo + ' — ' + (it.descripcion||'')) : '—');
-            const cant = parseFloat(it.cantidad || 0).toLocaleString('es-MX');
-            let precio = '—';
-            if (it.precio_unitario != null) {
-              precio = '$' + Number(it.precio_unitario).toLocaleString('es-MX');
-            } else if (it.precio_unitario_referencia != null) {
-              precio = '$' + Number(it.precio_unitario_referencia).toLocaleString('es-MX') + ' (ref)';
-            }
-            const unidad = it.unidad ? ' ' + it.unidad : '';
-            return `<tr>
-              <td style="padding:3px 4px; border-bottom:1px solid #eee;">${desc}${unidad}</td>
-              <td style="padding:3px 4px; border-bottom:1px solid #eee; text-align:right;">${cant}</td>
-              <td style="padding:3px 4px; border-bottom:1px solid #eee; text-align:right;">${precio}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-        ${(() => {
-            const total = oc.items.reduce((sum, it) => {
-              const c = parseFloat(it.cantidad || 0);
-              let p = 0;
-              if (it.precio_unitario != null) {
-                p = parseFloat(it.precio_unitario);
-              } else if (it.precio_unitario_referencia != null) {
-                p = parseFloat(it.precio_unitario_referencia);
-              }
-              return sum + (c * p);
-            }, 0);
-            const moneda = oc.moneda || 'MXN';
-            const label = oc.cotizacion_id 
-              ? 'Total cotización / OC' 
-              : 'Total (precios de referencia del catálogo)';
-            return `<tfoot><tr style="font-weight:600; border-top:2px solid #ccc;">
-              <td colspan="2" style="padding:4px 4px; text-align:right;">${label}</td>
-              <td style="padding:4px 4px; text-align:right;">$${total.toLocaleString('es-MX')} ${moneda}</td>
-            </tr></tfoot>`;
-          })()}
-      </table>
-      <div style="font-size:11px; color:#64748b; margin-top:4px;">${oc.cotizacion_id ? 'Precios según la cotización elegida. Total calculado de líneas.' : 'Precios de referencia del catálogo (el precio real puede variar). Para fijar proveedor y precios use el flujo de cotización.'}</div>
-    </div>` : '' }`;
+    ${oc.items && oc.items.length > 0 ? (() => {
+      const esCatalogo  = !oc.cotizacion_id;
+      const puedeEditar = esCatalogo && Auth.puedeHacer(['contabilidad', 'admin']);
+      const labelTotal  = oc.cotizacion_id ? 'Total cotización / OC' : 'Total (precios de referencia del catálogo)';
+      const nota        = oc.cotizacion_id
+        ? 'Precios según la cotización elegida. Total calculado de líneas.'
+        : 'Precios de referencia del catálogo (el precio real puede variar).';
+
+      const total = oc.items.reduce((sum, it) => {
+        const c = parseFloat(it.cantidad || 0);
+        const p = it.precio_unitario != null
+          ? parseFloat(it.precio_unitario)
+          : (it.precio_unitario_referencia != null ? parseFloat(it.precio_unitario_referencia) : 0);
+        return sum + c * p;
+      }, 0);
+
+      // Columnas: Desc | Cant | Unidad | Precio | [Proveedor] | [Edit]
+      // tfoot: colspan=3 para label (Desc+Cant+Unidad), 1 para valor, trailing vacías
+      const trailingCols = esCatalogo ? (puedeEditar ? 2 : 1) : 0;
+      const tfootTrail   = trailingCols ? `<td colspan="${trailingCols}"></td>` : '';
+
+      const filas = oc.items.map(it => {
+        const desc   = it.codigo ? `<strong>${it.codigo}</strong> — ${it.descripcion || ''}` : (it.descripcion || '—');
+        const cant   = parseFloat(it.cantidad || 0).toLocaleString('es-MX');
+        const unidad = it.unidad || '—';
+        let precio   = '—';
+        if (it.precio_unitario != null) {
+          precio = '$' + Number(it.precio_unitario).toLocaleString('es-MX');
+        } else if (it.precio_unitario_referencia != null) {
+          precio = '$' + Number(it.precio_unitario_referencia).toLocaleString('es-MX') + ' <span style="color:#94a3b8">(ref)</span>';
+        }
+
+        if (!esCatalogo) {
+          return `<tr>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee;">${desc}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${cant}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee;">${unidad}</td>
+            <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${precio}</td>
+          </tr>`;
+        }
+
+        const provLabel = it.proveedor_nombre
+          ? (it.proveedor_num ? `${it.proveedor_num} — ${it.proveedor_nombre}` : it.proveedor_nombre)
+          : '<span style="color:#94a3b8">—</span>';
+
+        const safeDesc  = (it.descripcion || it.codigo || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const safeUnd   = (it.unidad || '').replace(/'/g, "\\'");
+        const precioVal = it.precio_unitario_referencia != null ? it.precio_unitario_referencia : 'null';
+        const editBtn   = puedeEditar
+          ? `<td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center;">${
+              it.catalogo_id
+                ? `<button onclick="abrirEditarItemProveedor(${it.catalogo_id},'${safeDesc}',${it.proveedor_id || 'null'},${precioVal},'${safeUnd}')"
+                     class="btn btn-sm btn-outline" title="Editar ítem" style="padding:1px 5px;">✎</button>`
+                : ''
+            }</td>`
+          : '';
+
+        return `<tr>
+          <td style="padding:4px 6px;border-bottom:1px solid #eee;">${desc}</td>
+          <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${cant}</td>
+          <td style="padding:4px 6px;border-bottom:1px solid #eee;">${unidad}</td>
+          <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${precio}</td>
+          <td style="padding:4px 6px;border-bottom:1px solid #eee;color:#475569;white-space:nowrap;">${provLabel}</td>
+          ${editBtn}
+        </tr>`;
+      }).join('');
+
+      return `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">
+          Ítems / Líneas de la OC ${oc.cotizacion_id ? '(según cotización seleccionada)' : '(según requerimiento — sin cotización)'}
+        </div>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+          <thead><tr style="background:#f8f9fa">
+            <th style="text-align:left;padding:4px 6px;">Descripción</th>
+            <th style="text-align:right;padding:4px 6px;">Cant.</th>
+            <th style="text-align:left;padding:4px 6px;">Unidad</th>
+            <th style="text-align:right;padding:4px 6px;">Precio unit.</th>
+            ${esCatalogo ? '<th style="text-align:left;padding:4px 6px;">Proveedor</th>' : ''}
+            ${puedeEditar ? '<th style="width:32px;"></th>' : ''}
+          </tr></thead>
+          <tbody>${filas}</tbody>
+          <tfoot><tr style="font-weight:600;border-top:2px solid #ccc;">
+            <td colspan="3" style="padding:4px 6px;text-align:right;">${labelTotal}</td>
+            <td style="padding:4px 6px;text-align:right;">$${total.toLocaleString('es-MX')} ${oc.moneda || 'MXN'}</td>
+            ${tfootTrail}
+          </tr></tfoot>
+        </table>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">${nota}</div>
+      </div>`;
+    })() : '' }`;
 
   // Historial
   const tl = document.getElementById('historial-timeline');
@@ -455,12 +527,13 @@ function renderAcciones(oc) {
   const u = Auth.getUsuario();
 
   const TRANSICIONES = {
-    generada:    [{ label:'Distribuir',    estado:'distribuida', clase:'btn-primary' }],
-    distribuida: [{ label:'En proceso',    estado:'en_proceso',  clase:'btn-primary' },
-                  { label:'Cancelar OC',   estado:'cancelada',   clase:'btn-danger'  }],
-    en_proceso:  [{ label:'Registrar recepción', accion:'abrirRecepcion', clase:'btn-success' },
-                  { label:'Cancelar OC',   estado:'cancelada',   clase:'btn-danger'  }],
-    recibida:    [{ label:'Cerrar OC',     estado:'cerrada',     clase:'btn-success' }],
+    generada:    [{ label:'Distribuir',         estado:'distribuida', clase:'btn-primary' }],
+    distribuida: [{ label:'Registrar entrega',  accion:'abrirRecepcion', clase:'btn-success' },
+                  { label:'Cancelar OC',        estado:'cancelada',   clase:'btn-danger'  }],
+    en_proceso:  [{ label:'Registrar entrega',  accion:'abrirRecepcion', clase:'btn-success' },
+                  { label:'Cerrar OC',          estado:'cerrada',     clase:'btn-primary' },
+                  { label:'Cancelar OC',        estado:'cancelada',   clase:'btn-danger'  }],
+    recibida:    [{ label:'Cerrar OC',          estado:'cerrada',     clase:'btn-success' }],
   };
 
   const opciones = TRANSICIONES[oc.estado];
@@ -522,12 +595,12 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
     <table style="width:100%; font-size:12px; border-collapse:collapse;">
       <thead>
         <tr style="background:#f8fafc;">
-          <th style="padding:6px 8px; text-align:center; width:36px;">✓</th>
+          <th style="padding:6px 8px; text-align:center; width:32px;">✓</th>
           <th style="padding:6px 8px; text-align:left;">Ítem</th>
-          <th style="padding:6px 8px; text-align:right;">Solic.</th>
-          <th style="padding:6px 8px; text-align:right;">Recib.</th>
-          <th style="padding:6px 8px; text-align:right;">Pend.</th>
-          <th style="padding:6px 8px; text-align:right; width:90px;">Esta recep.</th>
+          <th style="padding:6px 8px; text-align:right; white-space:nowrap;">Solicit.</th>
+          <th style="padding:6px 8px; text-align:right; white-space:nowrap;">Ya recib.</th>
+          <th style="padding:6px 8px; text-align:right; white-space:nowrap; color:#854d0e;">Pendiente</th>
+          <th style="padding:6px 8px; text-align:right; width:96px; white-space:nowrap;">Esta entrega</th>
         </tr>
       </thead>
       <tbody>
@@ -542,19 +615,21 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
           const desc = it.codigo
             ? `<strong>${it.codigo}</strong> — ${it.descripcion}`
             : it.descripcion;
+          const pendColor = pendiente > 0 ? 'color:#854d0e;font-weight:600' : 'color:#22c55e;font-weight:600';
           return `
-            <tr class="rec-item-row" data-item-key="${it.item_key}" style="border-top:1px solid #e5e7eb;">
+            <tr class="rec-item-row" data-item-key="${it.item_key}" data-pendiente="${pendiente}" style="border-top:1px solid #e5e7eb;">
               <td style="padding:6px 8px; text-align:center;">
                 <input type="checkbox" class="rec-item-check" ${checked ? 'checked' : ''}>
               </td>
               <td style="padding:6px 8px;">${desc}<div class="text-muted" style="font-size:10px;">${it.unidad || 'pieza'}</div></td>
-              <td style="padding:6px 8px; text-align:right;">${parseFloat(it.cantidad_solicitada || 0).toLocaleString('es-MX')}</td>
-              <td style="padding:6px 8px; text-align:right;">${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}</td>
-              <td style="padding:6px 8px; text-align:right;">${pendiente.toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums;">${parseFloat(it.cantidad_solicitada || 0).toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; color:#6b7280;">${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; ${pendColor}">${pendiente.toLocaleString('es-MX')}</td>
               <td style="padding:6px 8px; text-align:right;">
                 <input type="number" class="form-control form-control-sm rec-item-cantidad"
                        min="0" step="0.01" value="${prefill > 0 ? prefill : ''}"
-                       placeholder="0" style="width:84px; text-align:right;">
+                       placeholder="0" style="width:84px; text-align:right;"
+                       oninput="recalcEstadoAuto()">
               </td>
             </tr>`;
         }).join('')}
@@ -572,13 +647,15 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
       } else {
         input.disabled = false;
         if (!input.value) {
-          const pend = row.querySelector('td:nth-child(5)')?.textContent?.replace(/,/g, '') || '0';
-          input.value = parseFloat(pend) || '';
+          const pend = parseFloat(row.dataset.pendiente || 0);
+          input.value = pend > 0 ? pend : '';
         }
       }
+      recalcEstadoAuto();
     });
     chk.dispatchEvent(new Event('change'));
   });
+  recalcEstadoAuto();
 }
 
 function recolectarItemsRecepcionFormulario() {
@@ -618,12 +695,7 @@ async function abrirRecepcion(recepcion = null) {
   if (btn) btn.textContent = recepcionEditandoId ? 'Guardar cambios' : 'Confirmar recepción';
 
   if (recepcion) {
-    document.getElementById('rec-estado').value = recepcion.estado || 'recibido_completo';
     document.getElementById('rec-notas').value = recepcion.notas || '';
-    document.getElementById('rec-datatextnow').value = recepcion.datatextnow_id || ocActual.datatextnow_id || '';
-  } else {
-    const poInput = document.getElementById('rec-datatextnow');
-    if (poInput && ocActual.datatextnow_id) poInput.value = ocActual.datatextnow_id;
   }
 
   const loading = document.getElementById('rec-items-loading');
@@ -658,6 +730,44 @@ async function eliminarRecepcion(recId) {
   }
 }
 
+async function abrirCierreAnticipado() {
+  const pendientes = (resumenItemsOc || []).filter(it => (parseFloat(it.pendiente) || 0) > 0);
+  const pendientesHtml = pendientes.map(it => {
+    const desc = it.codigo ? `<strong>${it.codigo}</strong> — ${it.descripcion}` : it.descripcion;
+    return `<div style="padding:3px 0;font-size:13px;">
+      ${desc}: <span style="color:#854d0e;font-weight:600">${parseFloat(it.pendiente).toLocaleString('es-MX')} ${it.unidad || ''} pendiente(s)</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('cierre-anticipado-pendientes').innerHTML = `
+    <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:6px;padding:12px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">Ítems con entrega incompleta:</div>
+      ${pendientesHtml}
+    </div>`;
+
+  document.getElementById('cierre-po').value = ocActual.datatextnow_id || '';
+  document.getElementById('cierre-notas').value = '';
+  UI.abrirModal('modal-cierre-anticipado');
+
+  document.getElementById('btn-confirmar-cierre-anticipado').onclick = async () => {
+    const po = document.getElementById('cierre-po').value.trim();
+    if (!po) return Toast.error('El PO de DataTextNow es requerido para cerrar la OC');
+    const notas = document.getElementById('cierre-notas').value.trim() || null;
+
+    try {
+      if (po !== (ocActual.datatextnow_id || '').trim()) {
+        await Api.patch(`/ordenes-compra/${ocActual.id}/datatextnow`, { datatextnow_id: po });
+      }
+      await Api.patch(`/ordenes-compra/${ocActual.id}/estado`, { estado: 'cerrada', notas });
+      UI.cerrarModal('modal-cierre-anticipado');
+      Toast.success('OC cerrada');
+      abrirDetalle(ocActual.id);
+    } catch (err) {
+      Toast.error(err.mensaje || 'Error al cerrar la OC');
+    }
+  };
+}
+
 function prepararCambioEstado(estado, label) {
   if (estado === 'distribuida') {
     const registrar = confirm(
@@ -680,6 +790,14 @@ function prepararCambioEstado(estado, label) {
       }
     })();
     return;
+  }
+
+  if (estado === 'cerrada' && ocActual?.estado === 'en_proceso') {
+    const hayPendientes = (resumenItemsOc || []).some(it => (parseFloat(it.pendiente) || 0) > 0);
+    if (hayPendientes) {
+      abrirCierreAnticipado();
+      return;
+    }
   }
 
   document.getElementById('modal-estado-titulo').textContent = label;
@@ -799,99 +917,67 @@ function renderResumenAvance(recepciones) {
   if (!contenedor || !ocActual) return;
 
   const items = resumenItemsOc || [];
-  const totalRecep = recepciones.length;
 
-  let mensaje = '';
-  let color = '#166534';
-  let porcentaje = 0;
+  if (!items.length) {
+    contenedor.style.display = 'none';
+    return;
+  }
+  contenedor.style.display = '';
 
   const tienePO = !!(ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
     || recepciones.some(r => r.datatextnow_id && String(r.datatextnow_id).trim());
 
-  if (items.length) {
-    const completos = items.filter(it => (parseFloat(it.pendiente) || 0) <= 0).length;
-    porcentaje = Math.round((completos / items.length) * 100);
+  const completados = items.filter(it => (parseFloat(it.pendiente) || 0) <= 0).length;
+  const pctGlobal   = Math.round((completados / items.length) * 100);
 
-    if (ocActual.estado === 'cerrada') {
-      mensaje = '✅ La OC está cerrada.';
-    } else if (completos === items.length) {
-      mensaje = tienePO
-        ? '✅ Todos los ítems recibidos. La OC puede cerrarse.'
-        : '✅ Ítems completos, pero <strong>falta el PO de DataTextNow</strong> para cerrar la OC.';
-      color = tienePO ? '#166534' : '#854d0e';
-    } else {
-      mensaje = `<strong>${completos}</strong> de <strong>${items.length}</strong> ítems completamente recibidos.`;
-      color = '#854d0e';
+  const barrasHtml = items.map(it => {
+    const sol  = parseFloat(it.cantidad_solicitada) || 0;
+    const rec  = parseFloat(it.cantidad_recibida)   || 0;
+    const pend = parseFloat(it.pendiente)            || 0;
+    const pct  = sol > 0 ? Math.min(100, Math.round((rec / sol) * 100)) : 0;
+    const done = pend <= 0;
+    const barColor = done ? '#22c55e' : (rec > 0 ? '#fbbf24' : '#e2e8f0');
+    const textColor = done ? '#166534' : (rec > 0 ? '#854d0e' : '#94a3b8');
+    const label = done ? '✓ Completo' : (rec > 0 ? `${pct}%` : '—');
+    const desc  = it.codigo ? `<strong>${it.codigo}</strong> — ${it.descripcion}` : it.descripcion;
+
+    return `
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+          <span style="font-size:12px;font-weight:500;">${desc}</span>
+          <span style="font-size:11.5px;font-variant-numeric:tabular-nums;color:${textColor};font-weight:600;white-space:nowrap;margin-left:8px;">
+            ${rec.toLocaleString('es-MX')} / ${sol.toLocaleString('es-MX')} ${it.unidad || ''} · ${label}
+          </span>
+        </div>
+        <div style="height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;transition:width .35s;"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  let aviso = '';
+  if (ocActual.estado !== 'cerrada') {
+    if (completados === items.length && !tienePO) {
+      aviso = '<div style="margin-top:6px;font-size:12px;color:#854d0e;">⚠ Todos los ítems recibidos — falta el PO de DataTextNow para cerrar.</div>';
+    } else if (!tienePO) {
+      aviso = '<div style="margin-top:6px;font-size:12px;color:#64748b;">⚠ Falta PO de DataTextNow para permitir el cierre.</div>';
     }
-  } else if (totalRecep === 0) {
-    mensaje = 'Aún no hay recepciones registradas.';
-    color = '#64748b';
-  } else {
-    const listas = recepciones.filter(r => r.estado === 'recibido_completo').length;
-    porcentaje = Math.round((listas / totalRecep) * 100);
-    mensaje = `${listas} de ${totalRecep} recepción(es) marcadas como completas.`;
-    color = listas === totalRecep ? '#166534' : '#854d0e';
   }
 
-  const tablaItems = items.length ? `
-    <table style="width:100%; font-size:11.5px; border-collapse:collapse; margin-top:10px;">
-      <thead>
-        <tr style="background:#e2e8f0;">
-          <th style="text-align:left; padding:4px 6px;">Ítem</th>
-          <th style="text-align:right; padding:4px 6px;">Solicitado</th>
-          <th style="text-align:right; padding:4px 6px;">Recibido</th>
-          <th style="text-align:right; padding:4px 6px;">Pendiente</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${items.map(it => {
-          const pend = parseFloat(it.pendiente) || 0;
-          const rowColor = pend <= 0 ? '#166534' : '#b45309';
-          return `
-            <tr>
-              <td style="padding:4px 6px; border-top:1px solid #e2e8f0;">
-                ${it.codigo ? `<strong>${it.codigo}</strong> — ` : ''}${it.descripcion}
-              </td>
-              <td style="padding:4px 6px; border-top:1px solid #e2e8f0; text-align:right;">
-                ${parseFloat(it.cantidad_solicitada || 0).toLocaleString('es-MX')} ${it.unidad || ''}
-              </td>
-              <td style="padding:4px 6px; border-top:1px solid #e2e8f0; text-align:right;">
-                ${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}
-              </td>
-              <td style="padding:4px 6px; border-top:1px solid #e2e8f0; text-align:right; color:${rowColor}; font-weight:600;">
-                ${pend.toLocaleString('es-MX')}
-              </td>
-            </tr>`;
-        }).join('')}
-      </tbody>
-    </table>` : '';
-
   contenedor.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-      <div style="font-weight:600;">Avance de recepción por ítem</div>
-      ${items.length ? `<div style="font-weight:700; color:#185FA5;">${porcentaje}%</div>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#64748b;">Avance por ítem</div>
+      <div style="font-size:13px;font-weight:700;color:#185FA5;">${pctGlobal}%</div>
     </div>
-
-    <div style="background:#e2e8f0; height:10px; border-radius:5px; overflow:hidden; margin-bottom:8px;">
-      <div style="width:${porcentaje}%; height:100%; background:${color}; transition: width 0.4s ease;"></div>
-    </div>
-
-    <div style="font-size:12.5px; color:#475569;">${mensaje}</div>
-    ${tablaItems}
-
-    <div style="margin-top:8px; font-size:11px; color:#64748b;">
-      Estado actual de la OC: <strong>${UI.badge(ocActual.estado)}</strong>
-      · Recepciones registradas: <strong>${totalRecep}</strong>
-      ${!tienePO ? '<br><span style="color:#b45309">⚠️ Falta PO de DataTextNow para permitir cierre</span>' : ''}
-    </div>
-  `;
+    ${barrasHtml}
+    ${aviso}`;
 }
 
 document.getElementById('form-recepcion').addEventListener('submit', async e => {
   e.preventDefault();
 
-  const estado = document.getElementById('rec-estado').value;
-  const poNuevo = document.getElementById('rec-datatextnow').value || null;
+  const estado = calcularEstadoRecepcion();
+  const poNuevo = null;
   const notas = document.getElementById('rec-notas').value || null;
   const items = recolectarItemsRecepcionFormulario();
   const esCompleta = estado !== 'recibido_parcial';
@@ -938,20 +1024,68 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
   }
 });
 
-['rec-estado', 'rec-datatextnow'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', actualizarAvisoCierreRecepcion);
-  if (el && el.tagName === 'SELECT') el.addEventListener('change', actualizarAvisoCierreRecepcion);
-});
 
 const busqOcInput = document.getElementById('fil-busqueda-oc');
 if (busqOcInput) {
   busqOcInput.addEventListener('input', window.debounce(() => cargarOrdenes(1), 300));
 }
 
+let _editItemCatalogoId = null;
+
+async function abrirEditarItemProveedor(catalogoId, descripcion, proveedorActualId, precioActual, unidadActual) {
+  _editItemCatalogoId = catalogoId;
+
+  const descEl = document.getElementById('editar-item-desc');
+  if (descEl) descEl.textContent = descripcion;
+
+  const precioEl  = document.getElementById('editar-item-precio');
+  const unidadEl  = document.getElementById('editar-item-unidad');
+  if (precioEl)  precioEl.value  = precioActual != null ? precioActual : '';
+  if (unidadEl)  unidadEl.value  = unidadActual || '';
+
+  const sel = document.getElementById('editar-item-proveedor-select');
+  if (!sel) return;
+
+  sel.innerHTML = '<option value="">Sin proveedor asignado</option>';
+  try {
+    const proveedores = await Api.get('/proveedores');
+    proveedores.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.num_proveedor ? `${p.num_proveedor} — ${p.nombre}` : p.nombre;
+      if (p.id === proveedorActualId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch {
+    Toast.error('No se pudieron cargar los proveedores');
+    return;
+  }
+
+  document.getElementById('btn-guardar-item-proveedor').onclick = async () => {
+    const provId = sel.value ? parseInt(sel.value, 10) : null;
+    const precio = precioEl?.value !== '' && precioEl?.value != null ? parseFloat(precioEl.value) : null;
+    const unidad = unidadEl?.value.trim() || null;
+    try {
+      await Api.patch(`/ordenes-compra/${ocActual.id}/items/${_editItemCatalogoId}`, {
+        proveedor_id: provId,
+        costo_referencia: precio,
+        unidad,
+      });
+      UI.cerrarModal('modal-editar-item-proveedor');
+      Toast.success('Ítem actualizado');
+      abrirDetalle(ocActual.id);
+    } catch (err) {
+      Toast.error(err.mensaje || 'Error al actualizar ítem');
+    }
+  };
+
+  UI.abrirModal('modal-editar-item-proveedor');
+}
+
 window.abrirRecepcion = abrirRecepcion;
 window.cerrarModalRecepcion = cerrarModalRecepcion;
 window.editarRecepcion = editarRecepcion;
 window.eliminarRecepcion = eliminarRecepcion;
+window.abrirEditarItemProveedor = abrirEditarItemProveedor;
 
 

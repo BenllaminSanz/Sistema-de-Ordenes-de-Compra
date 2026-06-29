@@ -1,4 +1,4 @@
-import { listar as _listar, obtenerPorId, crear as _crear, cambiarEstado as _cambiarEstado, actualizarDatatextnow as _actualizarDatatextnow } from '../models/ordenes.js';
+import { listar as _listar, obtenerPorId, crear as _crear, cambiarEstado as _cambiarEstado, actualizarDatatextnow as _actualizarDatatextnow, actualizarItemCatalogo as _actualizarItemCatalogo } from '../models/ordenes.js';
 import logger from '../utils/logger.js';
 
 async function listar(req, res) {
@@ -98,4 +98,21 @@ async function actualizarDatatextnow(req, res) {
   }
 }
 
-export { listar, obtener, crear, cambiarEstado, actualizarDatatextnow };
+async function actualizarItemCatalogo(req, res) {
+  try {
+    const { proveedor_id, costo_referencia, unidad } = req.body || {};
+    const { id, catalogoId } = req.params;
+    const catIdInt = parseInt(catalogoId, 10);
+    if (!catIdInt || isNaN(catIdInt)) {
+      return res.status(400).json({ mensaje: 'El ítem seleccionado no tiene ID de catálogo válido — solo se pueden editar ítems de catálogo, no ítems libres.' });
+    }
+    await _actualizarItemCatalogo(id, catIdInt, { proveedor_id, costo_referencia, unidad });
+    res.json(await obtenerPorId(id));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
+    logger.error('[actualizarItemCatalogo OC]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+export { listar, obtener, crear, cambiarEstado, actualizarDatatextnow, actualizarItemCatalogo };

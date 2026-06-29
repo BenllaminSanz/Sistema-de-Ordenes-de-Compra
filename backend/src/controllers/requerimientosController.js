@@ -2,6 +2,8 @@ import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actual
 import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
 import { validarMismoProveedorCatalogo } from '../utils/catalogoItems.js';
+import { parseExcelRequerimientos, generarExcelRequerimientos } from '../utils/excelRequerimientos.js';
+import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 
 async function validarAreaDeptoReq(area, departamento) {
@@ -349,4 +351,146 @@ async function subirReferenciaItem(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, cambiarEstado, eliminar, subirReferenciaItem };
+// ─── GET /requerimientos/exportar ────────────────────────────────────────────
+async function exportarExcel(req, res) {
+  try {
+    const [reqs] = await pool.query(`
+      SELECT
+        r.id, r.consecutivo, r.tipo, r.titulo_solicitud, r.notas,
+        r.area, r.departamento, r.estado, r.created_at, r.updated_at,
+        u.nombre  AS solicitante_nombre,
+        oc.numero_oc             AS oc_numero,
+        oc.estado                AS oc_estado,
+        oc.monto_total           AS oc_monto_total,
+        oc.moneda                AS oc_moneda,
+        oc.datatextnow_id        AS oc_datatextnow_id,
+        oc.fecha_autorizacion    AS oc_fecha_autorizacion,
+        p.nombre                 AS proveedor_nombre
+      FROM requerimientos r
+      JOIN usuarios u ON u.id = r.solicitante_id
+      LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
+      LEFT JOIN proveedores p    ON p.id  = oc.proveedor_id
+      ORDER BY r.tipo ASC, r.created_at ASC
+    `);
+
+    const buffer = generarExcelRequerimientos(reqs);
+
+    const fecha  = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Requerimientos-${fecha}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    logger.error('[exportarExcel requerimientos]', err);
+    res.status(500).json({ mensaje: 'Error al generar el archivo Excel' });
+  }
+}
+
+// ─── POST /requerimientos/importar ────────────────────────────────────────────
+async function importarExcel(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ mensaje: 'No se recibió ningún archivo Excel' });
+    }
+
+    const { filas, hojasSaltadas } = parseExcelRequerimientos(req.file.buffer);
+    if (!filas.length) {
+      return res.status(400).json({ mensaje: 'El archivo no contiene filas válidas en las hojas SERVICIOS o PARTES' });
+    }
+
+    // Cargar catálogo de usuarios para matching por nombre
+    const [dbUsers] = await pool.query('SELECT id, nombre FROM usuarios');
+    const byFull    = new Map(dbUsers.map(u => [u.nombre.toLowerCase().trim(), u.id]));
+    const adminId   = dbUsers.find(u => u.id === req.usuario.id)?.id
+                   || dbUsers.find(u => /* any admin */true)?.id;
+
+    function matchUsuario(excelNombre) {
+      if (!excelNombre) return null;
+      const lower = excelNombre.toLowerCase().trim();
+      if (byFull.has(lower)) return byFull.get(lower);
+      const tokens = lower.split(/\s+/);
+      if (tokens.length > 2) {
+        const dos = tokens.slice(0, 2).join(' ');
+        if (byFull.has(dos)) return byFull.get(dos);
+        for (const [k, v] of byFull.entries()) {
+          if (lower.includes(k.split(' ')[0]) && lower.includes((k.split(' ')[1] || ''))) return v;
+          if (k.includes(tokens[0]) && (tokens[1] ? k.includes(tokens[1]) : true)) return v;
+        }
+      }
+      return null;
+    }
+
+    // Cargar consecutivos existentes para deduplicar
+    const [existentes] = await pool.query('SELECT consecutivo FROM requerimientos');
+    const existenteSet  = new Set(existentes.map(r => r.consecutivo));
+
+    const nuevas = filas.filter(f =>
+      !existenteSet.has(f.consecutivo) && !existenteSet.has('REQ-' + f.consecutivo)
+    );
+
+    if (!nuevas.length) {
+      return res.json({
+        importados:    0,
+        saltados:      filas.length,
+        hojasSaltadas,
+        mensaje:       'Todos los registros del archivo ya existen en el sistema',
+      });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      let importados = 0;
+      const errores  = [];
+
+      for (const f of nuevas) {
+        const solicitanteId = matchUsuario(f.usuario) ?? req.usuario.id;
+        const titulo        = (f.titulo || f.consecutivo).slice(0, 500);
+        const notas         = (f.notas || '').slice(0, 2000);
+        const createdAt     = f.fecha_sol ? `${f.fecha_sol} 00:00:00` : null;
+
+        try {
+          await conn.query(`
+            INSERT INTO requerimientos
+              (consecutivo, solicitante_id, titulo_solicitud, tipo, area,
+               notas, requiere_cotizacion, estado, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())
+          `, [
+            f.consecutivo,
+            solicitanteId,
+            titulo,
+            f.tipo,
+            f.area,
+            notas,
+            f.estado,
+            createdAt,
+          ]);
+          importados++;
+        } catch (rowErr) {
+          errores.push(`${f.consecutivo}: ${rowErr.message}`);
+        }
+      }
+
+      await conn.commit();
+
+      res.json({
+        importados,
+        saltados:      filas.length - nuevas.length,
+        errores:       errores.length ? errores : undefined,
+        hojasSaltadas: hojasSaltadas.length ? hojasSaltadas : undefined,
+        mensaje:       `Se importaron ${importados} requerimiento(s) nuevos.` +
+                       (errores.length ? ` ${errores.length} con error.` : ''),
+      });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    logger.error('[importarExcel requerimientos]', err);
+    res.status(500).json({ mensaje: 'Error al procesar el archivo: ' + err.message });
+  }
+}
+
+export { listar, obtener, crear, actualizar, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel };

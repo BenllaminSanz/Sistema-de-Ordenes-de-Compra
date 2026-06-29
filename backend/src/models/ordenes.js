@@ -113,7 +113,15 @@ async function listar(filtros = {}) {
      JOIN usuarios u       ON u.id = oc.autorizado_por
      LEFT JOIN usuarios sol ON sol.id = r.solicitante_id
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
-     LEFT JOIN proveedores  p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)
+     LEFT JOIN proveedores  p ON p.id = COALESCE(
+       oc.proveedor_id,
+       c.proveedor_id,
+       (SELECT cat.proveedor_id FROM requerimiento_items ri
+        JOIN catalogo cat ON cat.id = ri.catalogo_id
+        WHERE ri.requerimiento_id = oc.requerimiento_id
+          AND cat.proveedor_id IS NOT NULL
+        LIMIT 1)
+     )
      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
      ${whereClause}
      ORDER BY ${soloActivas
@@ -149,7 +157,15 @@ async function obtenerPorId(id) {
      JOIN usuarios u       ON u.id = oc.autorizado_por
      LEFT JOIN usuarios s  ON s.id = r.solicitante_id
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
-     LEFT JOIN proveedores  p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)
+     LEFT JOIN proveedores  p ON p.id = COALESCE(
+       oc.proveedor_id,
+       c.proveedor_id,
+       (SELECT cat.proveedor_id FROM requerimiento_items ri
+        JOIN catalogo cat ON cat.id = ri.catalogo_id
+        WHERE ri.requerimiento_id = oc.requerimiento_id
+          AND cat.proveedor_id IS NOT NULL
+        LIMIT 1)
+     )
      WHERE oc.id = ?`,
     [id]
   );
@@ -179,9 +195,12 @@ async function obtenerPorId(id) {
     items = cotItems.map(it => ({ ...it, origen: 'cotizacion' }));
   } else {
     const [catItems] = await pool.query(`
-      SELECT ri.id, c.codigo, c.descripcion, c.unidad, ri.cantidad, c.costo_referencia AS precio_unitario_referencia, 'catalogo' AS origen
+      SELECT ri.id, ri.catalogo_id, c.codigo, c.descripcion, c.unidad, ri.cantidad,
+             c.costo_referencia AS precio_unitario_referencia, 'catalogo' AS origen,
+             c.proveedor_id, p.num_proveedor AS proveedor_num, p.nombre AS proveedor_nombre
       FROM requerimiento_items ri
       JOIN catalogo c ON c.id = ri.catalogo_id
+      LEFT JOIN proveedores p ON p.id = c.proveedor_id
       WHERE ri.requerimiento_id = ?
       ORDER BY ri.id ASC
     `, [oc.requerimiento_id]);
@@ -281,7 +300,7 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
 const TRANSICIONES_OC = {
   generada:    ['distribuida', 'cancelada'],
   distribuida: ['en_proceso', 'cancelada'],
-  en_proceso:  ['cancelada'],
+  en_proceso:  ['cerrada', 'cancelada'],
   recibida:    ['cerrada'],
   cerrada:     [],
   cancelada:   [],
@@ -347,4 +366,60 @@ async function actualizarDatatextnow(id, datatextnow_id) {
   return r.affectedRows;
 }
 
-export { listar, obtenerPorId, crear, cambiarEstado, actualizarDatatextnow };
+/**
+ * Edita los campos de un ítem de catálogo desde la vista de OC (solo OC sin cotización).
+ * Persiste proveedor_id, costo_referencia y unidad en catalogo, y congela proveedor en la OC.
+ */
+async function actualizarItemCatalogo(ocId, catalogoId, { proveedor_id, costo_referencia, unidad }) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[oc]] = await conn.query(
+      'SELECT id, requerimiento_id, cotizacion_id FROM ordenes_compra WHERE id = ?',
+      [ocId]
+    );
+    if (!oc) throw { status: 404, mensaje: 'Orden de compra no encontrada' };
+    if (oc.cotizacion_id) throw { status: 422, mensaje: 'Solo se puede editar ítems en OC sin cotización' };
+
+    const [[ri]] = await conn.query(
+      'SELECT id FROM requerimiento_items WHERE requerimiento_id = ? AND catalogo_id = ?',
+      [oc.requerimiento_id, catalogoId]
+    );
+    if (!ri) throw { status: 404, mensaje: 'Ítem no encontrado en esta OC' };
+
+    const sets  = [];
+    const vals  = [];
+    if (proveedor_id  !== undefined) { sets.push('proveedor_id = ?');    vals.push(proveedor_id || null); }
+    if (costo_referencia !== undefined) { sets.push('costo_referencia = ?'); vals.push(costo_referencia != null ? parseFloat(costo_referencia) : null); }
+    if (unidad !== undefined) { sets.push('unidad = ?'); vals.push(unidad ? String(unidad).trim() : null); }
+
+    if (sets.length) {
+      vals.push(catalogoId);
+      await conn.query(`UPDATE catalogo SET ${sets.join(', ')} WHERE id = ?`, vals);
+    }
+
+    // Congelar proveedor en la OC usando el primer ítem con proveedor asignado
+    const [[firstProv]] = await conn.query(
+      `SELECT c.proveedor_id
+       FROM requerimiento_items ri
+       JOIN catalogo c ON c.id = ri.catalogo_id
+       WHERE ri.requerimiento_id = ? AND c.proveedor_id IS NOT NULL
+       LIMIT 1`,
+      [oc.requerimiento_id]
+    );
+    await conn.query(
+      'UPDATE ordenes_compra SET proveedor_id = ? WHERE id = ?',
+      [firstProv?.proveedor_id || null, ocId]
+    );
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export { listar, obtenerPorId, crear, cambiarEstado, actualizarDatatextnow, actualizarItemCatalogo };

@@ -190,6 +190,7 @@ const UI = {
     if (!proveedor) return '—';
     const nombre = proveedor.nombre || proveedor.proveedor_nombre || '';
     const num = proveedor.num_proveedor || proveedor.proveedor_num;
+    if (!num && !nombre) return '—';
     return num ? `${num} — ${nombre}` : nombre;
   },
 

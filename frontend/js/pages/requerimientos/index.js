@@ -10,6 +10,12 @@ if (!Auth.puedeHacer(['solicitante', 'admin'])) {
   if (btnNuevo) btnNuevo.style.display = 'none';
 }
 
+// Mostrar botón importar solo a contabilidad/admin
+if (Auth.puedeHacer(['contabilidad', 'admin'])) {
+  const btnImportar = document.getElementById('btn-importar');
+  if (btnImportar) btnImportar.style.display = '';
+}
+
 // Cargar áreas para los filtros de la página (fil-area, fil-departamento)
 if (typeof cargarAreasEnForm === 'function') {
   cargarAreasEnForm().catch(console.error);
