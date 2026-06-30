@@ -1,5 +1,5 @@
 import pool from '../config/db.js';
-import { validarAreaDepartamento } from '../config/departamentosStore.js';
+import { validarAreaDepartamento, obtenerAreas } from '../config/departamentosStore.js';
 
 /**
  * Genera el consecutivo siguiente con formato REQ-YYYYT-NNN.
@@ -150,24 +150,40 @@ async function obtenerPorId(id) {
 
   // Cargar ítems en texto libre (cuando no existen en el catálogo aún)
   const [itemsLibres] = await pool.query(
-    `SELECT 
-       id,
-       descripcion,
-       cantidad,
-       unidad,
-       notas,
-       referencia_tipo,
-       referencia_url,
-       referencia_nombre
-     FROM requerimiento_items_libres
-     WHERE requerimiento_id = ?
-     ORDER BY id ASC`,
+    `SELECT
+       ril.id,
+       ril.descripcion,
+       ril.cantidad,
+       ril.unidad,
+       ril.notas,
+       ril.referencia_tipo,
+       ril.referencia_url,
+       ril.referencia_nombre,
+       ril.catalogo_asignado_id,
+       c.codigo AS catalogo_codigo,
+       c.descripcion AS catalogo_descripcion_asignada
+     FROM requerimiento_items_libres ril
+     LEFT JOIN catalogo c ON c.id = ril.catalogo_asignado_id
+     WHERE ril.requerimiento_id = ?
+     ORDER BY ril.id ASC`,
     [id]
   );
 
+  // Intentar obtener código del departamento — primero validación exacta,
+  // luego fallback case-insensitive para datos históricos importados en mayúsculas.
   const valDepto = await validarAreaDepartamento(req.area, req.departamento);
   if (valDepto.ok && valDepto.departamento?.codigo) {
     req.departamento_codigo = valDepto.departamento.codigo;
+  } else if (req.area && req.departamento) {
+    const areas = await obtenerAreas();
+    const area = areas.find(a => a.id === String(req.area).trim().toUpperCase());
+    if (area) {
+      const deptoNorm = String(req.departamento).trim().toUpperCase();
+      const depto = (area.departamentos || []).find(
+        d => String(d.nombre).trim().toUpperCase() === deptoNorm
+      );
+      if (depto?.codigo) req.departamento_codigo = depto.codigo;
+    }
   }
 
   return { ...req, historial, items, items_libres: itemsLibres };
@@ -455,4 +471,25 @@ async function eliminar(id) {
   return result.affectedRows;
 }
 
-export { listar, obtenerPorId, crear, actualizar, cambiarEstado, eliminar };
+async function asignarCatalogoAItemLibre(requerimientoId, libreId, catalogoId) {
+  const [[item]] = await pool.query(
+    `SELECT id FROM requerimiento_items_libres WHERE id = ? AND requerimiento_id = ?`,
+    [libreId, requerimientoId]
+  );
+  if (!item) throw { status: 404, mensaje: 'Ítem libre no encontrado en este requerimiento' };
+
+  if (catalogoId != null) {
+    const [[cat]] = await pool.query(
+      `SELECT id FROM catalogo WHERE id = ? AND activo = 1`,
+      [catalogoId]
+    );
+    if (!cat) throw { status: 404, mensaje: 'Ítem del catálogo no encontrado o inactivo' };
+  }
+
+  await pool.query(
+    `UPDATE requerimiento_items_libres SET catalogo_asignado_id = ? WHERE id = ?`,
+    [catalogoId ?? null, libreId]
+  );
+}
+
+export { listar, obtenerPorId, crear, actualizar, cambiarEstado, eliminar, asignarCatalogoAItemLibre };

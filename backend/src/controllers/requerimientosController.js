@@ -1,4 +1,4 @@
-import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar } from '../models/requerimientos.js';
+import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar, asignarCatalogoAItemLibre as _asignarCatalogoAItemLibre } from '../models/requerimientos.js';
 import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
 import { validarMismoProveedorCatalogo } from '../utils/catalogoItems.js';
@@ -493,4 +493,21 @@ async function importarExcel(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel };
+// ─── PATCH /requerimientos/:id/items-libres/:libreId/catalogo ─────────────────
+async function asignarCatalogoItemLibre(req, res) {
+  try {
+    const { id, libreId } = req.params;
+    const { catalogo_id } = req.body;
+
+    await _asignarCatalogoAItemLibre(id, libreId, catalogo_id ?? null);
+
+    const actualizado = await obtenerPorId(id);
+    res.json(actualizado);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
+    logger.error('[asignarCatalogoItemLibre]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+export { listar, obtener, crear, actualizar, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel, asignarCatalogoItemLibre };

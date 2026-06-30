@@ -3,7 +3,7 @@
   "areas": [
     {
       "id": "ADMINISTRACION",
-      "label": "Administración",
+      "label": "ADMINISTRACION",
       "departamentos": [
         {
           "nombre": "MATERIAL DE OFICINA",
@@ -68,6 +68,10 @@
         {
           "nombre": "ATENCIÓN A CLIENTES",
           "codigo": "ADM05"
+        },
+        {
+          "nombre": "APERTURA-OE",
+          "codigo": "10000"
         }
       ]
     },

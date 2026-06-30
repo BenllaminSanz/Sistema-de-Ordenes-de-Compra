@@ -13,6 +13,7 @@ import {
   subirReferenciaItem,
   exportarExcel,
   importarExcel,
+  asignarCatalogoItemLibre,
 } from '../controllers/requerimientosController.js';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
 import { validate } from '../validations/validationMiddleware.js';
@@ -126,6 +127,12 @@ router.delete(
   '/:id',
   autorizar('admin'),
   eliminar
+);
+
+router.patch(
+  '/:id/items-libres/:libreId/catalogo',
+  autorizar('contabilidad', 'admin'),
+  asignarCatalogoItemLibre
 );
 
 export default router;

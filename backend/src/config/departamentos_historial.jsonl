@@ -1,0 +1,3 @@
+{"at":"2026-06-29T23:58:41.713Z","usuario_id":1,"usuario_nombre":"Benjamin Sanchez","accion":"area_actualizada","detalle":{"area_id":"ADMINISTRACION","label_anterior":"Administración","label_nuevo":"APERTURA-OE"}}
+{"at":"2026-06-29T23:58:55.499Z","usuario_id":1,"usuario_nombre":"Benjamin Sanchez","accion":"area_actualizada","detalle":{"area_id":"ADMINISTRACION","label_anterior":"APERTURA-OE","label_nuevo":"ADMINISTRACION"}}
+{"at":"2026-06-29T23:59:12.312Z","usuario_id":1,"usuario_nombre":"Benjamin Sanchez","accion":"departamento_creado","detalle":{"area_id":"ADMINISTRACION","area_label":"ADMINISTRACION","nombre":"APERTURA-OE","codigo":"10000"}}

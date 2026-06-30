@@ -81,6 +81,7 @@ export async function runDbMigrations() {
 
   await addColumnIfMissing('cotizacion_items', 'codigo_catalogo', 'VARCHAR(100) NULL AFTER descripcion');
   await addColumnIfMissing('cotizacion_items', 'catalogo_id', `${catFk} NULL AFTER codigo_catalogo`);
+  await addColumnIfMissing('requerimiento_items_libres', 'catalogo_asignado_id', `${catFk} NULL`);
 
   logger.info('[migrate] Migraciones aplicadas');
 }

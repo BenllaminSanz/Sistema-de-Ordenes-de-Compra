@@ -47,13 +47,13 @@ function renderDetalle(req) {
     <table style="width:100%;border-collapse:collapse">
       <tr><td style="padding:6px 0;color:#6b7280;width:140px">Consecutivo</td>
           <td class="fw-600">${req.consecutivo}</td></tr>
-      ${req.titulo_solicitud ? `<tr><td style="padding:6px 0;color:#6b7280">Título</td><td class="fw-600">${req.titulo_solicitud}</td></tr>` : ''}
+      ${req.titulo_solicitud ? `<tr><td style="padding:6px 0;color:#6b7280">Título</td><td class="fw-600">${UI.esc(req.titulo_solicitud)}</td></tr>` : ''}
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${req.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Área</td>
           <td>${req.area || '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Departamento</td>
-          <td>${req.departamento ? `${req.departamento}${req.departamento_codigo ? ` (${req.departamento_codigo})` : ''}` : '—'}</td></tr>
+          <td>${req.departamento ? `${req.departamento_codigo ? `<strong>${req.departamento_codigo}</strong> — ` : ''}${req.departamento}` : '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
           <td>${UI.badge(req.estado)}</td></tr>
       ${req.oc_id || req.oc_numero ? `
@@ -116,13 +116,26 @@ function renderDetalle(req) {
         Ítems en texto libre (no existían en el catálogo)
         <span style="font-size:9px; color:#854d0e;">— (Este req debe ser SOLO de libres para cotización y alta en catálogo)</span>
       </div>
-      <ul style="margin:0; padding-left:16px; font-size:12px;">
-        ${req.items_libres.map(item => `
-          <li style="margin-bottom:4px;">
-            ${item.descripcion} — <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}
+      <ul style="margin:0; padding-left:0; list-style:none; font-size:12px;">
+        ${req.items_libres.map(item => {
+          const catBadge = item.catalogo_asignado_id
+            ? `<span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:3px;font-weight:600;white-space:nowrap;">&#128230; ${item.catalogo_codigo || 'ID:' + item.catalogo_asignado_id}</span>`
+            : '';
+          const btnAsignar = Auth.puedeHacer(['contabilidad', 'admin'])
+            ? `<button type="button"
+                 onclick="abrirAsignarCatalogo(${item.id},'${item.descripcion.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}','${req.tipo}')"
+                 style="padding:1px 7px;font-size:10px;cursor:pointer;border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;color:#334155;flex-shrink:0;">
+                 ${item.catalogo_asignado_id ? '&#9998; Cambiar' : '&#128279; Asignar catálogo'}
+               </button>`
+            : '';
+          return `
+          <li style="margin-bottom:7px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;">
+            <span>${item.descripcion} &mdash; <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}</span>
             ${UI.referenciaItemHtml(item, true)}
-          </li>
-        `).join('')}
+            ${catBadge}
+            ${btnAsignar}
+          </li>`;
+        }).join('')}
       </ul>
     </div>` : ''}
 
@@ -392,6 +405,73 @@ function editarRequerimientoActual() {
   if (!requerimientoActual) return;
   abrirEditorRequerimiento(requerimientoActual);
 }
+
+// ── Asignar ítem libre al catálogo (Contabilidad/Admin) ───────
+let _asignarCatalogoLibreId = null;
+
+window.abrirAsignarCatalogo = function(libreId, descripcion, tipo) {
+  _asignarCatalogoLibreId = libreId;
+  const titulo = document.getElementById('modal-asignar-cat-titulo');
+  if (titulo) titulo.textContent = descripcion.length > 55 ? descripcion.slice(0, 55) + '…' : descripcion;
+  const tipoEl = document.getElementById('modal-asignar-cat-tipo');
+  if (tipoEl) tipoEl.value = tipo || '';
+  const busq = document.getElementById('modal-asignar-cat-busqueda');
+  if (busq) { busq.value = ''; }
+  const res = document.getElementById('modal-asignar-cat-resultados');
+  if (res) res.innerHTML = '';
+  UI.abrirModal('modal-asignar-catalogo');
+  setTimeout(() => busq && busq.focus(), 80);
+};
+
+window.buscarParaAsignarCatalogo = async function() {
+  const busq = document.getElementById('modal-asignar-cat-busqueda')?.value?.trim() || '';
+  const tipo  = document.getElementById('modal-asignar-cat-tipo')?.value || '';
+  const cont  = document.getElementById('modal-asignar-cat-resultados');
+  if (!cont) return;
+  if (busq.length < 2) {
+    cont.innerHTML = '<p style="font-size:12px;color:#6b7280;padding:8px 10px">Escribe al menos 2 caracteres para buscar</p>';
+    return;
+  }
+  cont.innerHTML = '<p style="font-size:12px;color:#6b7280;padding:8px 10px">Buscando...</p>';
+  try {
+    const params = new URLSearchParams({ busqueda: busq, soloActivos: 'true' });
+    if (tipo) params.set('tipo', tipo);
+    const items = await Api.get(`/catalogo?${params}`);
+    if (!items.length) {
+      cont.innerHTML = '<p style="font-size:12px;color:#6b7280;padding:8px 10px">Sin resultados para esa búsqueda</p>';
+      return;
+    }
+    cont.innerHTML = items.slice(0, 12).map(it => `
+      <div style="padding:6px 10px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="min-width:0;font-size:12px;">
+          <strong style="color:#185FA5">${it.codigo}</strong>
+          <span style="margin-left:5px;">${it.descripcion}</span>
+          ${it.proveedor_nombre ? `<div style="font-size:10px;color:#6b7280;margin-top:1px;">${it.proveedor_nombre}</div>` : ''}
+        </div>
+        <button type="button" onclick="confirmarAsignarCatalogo(${it.id})"
+                style="flex-shrink:0;padding:3px 10px;font-size:11px;cursor:pointer;border:1px solid #185FA5;border-radius:3px;background:#185FA5;color:#fff;">
+          Asignar
+        </button>
+      </div>`).join('');
+  } catch {
+    cont.innerHTML = '<p style="font-size:12px;color:#c00;padding:8px 10px">Error al buscar en el catálogo</p>';
+  }
+};
+
+window.confirmarAsignarCatalogo = async function(catalogoId) {
+  if (!_asignarCatalogoLibreId || !requerimientoActual) return;
+  try {
+    await Api.patch(
+      `/requerimientos/${requerimientoActual.id}/items-libres/${_asignarCatalogoLibreId}/catalogo`,
+      { catalogo_id: catalogoId }
+    );
+    UI.cerrarModal('modal-asignar-catalogo');
+    Toast.success('Ítem asignado al catálogo correctamente');
+    await abrirDetalle(requerimientoActual.id);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al asignar el ítem');
+  }
+};
 
 // ── Generar OC ────────────────────────────────────────────────
 async function generarOC() {

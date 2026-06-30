@@ -38,7 +38,7 @@ async function cargarRequerimientos(pagina) {
               <td>${r.area || '—'}</td>
               <td>${r.departamento || '—'}</td>
               <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${r.notas || r.descripcion || ''}">${r.notas || r.descripcion || ''}</td>
+                  title="${UI.esc(r.notas || r.descripcion || '')}">${UI.esc(r.notas || r.descripcion || '')}</td>
               <td>${r.solicitante_nombre}</td>
               <td>${r.requiere_cotizacion ? '✔' : '—'}</td>
               <td>${UI.badge(r.estado)}</td>

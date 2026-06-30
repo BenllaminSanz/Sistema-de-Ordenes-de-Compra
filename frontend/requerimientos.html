@@ -774,6 +774,31 @@
   </div>
 </div>
 
+<!-- ── Modal: Asignar ítem libre al catálogo (Contabilidad/Admin) ─────────── -->
+<div class="modal-backdrop" id="modal-asignar-catalogo">
+  <div class="modal-box" style="max-width:520px;width:95vw">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-asignar-cat-titulo">Asignar al catálogo</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-asignar-catalogo')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="modal-asignar-cat-tipo">
+      <div class="form-group">
+        <label class="form-label">Buscar ítem en catálogo</label>
+        <input type="text" id="modal-asignar-cat-busqueda" class="form-control"
+               placeholder="Código o descripción del ítem..."
+               oninput="buscarParaAsignarCatalogo()">
+        <small class="text-muted">Escribe al menos 2 caracteres para buscar</small>
+      </div>
+      <div id="modal-asignar-cat-resultados"
+           style="margin-top:8px;max-height:280px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;min-height:40px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-asignar-catalogo')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 
 <script>

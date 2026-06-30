@@ -173,6 +173,15 @@ const Toast = {
 
 // ─── UTILIDADES DE UI ─────────────────────────────────────────────────────────
 const UI = {
+  esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
   // Badge de estado con color
   badge(estado) {
     return `<span class="badge badge-${estado}">${estado.replace('_', ' ')}</span>`;
