@@ -1,8 +1,18 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.0** — Junio 2026
+**Versión 1.2** — Julio 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
+
+## Novedades v1.2
+
+- **Consecutivos numéricos** — REQ y OC usan solo número consecutivo (sin prefijos ni año)
+- **Carrito compartido** entre catálogo y requerimientos, con aviso de un solo proveedor por REQ
+- **Búsqueda por proveedor** en el catálogo
+- **Impresión REQ** — firmas con cargo debajo (Gerente de Planta / Jefe Inmediato)
+- **Cotización → catálogo** — el Nº ítem de cotización pasa como código de catálogo al formalizar
+- **Recepciones** — bloqueo de edición/eliminación en OC cerrada; recálculo de pendientes al editar
+- **Cierre de OC** — modal para capturar PO DataTextNow cuando falta
 
 ## Novedades v1.0
 
@@ -99,6 +109,8 @@ Sistema de Ordenes de Compra/
 │   ├── uploads/
 │   └── app.js
 ├── frontend/                # HTML + JS + CSS
+├── docs/                    # Manual de operaciones
+├── empaquetar-deploy.ps1    # Empaquetado para servidor
 ├── .env.example
 ├── README.md
 └── .env                     # No se sube al repositorio
@@ -111,6 +123,7 @@ Sistema de Ordenes de Compra/
 | `npm run dev` | Servidor con recarga automática |
 | `npm start` | Servidor en modo producción |
 | `node backend/scripts/seed-admin.js` | Crear o actualizar usuario administrador |
+| `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy (sin `node_modules`, `.env` ni `uploads`) |
 
 ## Variables de Entorno
 

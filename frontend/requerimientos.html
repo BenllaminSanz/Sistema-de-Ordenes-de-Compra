@@ -458,10 +458,16 @@
 
           <!-- Búsqueda en catálogo -->
           <div id="seccion-items-catalogo">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+              <span style="font-size:11px; color:var(--muted);">Busca aquí o explora el catálogo completo</span>
+              <a href="catalogo.html" class="btn btn-sm btn-outline" style="font-size:11px; white-space:nowrap;">
+                Ver catálogo completo →
+              </a>
+            </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
               <div style="flex:2; min-width:150px;">
                 <input type="text" id="busqueda-catalogo" class="form-control form-control-sm"
-                       placeholder="Buscar por código o descripción…"
+                       placeholder="Buscar por código, descripción o proveedor…"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();buscarEnCatalogo();}">
               </div>
               <div id="filtro-proveedor-wrapper" style="flex:1; min-width:120px; display:none;">
@@ -664,7 +670,7 @@
             <table class="table table-sm" id="tabla-items-cot">
               <thead class="table-light">
                 <tr>
-                  <th width="10%">Nº ítem</th>
+                  <th width="10%">Nº ítem <span class="text-muted" style="font-weight:400;font-size:10px;">(→ catálogo)</span></th>
                   <th width="42%">Descripción</th>
                   <th width="8%">Cantidad</th>
                   <th width="10%">Unidad</th>
@@ -1030,6 +1036,7 @@ window.filtrarFiltroDeptosPorArea = filtrarFiltroDeptosPorArea;
 </script>
 
 <script src="js/app.js"></script>
+<script src="js/carrito-req.js"></script>
 <script src="js/pages/requerimientos/state.js"></script>
 <script src="js/pages/requerimientos/lista.js"></script>
 <script src="js/pages/requerimientos/detalle.js"></script>

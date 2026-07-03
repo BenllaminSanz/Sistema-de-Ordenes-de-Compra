@@ -14,7 +14,7 @@ if (reqTipoSelect) {
     if (provSelect && !reqTipoSelect.value) provSelect.value = '';
 
     if (reqTipoSelect.value) {
-      window.requerimientoItemsSeleccionados = [];
+      CarritoReq.vaciar();
       window.requerimientoItemsLibres = [];
       desbloquearFiltroProveedorCatalogo();
       renderItemsSeleccionados();
@@ -45,12 +45,21 @@ function renderItemsSeleccionados() {
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        Ninguno seleccionado — busca y agrega ítems arriba
+        Ninguno seleccionado — busca aquí o en el catálogo completo
       </div>`;
     return;
   }
 
   let html = '';
+
+  if (catalogo.length > 0) {
+    const prov = CarritoReq.getProveedorBloqueado() || catalogo[0];
+    html += `
+      <div class="prov-lock-banner">
+        <strong>Mismo proveedor:</strong> ${CarritoReq.labelProveedor(prov)}.
+        Solo puedes agregar ítems de este proveedor; para otro proveedor crea otro requerimiento.
+      </div>`;
+  }
 
   // ── Ítems del catálogo (verde) ────────────────────────────────
   catalogo.forEach((item, index) => {
@@ -105,16 +114,18 @@ function renderItemsSeleccionados() {
 }
 
 window.actualizarCantidadItem = function(index, nuevaCantidad) {
-  if (window.requerimientoItemsSeleccionados[index]) {
-    window.requerimientoItemsSeleccionados[index].cantidad =
-      Math.max(1, Math.round(parseFloat(nuevaCantidad) || 1));
-  }
+  const item = window.requerimientoItemsSeleccionados[index];
+  if (!item) return;
+  const cantidad = Math.max(1, Math.round(parseFloat(nuevaCantidad) || 1));
+  item.cantidad = cantidad;
+  CarritoReq.actualizarCantidad(item.catalogo_id, cantidad);
 };
 
 window.eliminarItemSeleccionado = function(index) {
-  window.requerimientoItemsSeleccionados.splice(index, 1);
+  const item = window.requerimientoItemsSeleccionados[index];
+  if (item) CarritoReq.eliminar(item.catalogo_id);
   renderItemsSeleccionados();
-  if (!window.requerimientoItemsSeleccionados.length) {
+  if (!CarritoReq.count()) {
     desbloquearFiltroProveedorCatalogo();
   }
 };
@@ -178,8 +189,10 @@ async function buscarEnCatalogo() {
 
     let html = '';
     resultados.forEach(item => {
-      const yaSeleccionado = window.requerimientoItemsSeleccionados.some(i => i.catalogo_id === item.id);
+      const yaSeleccionado = CarritoReq.tiene(item.id);
       const safeDesc = item.descripcion.replace(/'/g, "\\'").replace(/"/g, '\\"');
+      const safeProvNom = (item.proveedor_nombre || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+      const safeProvNum = (item.proveedor_num || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
       const precio = item.costo_referencia != null
         ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : null;
@@ -200,7 +213,7 @@ async function buscarEnCatalogo() {
             ${!yaSeleccionado ? `
               <input type="number" id="qty-${item.id}" class="form-control cat-qty" value="1" min="1" step="1" title="Cantidad">
               <button type="button" class="btn btn-sm btn-primary"
-                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}', ${item.proveedor_id != null ? item.proveedor_id : 'null'})">
+                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}', ${item.proveedor_id != null ? item.proveedor_id : 'null'}, '${safeProvNom}', '${safeProvNum}')">
                 + Agregar
               </button>
             ` : `
@@ -230,48 +243,37 @@ async function buscarEnCatalogo() {
   }
 }
 
-window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo, moneda = 'MXN', proveedor_id = null) {
+window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo, moneda = 'MXN', proveedor_id = null, proveedor_nombre = '', proveedor_num = '') {
   const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
 
   if (tieneLibres) {
     if (!confirm('Ya tienes ítems nuevos/libres.\n\n¿Limpiarlos y volver a usar solo catálogo?')) return;
     window.requerimientoItemsLibres = [];
-    // Ocultar panel inline
     if (typeof ocultarLibreInline === 'function') ocultarLibreInline();
     const checkbox = document.getElementById('usar-items-nuevos');
     if (checkbox) checkbox.checked = false;
   }
 
-  if (!window.requerimientoItemsSeleccionados) window.requerimientoItemsSeleccionados = [];
+  const qtyInput = document.getElementById(`qty-${catalogo_id}`);
+  const cantidad = qtyInput ? parseFloat(qtyInput.value) || 1 : 1;
+  const tipo = document.getElementById('req-tipo')?.value || '';
 
-  const provNuevo = proveedor_id != null && proveedor_id !== '' ? parseInt(proveedor_id, 10) : null;
-  const itemsActuales = window.requerimientoItemsSeleccionados;
-
-  if (itemsActuales.length > 0) {
-    const provPrimer = itemsActuales[0].proveedor_id != null ? parseInt(itemsActuales[0].proveedor_id, 10) : null;
-    if (provPrimer !== provNuevo) {
-      Toast.error('Todos los ítems del catálogo deben ser del mismo proveedor');
-      return;
-    }
-  }
-
-  if (itemsActuales.find(i => i.catalogo_id === catalogo_id)) return;
-
-  const qtyInput  = document.getElementById(`qty-${catalogo_id}`);
-  const cantidad  = qtyInput ? parseFloat(qtyInput.value) || 1 : 1;
-
-  window.requerimientoItemsSeleccionados.push({
+  const resultado = CarritoReq.agregar({
     catalogo_id,
     codigo,
     descripcion,
-    costo_referencia: costo != null ? parseFloat(costo) : null,
-    moneda: moneda || 'MXN',
-    proveedor_id: provNuevo,
-    cantidad: Math.max(1, Math.round(cantidad))
-  });
+    costo_referencia: costo,
+    moneda,
+    proveedor_id,
+    proveedor_nombre,
+    proveedor_num,
+    tipo,
+  }, cantidad);
 
-  if (itemsActuales.length === 0 && provNuevo != null) {
-    bloquearFiltroProveedorCatalogo(provNuevo);
+  if (!CarritoReqUI.notificarAgregado(resultado)) return;
+
+  if (CarritoReq.count() === 1 && proveedor_id != null) {
+    bloquearFiltroProveedorCatalogo(proveedor_id);
   }
 
   renderItemsSeleccionados();

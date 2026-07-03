@@ -1,4 +1,7 @@
 node_modules/
+docs/node_modules/
 .env
 *.log
 terminals/
+.claude/
+deploy-oc-*.zip

@@ -3,8 +3,9 @@ import * as Catalogo from './catalogo.js';
 import { formalizarCotizacionEnCatalogo } from './cotizaciones.js';
 import { validarCierreOrden } from '../utils/ocCierre.js';
 import { calcularTotalesCatalogoRequerimiento } from '../utils/catalogoItems.js';
+import { siguienteConsecutivoNumerico } from '../utils/consecutivos.js';
 
-/** Usa el consecutivo del requerimiento sin prefijo REQ- (ej. REQ-2026S-001 → 2026S-001). */
+/** Usa el mismo consecutivo numérico del requerimiento de origen. */
 async function generarNumeroOC(conn, requerimiento_id) {
   const [[req]] = await conn.query(
     'SELECT consecutivo FROM requerimientos WHERE id = ?',
@@ -12,19 +13,11 @@ async function generarNumeroOC(conn, requerimiento_id) {
   );
 
   if (req?.consecutivo) {
-    return req.consecutivo.replace(/^REQ-/i, '');
+    return req.consecutivo;
   }
 
-  const anio = new Date().getFullYear();
-  const prefijo = `${anio}-`;
-  const [rows] = await conn.query(
-    `SELECT numero_oc FROM ordenes_compra
-     WHERE numero_oc LIKE ? ORDER BY id DESC LIMIT 1`,
-    [`${prefijo}%`]
-  );
-  if (!rows.length) return `${prefijo}0001`;
-  const ultimo = parseInt(rows[0].numero_oc.split('-').pop(), 10) || 0;
-  return `${prefijo}${String(ultimo + 1).padStart(4, '0')}`;
+  const [rows] = await conn.query('SELECT numero_oc FROM ordenes_compra');
+  return siguienteConsecutivoNumerico(rows.map((r) => r.numero_oc));
 }
 
 const ESTADOS_OC_ACTIVAS = ['generada', 'distribuida', 'en_proceso', 'recibida'];

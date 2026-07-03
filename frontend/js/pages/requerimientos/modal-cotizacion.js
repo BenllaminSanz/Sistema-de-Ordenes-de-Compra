@@ -113,11 +113,11 @@ async function guardarCotizacionOriginal() {
       const calculo = calcularTotalItems();
       const rows    = tbody.querySelectorAll('tr');
 
-      rows.forEach(row => {
+      for (const row of rows) {
         const descripcion = row.querySelector('.item-desc').value.trim();
-        if (!descripcion) return;
+        if (!descripcion) continue;
 
-        let cantidad       = parseFloat(row.querySelector('.item-cant').value) || 1;
+        let cantidad        = parseFloat(row.querySelector('.item-cant').value) || 1;
         let precio_unitario = parseFloat(row.querySelector('.item-precio').value) || 0;
 
         cantidad        = Math.max(1, Math.round(cantidad));
@@ -127,6 +127,10 @@ async function guardarCotizacionOriginal() {
         const catalogoIdRaw  = row.querySelector('.item-catalogo-id')?.value;
         const catalogo_id    = catalogoIdRaw ? parseInt(catalogoIdRaw, 10) : null;
 
+        if (!catalogo_id && !codigoCatalogo) {
+          return Toast.error(`El concepto "${descripcion}" requiere Nº ítem (código de catálogo). Ese código se guardará al formalizar en catálogo.`);
+        }
+
         datos.items.push({
           descripcion,
           cantidad,
@@ -135,7 +139,7 @@ async function guardarCotizacionOriginal() {
           codigo_catalogo: codigoCatalogo,
           catalogo_id: Number.isFinite(catalogo_id) ? catalogo_id : null,
         });
-      });
+      }
 
       if (datos.items.length === 0) return Toast.error('Debe agregar al menos un concepto en la lista de items');
 
@@ -416,7 +420,7 @@ function crearFilaItem(itemData = {}) {
 
   row.innerHTML = `
     <td style="vertical-align: top;">
-      <input type="text" class="form-control item-codigo-catalogo" placeholder="Código" value="${codigoCatalogo}" title="Nº ítem / código catálogo">
+      <input type="text" class="form-control item-codigo-catalogo" placeholder="Nº ítem *" value="${codigoCatalogo}" title="Nº ítem — se guardará como código en el catálogo" ${itemData.catalogo_id ? 'readonly' : ''}>
       <input type="hidden" class="item-catalogo-id" value="${itemData.catalogo_id || ''}">
     </td>
     <td style="vertical-align: top;">

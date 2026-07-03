@@ -567,9 +567,14 @@ function cerrarModalRecepcion() {
   UI.cerrarModal('modal-recepcion');
 }
 
-async function cargarResumenItemsOc(ocId) {
+function ocBloqueaRecepciones(oc = ocActual) {
+  return oc && ['cerrada', 'cancelada'].includes(oc.estado);
+}
+
+async function cargarResumenItemsOc(ocId, excluirRecepcionId = null) {
   try {
-    resumenItemsOc = await Api.get(`/ordenes-compra/${ocId}/recepciones/resumen-items`);
+    const qs = excluirRecepcionId ? `?excluir_recepcion_id=${excluirRecepcionId}` : '';
+    resumenItemsOc = await Api.get(`/ordenes-compra/${ocId}/recepciones/resumen-items${qs}`);
   } catch (err) {
     console.error('Error cargando resumen de ítems:', err);
     resumenItemsOc = [];
@@ -684,6 +689,9 @@ function recolectarItemsRecepcionFormulario() {
 
 async function abrirRecepcion(recepcion = null) {
   if (!ocActual) return;
+  if (ocBloqueaRecepciones()) {
+    return Toast.error('La OC está cerrada o cancelada. No se pueden registrar ni modificar recepciones.');
+  }
 
   recepcionEditandoId = recepcion?.id || null;
   document.getElementById('rec-id').value = recepcionEditandoId || '';
@@ -702,7 +710,7 @@ async function abrirRecepcion(recepcion = null) {
   if (loading) loading.style.display = 'block';
   document.getElementById('rec-items-list').innerHTML = '';
 
-  await cargarResumenItemsOc(ocActual.id);
+  await cargarResumenItemsOc(ocActual.id, recepcionEditandoId || null);
   if (loading) loading.style.display = 'none';
   renderLineasRecepcionModal(resumenItemsOc, recepcion?.items || []);
 
@@ -712,6 +720,9 @@ async function abrirRecepcion(recepcion = null) {
 
 async function editarRecepcion(recId) {
   if (!Auth.puedeHacer(['contabilidad', 'admin'])) return;
+  if (ocBloqueaRecepciones()) {
+    return Toast.error('La OC está cerrada o cancelada. No se pueden modificar recepciones.');
+  }
   const recepcion = (recepcionesActuales || []).find(r => r.id === recId);
   if (!recepcion) return Toast.error('Recepción no encontrada');
   await abrirRecepcion(recepcion);
@@ -719,6 +730,9 @@ async function editarRecepcion(recId) {
 
 async function eliminarRecepcion(recId) {
   if (!Auth.puedeHacer(['contabilidad', 'admin'])) return;
+  if (ocBloqueaRecepciones()) {
+    return Toast.error('La OC está cerrada o cancelada. No se pueden eliminar recepciones.');
+  }
   if (!confirm('¿Eliminar esta recepción?\nSe actualizarán los avances de ítems recibidos.')) return;
 
   try {
@@ -730,23 +744,62 @@ async function eliminarRecepcion(recId) {
   }
 }
 
-async function abrirCierreAnticipado() {
-  const pendientes = (resumenItemsOc || []).filter(it => (parseFloat(it.pendiente) || 0) > 0);
-  const pendientesHtml = pendientes.map(it => {
-    const desc = it.codigo ? `<strong>${it.codigo}</strong> — ${it.descripcion}` : it.descripcion;
-    return `<div style="padding:3px 0;font-size:13px;">
-      ${desc}: <span style="color:#854d0e;font-weight:600">${parseFloat(it.pendiente).toLocaleString('es-MX')} ${it.unidad || ''} pendiente(s)</span>
-    </div>`;
-  }).join('');
+function poDataTextNowActual(oc = ocActual, recepciones = recepcionesActuales) {
+  const po = resolverPoOrden(oc, recepciones);
+  if (!po || po.toUpperCase() === 'N/A') return '';
+  return po;
+}
 
-  document.getElementById('cierre-anticipado-pendientes').innerHTML = `
-    <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:6px;padding:12px;margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">Ítems con entrega incompleta:</div>
-      ${pendientesHtml}
-    </div>`;
+async function abrirModalCierreOc({ anticipado = false } = {}) {
+  if (!ocActual) return;
 
-  document.getElementById('cierre-po').value = ocActual.datatextnow_id || '';
+  const recs = recepcionesActuales || [];
+  if (!recs.length) {
+    return Toast.error('Registra al menos una recepción antes de cerrar la OC');
+  }
+
+  const titulo = document.querySelector('#modal-cierre-anticipado .modal-title');
+  if (titulo) {
+    titulo.textContent = anticipado
+      ? 'Cerrar OC con ítems incompletos'
+      : 'Cerrar orden de compra';
+  }
+
+  const contPendientes = document.getElementById('cierre-anticipado-pendientes');
+  if (contPendientes) {
+    if (anticipado) {
+      const pendientes = (resumenItemsOc || []).filter(it => (parseFloat(it.pendiente) || 0) > 0);
+      const pendientesHtml = pendientes.map(it => {
+        const desc = it.codigo ? `<strong>${it.codigo}</strong> — ${it.descripcion}` : it.descripcion;
+        return `<div style="padding:3px 0;font-size:13px;">
+          ${desc}: <span style="color:#854d0e;font-weight:600">${parseFloat(it.pendiente).toLocaleString('es-MX')} ${it.unidad || ''} pendiente(s)</span>
+        </div>`;
+      }).join('');
+      contPendientes.innerHTML = `
+        <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:6px;padding:12px;margin-bottom:16px;">
+          <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">Ítems con entrega incompleta:</div>
+          ${pendientesHtml}
+        </div>`;
+    } else {
+      contPendientes.innerHTML = `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;color:#1e40af;">
+          Ingresa el <strong>PO de DataTextNow</strong> para poder cerrar la orden de compra.
+        </div>`;
+    }
+  }
+
+  const poInput = document.getElementById('cierre-po');
+  if (poInput) {
+    poInput.value = poDataTextNowActual() || '';
+    setTimeout(() => poInput.focus(), 150);
+  }
   document.getElementById('cierre-notas').value = '';
+
+  const btnConfirm = document.getElementById('btn-confirmar-cierre-anticipado');
+  if (btnConfirm) {
+    btnConfirm.textContent = anticipado ? 'Cerrar OC de todas formas' : 'Cerrar OC';
+  }
+
   UI.abrirModal('modal-cierre-anticipado');
 
   document.getElementById('btn-confirmar-cierre-anticipado').onclick = async () => {
@@ -755,7 +808,8 @@ async function abrirCierreAnticipado() {
     const notas = document.getElementById('cierre-notas').value.trim() || null;
 
     try {
-      if (po !== (ocActual.datatextnow_id || '').trim()) {
+      const poGuardado = poDataTextNowActual();
+      if (po !== poGuardado) {
         await Api.patch(`/ordenes-compra/${ocActual.id}/datatextnow`, { datatextnow_id: po });
       }
       await Api.patch(`/ordenes-compra/${ocActual.id}/estado`, { estado: 'cerrada', notas });
@@ -792,12 +846,12 @@ function prepararCambioEstado(estado, label) {
     return;
   }
 
-  if (estado === 'cerrada' && ocActual?.estado === 'en_proceso') {
+  if (estado === 'cerrada') {
     const hayPendientes = (resumenItemsOc || []).some(it => (parseFloat(it.pendiente) || 0) > 0);
-    if (hayPendientes) {
-      abrirCierreAnticipado();
-      return;
-    }
+    abrirModalCierreOc({
+      anticipado: hayPendientes && ocActual?.estado === 'en_proceso',
+    });
+    return;
   }
 
   document.getElementById('modal-estado-titulo').textContent = label;
@@ -844,11 +898,14 @@ async function cargarRecepciones(ocId) {
             </ul>`
           : '';
 
-        const accionesContab = esContab ? `
+        const puedeEditarRec = esContab && !ocBloqueaRecepciones(ocActual);
+        const accionesContab = puedeEditarRec ? `
           <div class="d-flex gap-1 mt-2">
             <button class="btn btn-sm btn-outline" data-action="editar-recepcion" data-rec-id="${r.id}">Editar</button>
             <button class="btn btn-sm btn-danger" data-action="eliminar-recepcion" data-rec-id="${r.id}">Eliminar</button>
-          </div>` : '';
+          </div>` : (esContab && ocBloqueaRecepciones(ocActual)
+            ? '<div class="text-muted text-sm mt-2">OC cerrada — recepciones bloqueadas</div>'
+            : '');
 
         return `
         <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px">
@@ -885,28 +942,16 @@ async function cargarRecepciones(ocId) {
     });
   }
 
-  if (ocActual && ocActual.estado === 'recibida') {
-    const closeBtn = document.querySelector('#panel-acciones button[data-estado="cerrada"]');
-    const tienePO = !!(ocActual.datatextnow_id && String(ocActual.datatextnow_id).trim())
-      || recs.some(r => r.datatextnow_id && String(r.datatextnow_id).trim());
-    const itemsCompletos = (resumenItemsOc || []).length > 0
-      && (resumenItemsOc || []).every(it => (parseFloat(it.pendiente) || 0) <= 0);
-    const listasParaCierre = itemsCompletos || (recs.length > 0 && recs.every(r =>
-      r.estado === 'recibido_completo'
-    ));
-
-    if (closeBtn) {
-      if (!listasParaCierre || !tienePO) {
-        closeBtn.disabled = true;
-        closeBtn.title = !recs.length
-          ? 'Registra al menos una recepción antes de cerrar la OC'
-          : !tienePO
-            ? 'Falta registrar el PO de DataTextNow para cerrar la OC'
-            : 'Hay recepciones parciales pendientes de completar';
-      } else {
-        closeBtn.disabled = false;
-        closeBtn.title = 'Cerrar la OC';
-      }
+  const closeBtn = document.querySelector('#panel-acciones button[data-estado="cerrada"]');
+  if (closeBtn && ocActual && ['en_proceso', 'recibida'].includes(ocActual.estado)) {
+    closeBtn.disabled = false;
+    const tienePO = !!poDataTextNowActual(ocActual, recs);
+    if (!recs.length) {
+      closeBtn.title = 'Registra al menos una recepción antes de cerrar';
+    } else if (!tienePO) {
+      closeBtn.title = 'Clic para ingresar el PO de DataTextNow y cerrar';
+    } else {
+      closeBtn.title = 'Cerrar la OC';
     }
   }
 }
@@ -985,6 +1030,18 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
 
   if (!items.length) {
     return Toast.error('Selecciona al menos un ítem con cantidad recibida mayor a 0');
+  }
+
+  for (const row of document.querySelectorAll('#rec-items-list .rec-item-row')) {
+    const chk = row.querySelector('.rec-item-check');
+    if (!chk?.checked) continue;
+    const cantidad = parseFloat(row.querySelector('.rec-item-cantidad')?.value || 0);
+    const pendiente = parseFloat(row.dataset.pendiente || 0);
+    if (cantidad > pendiente + 0.0001) {
+      return Toast.error(
+        `La cantidad ingresada (${cantidad}) supera el pendiente actual (${pendiente}) en uno de los ítems.`
+      );
+    }
   }
 
   if (!editId && esCompleta && ocActual?.estado !== 'cerrada') {

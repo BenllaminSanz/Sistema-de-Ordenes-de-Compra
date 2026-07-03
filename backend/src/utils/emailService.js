@@ -104,7 +104,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
             <table style="width:100%; font-size:14px; color:#1e293b;">
               <tr>
                 <td style="padding:4px 0; width:140px;"><strong>Requerimiento:</strong></td>
-                <td style="padding:4px 0;"><strong>${req.consecutivo || 'REQ-' + req.id}</strong></td>
+                <td style="padding:4px 0;"><strong>${req.consecutivo || req.id}</strong></td>
               </tr>
               <tr>
                 <td style="padding:4px 0;"><strong>Título:</strong></td>

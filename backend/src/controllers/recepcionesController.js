@@ -19,7 +19,12 @@ async function listar(req, res) {
 
 async function resumenItems(req, res) {
   try {
-    res.json(await resumenItemsOrden(req.params.orden_id));
+    const excluir = req.query.excluir_recepcion_id
+      ? parseInt(req.query.excluir_recepcion_id, 10)
+      : null;
+    res.json(await resumenItemsOrden(req.params.orden_id, {
+      excluir_recepcion_id: Number.isFinite(excluir) ? excluir : null,
+    }));
   } catch (err) {
     logger.error('[resumen items recepcion]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -76,6 +81,7 @@ async function eliminar(req, res) {
     if (!afectados) return res.status(404).json({ mensaje: 'Recepción no encontrada' });
     res.status(204).send();
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
     logger.error('[eliminar recepcion]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }

@@ -1,6 +1,5 @@
 // backend/src/models/cotizaciones.js
 import pool from '../config/db.js';
-import * as Catalogo from './catalogo.js';
 
 async function listarPorRequerimiento(requerimiento_id, incluirItems = true) {
   const [rows] = await pool.query(`
@@ -334,15 +333,14 @@ async function eliminar(id) {
 }
 
 /**
- * Formaliza ítems de una cotización (provenientes de libres) en el catálogo.
+ * Formaliza ítems de una cotización en el catálogo.
  * Llamado EXCLUSIVAMENTE desde creación de OC (después de generar la OC).
- * Dedup por tipo+descripción. Preserva histórico de libres en req.
- * Al generar la OC se asocia/actualiza el proveedor seleccionado y el costo de referencia
- * (cumple "items libres se carguen al catalogo ... relacionado con el proveedor seleccionado").
+ * - El código del catálogo es el Nº ítem (codigo_catalogo) capturado en la cotización.
+ * - La moneda y el costo de referencia provienen de la cotización seleccionada.
  */
 async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
   const [[cot]] = await conn.query(
-    `SELECT c.proveedor_id, c.moneda, r.tipo as req_tipo 
+    `SELECT c.proveedor_id, c.moneda, r.tipo AS req_tipo
      FROM cotizaciones c
      JOIN requerimientos r ON r.id = c.requerimiento_id
      WHERE c.id = ?`,
@@ -352,48 +350,67 @@ async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
   if (!cot) return;
 
   const [cotItems] = await conn.query(
-    `SELECT descripcion, cantidad, unidad, precio_unitario 
-     FROM cotizacion_items 
+    `SELECT descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario
+     FROM cotizacion_items
      WHERE cotizacion_id = ?`,
     [cotizacionId]
   );
 
   if (cotItems.length === 0) return;
 
-  for (const item of cotItems) {
-    // Evitar duplicados por descripción + tipo (case insensitive)
-    const [existing] = await conn.query(
-      `SELECT id FROM catalogo WHERE tipo = ? AND LOWER(descripcion) = LOWER(?) LIMIT 1`,
-      [cot.req_tipo || 'PARTES', item.descripcion]
+  const tipo = cot.req_tipo || 'PARTES';
+  const moneda = cot.moneda || 'MXN';
+  const proveedorId = cot.proveedor_id || null;
+
+  async function actualizarCatalogo(catalogoId, datos) {
+    await conn.query(
+      `UPDATE catalogo
+       SET proveedor_id = ?, costo_referencia = ?, moneda = ?,
+           descripcion = COALESCE(?, descripcion),
+           unidad = COALESCE(?, unidad)
+       WHERE id = ?`,
+      [
+        proveedorId,
+        datos.precio_unitario ?? null,
+        moneda,
+        datos.descripcion || null,
+        datos.unidad || null,
+        catalogoId,
+      ]
     );
-    if (existing.length > 0) {
-      // Actualizar asociación al proveedor de ESTA cot/OC (última selección confirmada por la OC)
-      await conn.query(
-        `UPDATE catalogo
-         SET proveedor_id = ?, costo_referencia = COALESCE(?, costo_referencia), moneda = ?
-         WHERE id = ?`,
-        [cot.proveedor_id || null, item.precio_unitario || null, cot.moneda || 'MXN', existing[0].id]
-      );
+  }
+
+  for (const item of cotItems) {
+    const codigo = String(item.codigo_catalogo || '').trim();
+    const precio = item.precio_unitario != null ? item.precio_unitario : null;
+    const unidad = item.unidad || null;
+
+    if (item.catalogo_id) {
+      await actualizarCatalogo(item.catalogo_id, item);
       continue;
     }
 
-    const codigo = await Catalogo.generarCodigoUnico(
-      conn, 
-      cot.req_tipo || 'PARTES', 
-      item.descripcion
+    if (!codigo) {
+      throw {
+        status: 422,
+        mensaje: `El ítem "${item.descripcion}" no tiene Nº ítem en la cotización. Complétalo antes de generar la OC; ese código se guardará en el catálogo.`,
+      };
+    }
+
+    const [porCodigo] = await conn.query(
+      'SELECT id FROM catalogo WHERE codigo = ? LIMIT 1',
+      [codigo]
     );
 
+    if (porCodigo.length > 0) {
+      await actualizarCatalogo(porCodigo[0].id, item);
+      continue;
+    }
+
     await conn.query(
-      `INSERT INTO catalogo (tipo, codigo, descripcion, costo_referencia, moneda, proveedor_id, activo)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      [
-        cot.req_tipo || 'PARTES',
-        codigo,
-        item.descripcion,
-        item.precio_unitario || null,
-        cot.moneda || 'MXN',
-        cot.proveedor_id || null
-      ]
+      `INSERT INTO catalogo (tipo, codigo, descripcion, unidad, costo_referencia, moneda, proveedor_id, activo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+      [tipo, codigo, item.descripcion, unidad, precio, moneda, proveedorId]
     );
   }
 }

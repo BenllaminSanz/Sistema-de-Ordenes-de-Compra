@@ -339,10 +339,12 @@ async function imprimirRequerimiento() {
       <div class="print-firma-col">
         <div class="print-firma-linea"></div>
         <div class="print-firma-label">Quien autorizó</div>
+        <div class="print-firma-nombre">Gerente de Planta</div>
       </div>
       <div class="print-firma-col">
         <div class="print-firma-linea"></div>
         <div class="print-firma-label">Quien aprobó</div>
+        <div class="print-firma-nombre">Jefe Inmediato</div>
       </div>
     </div>`;
 

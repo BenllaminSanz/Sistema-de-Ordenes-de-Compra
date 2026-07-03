@@ -1,31 +1,11 @@
 import pool from '../config/db.js';
 import { validarAreaDepartamento, obtenerAreas } from '../config/departamentosStore.js';
+import { siguienteConsecutivoNumerico } from '../utils/consecutivos.js';
 
-/**
- * Genera el consecutivo siguiente con formato REQ-YYYYT-NNN.
- * Ejemplo: REQ-2025S-001
- * - REQ: prefijo fijo
- * - YYYY: año en curso
- * - T: primera letra del tipo (S=Servicios, P=Partes, F=Fletes)
- * - NNN: secuencial de 3 dígitos (001, 002, ...), reinicia por año y por tipo
- */
-async function generarConsecutivo(conn, tipo) {
-  const anio = new Date().getFullYear();
-  const letra = (tipo || '').charAt(0).toUpperCase();
-  const prefijo = `REQ-${anio}${letra}-`;
-
-  const [rows] = await conn.query(
-    `SELECT consecutivo FROM requerimientos
-     WHERE consecutivo LIKE ?
-     ORDER BY id DESC LIMIT 1`,
-    [`${prefijo}%`]
-  );
-
-  if (rows.length === 0) return `${prefijo}001`;
-
-  const parts = rows[0].consecutivo.split('-');
-  const ultimo = parseInt(parts[parts.length - 1], 10) || 0;
-  return `${prefijo}${String(ultimo + 1).padStart(3, '0')}`;
+/** Genera el consecutivo siguiente: solo número (001, 002, …). */
+async function generarConsecutivo(conn) {
+  const [rows] = await conn.query('SELECT consecutivo FROM requerimientos');
+  return siguienteConsecutivoNumerico(rows.map((r) => r.consecutivo));
 }
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
@@ -198,7 +178,7 @@ async function crear(datos, solicitante_id) {
   try {
     await conn.beginTransaction();
 
-    const consecutivo = await generarConsecutivo(conn, datos.tipo);
+    const consecutivo = await generarConsecutivo(conn);
   
     const tieneLibresEnDatos = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
     const requiereCotEnBD = tieneLibresEnDatos ? 1 : (datos.requiere_cotizacion ? 1 : 0);
