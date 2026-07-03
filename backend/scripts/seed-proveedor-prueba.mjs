@@ -6,7 +6,10 @@
  *   node backend/scripts/seed-proveedor-prueba.mjs
  *   node backend/scripts/seed-proveedor-prueba.mjs --correo
  *
- * Variables en .env (en este orden de prioridad para el correo):
+ * Con --correo replica el flujo de cotización: CC y Reply-To desde
+ * Administración → Config SMTP (cc_cotizaciones) o EMAIL_CC_COTIZACIONES.
+ *
+ * Variables en .env (en este orden de prioridad para el correo del proveedor):
  *   PROVEEDOR_PRUEBA_EMAIL
  *   ADMIN_EMAIL
  *   PROVEEDOR_PRUEBA_NUM=99999
@@ -16,6 +19,7 @@
 import '../src/config/env.js';
 import pool from '../src/config/db.js';
 import * as Proveedor from '../src/models/proveedores.js';
+import { obtenerCcCotizaciones } from '../src/models/configSmtp.js';
 import {
   enviarCorreo,
   getFromAddress,
@@ -83,35 +87,51 @@ async function main() {
     console.log(`Fuente SMTP: ${getConfigSource()}`);
     console.log(`Remitente: ${getFromAddress()}`);
 
+    const ccCotizaciones = await obtenerCcCotizaciones();
+    if (ccCotizaciones) {
+      console.log(`CC / Reply-To: ${ccCotizaciones}`);
+    } else {
+      console.warn('⚠️  Sin CC/Reply-To configurado. Configúralo en Administración → Config SMTP.');
+    }
+
     const ahora = new Date().toLocaleString('es-MX');
+    const ccLinea = ccCotizaciones
+      ? `<br><strong>Copia / Responder a:</strong> ${ccCotizaciones}`
+      : '';
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #f8fafc;">
         <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
           <h2 style="color: #185FA5; margin-top: 0;">Prueba de correo — Proveedor de prueba</h2>
           <p style="color: #334155; font-size: 15px;">
-            Este mensaje confirma que el SMTP del <strong>Sistema de Órdenes de Compra</strong> puede enviar correos
-            al proveedor <strong>${NOMBRE}</strong> (${NUM_PROVEEDOR}).
+            Este mensaje simula una solicitud de cotización al proveedor
+            <strong>${NOMBRE}</strong> (${NUM_PROVEEDOR}).
           </p>
           <p style="color: #334155; font-size: 14px;">
             <strong>Fecha:</strong> ${ahora}<br>
-            <strong>Remitente:</strong> ${getFromAddress()}
+            <strong>Remitente:</strong> ${getFromAddress()}${ccLinea}
           </p>
           <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
-            Si recibes este correo, puedes probar el envío de cotizaciones con este proveedor en la aplicación.
+            Responde a este correo para verificar que la respuesta llega a Copia/Reply-To configurado en el sistema.
           </p>
         </div>
       </div>
     `;
 
+    const textoCc = ccCotizaciones ? `\nCopia/Responder a: ${ccCotizaciones}` : '';
     const result = await enviarCorreo({
       to: EMAIL,
+      cc: ccCotizaciones || undefined,
+      replyTo: ccCotizaciones || undefined,
       subject: `Prueba SMTP — Proveedor ${NUM_PROVEEDOR}`,
       html,
-      text: `Prueba SMTP exitosa. Proveedor ${NUM_PROVEEDOR} — ${NOMBRE}. Remitente: ${getFromAddress()}`,
+      text: `Prueba SMTP. Proveedor ${NUM_PROVEEDOR} — ${NOMBRE}. Remitente: ${getFromAddress()}${textoCc}`,
     });
 
     if (result.success) {
       console.log(`✅ Correo enviado a ${EMAIL}`);
+      if (ccCotizaciones) {
+        console.log(`   CC / Reply-To: ${ccCotizaciones} (las respuestas deben llegar ahí)`);
+      }
       console.log(`   MessageId: ${result.messageId}`);
     } else {
       console.error(`❌ No se pudo enviar: ${result.error}`);
