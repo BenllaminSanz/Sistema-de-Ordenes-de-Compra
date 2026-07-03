@@ -104,7 +104,7 @@ router.get('/:id', obtener);
 
 router.post(
   '/',
-  autorizar('solicitante', 'admin'),
+  autorizar('solicitante', 'contabilidad', 'admin'),
   validate(crearRequerimientoSchema),
   crear
 );

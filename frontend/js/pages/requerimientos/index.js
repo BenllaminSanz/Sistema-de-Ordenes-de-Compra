@@ -4,8 +4,8 @@ Auth.requiereAuth();
 renderSidebar();
 renderTopbar('Requerimientos');
 
-// Ocultar botón "nuevo" si no es solicitante/admin
-if (!Auth.puedeHacer(['solicitante', 'admin'])) {
+// Ocultar botón "nuevo" si no puede crear requerimientos
+if (!Auth.puedeHacer(['solicitante', 'contabilidad', 'admin'])) {
   const btnNuevo = document.getElementById('btn-nuevo');
   if (btnNuevo) btnNuevo.style.display = 'none';
 }
@@ -28,7 +28,7 @@ if (params.get('id')) {
 } else {
   cargarRequerimientos(1);
 
-  if (params.get('crear') === '1' && Auth.puedeHacer(['solicitante', 'admin'])) {
+  if (params.get('crear') === '1' && Auth.puedeHacer(['solicitante', 'contabilidad', 'admin'])) {
     CarritoReq.load();
     setTimeout(() => {
       if (typeof abrirEditorRequerimiento === 'function') {

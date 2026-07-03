@@ -20,6 +20,8 @@ const TRANSICIONES_POR_ROL = {
     incompleto: ['en_revision'],
   },
   contabilidad: {
+    borrador: ['en_revision'],
+    incompleto: ['en_revision'],
     en_revision: ['aprobado', 'incompleto', 'rechazado'],
     aprobado: ['cerrado'],
   },

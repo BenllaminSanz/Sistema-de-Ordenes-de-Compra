@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const usuario = Auth.getUsuario();
   esAdminCatalogo = ['contabilidad', 'admin'].includes(usuario?.rol);
-  puedeSolicitarReq = Auth.puedeHacer(['solicitante', 'admin']);
+  puedeSolicitarReq = Auth.puedeHacer(['solicitante', 'contabilidad', 'admin']);
 
   const adminActions = document.getElementById('admin-actions');
   if (adminActions) {
