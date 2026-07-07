@@ -1,14 +1,24 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.2** — Julio 2026
+**Versión 1.3** — Julio 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
+## Novedades v1.3
+
+- **Consecutivos con año y tipo** — REQ: `2026S-001` (servicios), `2026P-001` (partes)
+- **Carrito y borrador REQ** — al ir al catálogo se guardan datos e ítems; se restauran al volver
+- **Catálogo por proveedor** — vista alternativa `catalogo-proveedores.html`
+- **Búsqueda de proveedor** por código o nombre (REQ, catálogo, cotización, OC)
+- **Impresión REQ** — logo, subtítulo, subtotales por línea, total y ajuste a una página
+- **Correos** — branding con logo; cantidades enteras (sin `1.0000`)
+- **Cotizaciones** — envío automático si la fecha es hoy; PDF adjunto opcional (con aviso)
+- **REQ** — bloqueo de guardado vacío; cancelar aprobado sin OC; proveedor seleccionado en detalle
+- **Cotizar** — Nº ítem opcional; notas del REQ prellenan notas de cotización
+
 ## Novedades v1.2
 
-- **Consecutivos numéricos** — REQ y OC usan solo número consecutivo (sin prefijos ni año)
 - **Carrito compartido** entre catálogo y requerimientos, con aviso de un solo proveedor por REQ
-- **Búsqueda por proveedor** en el catálogo
 - **Impresión REQ** — firmas con cargo debajo (Gerente de Planta / Jefe Inmediato)
 - **Cotización → catálogo** — el Nº ítem de cotización pasa como código de catálogo al formalizar
 - **Recepciones** — bloqueo de edición/eliminación en OC cerrada; recálculo de pendientes al editar
@@ -123,6 +133,7 @@ Sistema de Ordenes de Compra/
 | `npm run dev` | Servidor con recarga automática |
 | `npm start` | Servidor en modo producción |
 | `node backend/scripts/seed-admin.js` | Crear o actualizar usuario administrador |
+| `npm test` (en `backend/`) | Pruebas de flujo API y cambios recientes |
 | `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy (sin `node_modules`, `.env` ni `uploads`) |
 
 ## Variables de Entorno
@@ -180,6 +191,17 @@ flowchart TD
 | `GET /api/ordenes-compra?estado=activas` | OC pendientes de cerrar |
 | `GET /api/areas` | Áreas y departamentos |
 | `GET /api/health` | Estado del servidor |
+
+## Actualizar en producción
+
+1. **Respaldar** la carpeta actual, el archivo `.env` y la base de datos MySQL
+2. **Empaquetar** en desarrollo: `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1`
+3. **Descomprimir** en el servidor conservando `.env` y `backend/uploads/` (PDFs y referencias existentes)
+4. En el servidor: `cd backend && npm install --omit=dev`
+5. **Reiniciar** el proceso Node (PM2, servicio Windows, IIS, etc.)
+6. Verificar `GET /api/health` y probar login
+
+> Esta versión **no requiere migración SQL** adicional: los cambios son de aplicación (frontend + backend).
 
 ## Notas de Producción
 

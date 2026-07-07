@@ -285,6 +285,72 @@ tbody tr:last-child td { border-bottom: none; }
   flex: 1 1 220px;
 }
 
+/* ── Catálogo: pestañas por ítems / por proveedor ──────────── */
+.catalog-view-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.catalog-view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 6px 6px 0 0;
+}
+.catalog-view-tab:hover {
+  color: var(--primary);
+  background: #f8fafc;
+}
+.catalog-view-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: #eff6ff;
+}
+.prov-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background .12s;
+}
+.prov-list-row:hover,
+.prov-list-row.selected {
+  background: #f0f7ff;
+}
+.prov-list-row.selected {
+  border-left: 3px solid var(--primary);
+  padding-left: 9px;
+}
+.prov-list-code {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 52px;
+}
+.prov-list-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+.prov-list-count {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* ── Modal ─────────────────────────────────────────────────── */
 .modal-backdrop {
   display: none;
@@ -344,6 +410,7 @@ tbody tr:last-child td { border-bottom: none; }
 .toast.success { border-left: 4px solid var(--success); }
 .toast.error   { border-left: 4px solid var(--danger);  }
 .toast.info    { border-left: 4px solid var(--primary); }
+.toast.warning { border-left: 4px solid #d97706; background: #fffbeb; }
 .toast-msg     { font-size: 13.5px; flex: 1; }
 .toast-close   { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
 @keyframes toastIn { from { transform: translateX(30px); opacity: 0; } }

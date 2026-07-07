@@ -22,3 +22,34 @@ export function siguienteConsecutivoNumerico(valores, digitos = 3) {
   }
   return String(maxNum + 1).padStart(digitos, '0');
 }
+
+/** Letra de tipo para consecutivo: PARTES → P, SERVICIOS → S */
+export function letraTipoConsecutivo(tipo) {
+  return String(tipo || '').toUpperCase().startsWith('PART') ? 'P' : 'S';
+}
+
+/** Prefijo de consecutivo REQ: 2026S, 2026P, etc. */
+export function prefijoConsecutivoReq(tipo, year = new Date().getFullYear()) {
+  return `${year}${letraTipoConsecutivo(tipo)}`;
+}
+
+/**
+ * Siguiente secuencia para un prefijo dado (ej. 2026S → 2026S-001, 2026S-002).
+ * Solo considera consecutivos que coincidan con el prefijo.
+ */
+export function siguienteConsecutivoConPrefijo(valores, prefijo, digitos = 3) {
+  const prefijoNorm = String(prefijo || '').toUpperCase();
+  const patron = new RegExp(`^${prefijoNorm}-(\\d+)$`, 'i');
+  let maxNum = 0;
+
+  for (const valor of valores) {
+    const s = String(valor || '').trim().replace(/^REQ-/i, '');
+    const match = s.match(patron);
+    if (match) {
+      const n = parseInt(match[1], 10) || 0;
+      if (n > maxNum) maxNum = n;
+    }
+  }
+
+  return `${prefijoNorm}-${String(maxNum + 1).padStart(digitos, '0')}`;
+}

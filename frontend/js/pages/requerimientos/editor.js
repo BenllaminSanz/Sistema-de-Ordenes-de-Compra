@@ -1,10 +1,94 @@
 // ── EDITOR DE REQUERIMIENTO (crear / editar) ──────────────────
 
+const REQ_DRAFT_KEY = 'oc_req_draft';
+
+const ReqDraft = {
+  save() {
+    const itemsCatalogo = typeof CarritoReq !== 'undefined' && CarritoReq.count()
+      ? CarritoReq.getItems()
+      : (window.requerimientoItemsSeleccionados || []);
+
+    const data = {
+      titulo: document.getElementById('req-titulo')?.value || '',
+      tipo: document.getElementById('req-tipo')?.value || '',
+      area: document.getElementById('req-area')?.value || '',
+      departamento: document.getElementById('req-departamento')?.value || '',
+      notas: document.getElementById('req-notas')?.value || '',
+      items_catalogo: itemsCatalogo.map((i) => ({ ...i })),
+      items_libres: (window.requerimientoItemsLibres || []).map((i) => ({ ...i })),
+      modo_items: document.getElementById('usar-items-nuevos')?.checked ? 'libres' : 'catalogo',
+    };
+    sessionStorage.setItem(REQ_DRAFT_KEY, JSON.stringify(data));
+  },
+
+  load() {
+    try {
+      const raw = sessionStorage.getItem(REQ_DRAFT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  clear() {
+    sessionStorage.removeItem(REQ_DRAFT_KEY);
+  },
+
+  restoreToForm() {
+    const draft = this.load();
+    if (!draft) return false;
+
+    const titulo = document.getElementById('req-titulo');
+    const tipo = document.getElementById('req-tipo');
+    const area = document.getElementById('req-area');
+    const depto = document.getElementById('req-departamento');
+    const notas = document.getElementById('req-notas');
+
+    if (titulo && draft.titulo) titulo.value = draft.titulo;
+    if (tipo && draft.tipo) tipo.value = draft.tipo;
+    if (area && draft.area) {
+      area.value = draft.area;
+      if (typeof filtrarDeptosPorArea === 'function') filtrarDeptosPorArea(draft.area);
+    }
+    if (depto && draft.departamento) depto.value = draft.departamento;
+    if (notas && draft.notas) notas.value = draft.notas;
+
+    if (draft.modo_items === 'libres' && draft.items_libres?.length) {
+      window.requerimientoItemsLibres = draft.items_libres.map((i) => ({ ...i }));
+      const checkbox = document.getElementById('usar-items-nuevos');
+      if (checkbox) checkbox.checked = true;
+      if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('libre', true);
+      if (typeof renderLibresResumen === 'function') renderLibresResumen();
+    } else if (draft.modo_items === 'catalogo' && typeof window.seleccionarModoItems === 'function') {
+      window.seleccionarModoItems('catalogo', true);
+    }
+
+    return true;
+  },
+
+  syncCarritoDesdeModal() {
+    const sel = window.requerimientoItemsSeleccionados || [];
+    if (typeof CarritoReq === 'undefined' || !sel.length) return;
+    CarritoReq.reemplazar(sel);
+  },
+};
+
+window.ReqDraft = ReqDraft;
+
+window.irAlCatalogoDesdeReq = function() {
+  if (typeof ReqDraft !== 'undefined') {
+    ReqDraft.syncCarritoDesdeModal();
+    ReqDraft.save();
+  }
+  window.location.href = 'catalogo.html';
+};
+
 function puedeGestionarCotizaciones() {
   return Auth.puedeHacer(['contabilidad', 'admin']);
 }
 
-async function abrirEditorRequerimiento(req = null) {
+async function abrirEditorRequerimiento(req = null, opts = {}) {
+  const restaurarBorrador = opts.restaurarBorrador === true;
   const tituloEl   = document.querySelector('#modal-req .modal-title');
   const btnGuardar = document.getElementById('btn-guardar-req');
   const form       = document.getElementById('form-req');
@@ -78,32 +162,80 @@ async function abrirEditorRequerimiento(req = null) {
     btnGuardar.textContent = 'Guardar';
     form.reset();
 
-    CarritoReq.load();
-    const itemsCarrito = CarritoReq.getItems();
-    window.requerimientoItemsSeleccionados = itemsCarrito;
-    window.requerimientoItemsLibres = [];
+    if (!restaurarBorrador) ReqDraft.clear();
 
-    if (itemsCarrito.length > 0 && itemsCarrito[0].tipo) {
-      document.getElementById('req-tipo').value = itemsCarrito[0].tipo;
+    CarritoReq.load();
+    const itemsCarritoInicial = CarritoReq.getItems().map((i) => ({ ...i }));
+    const draft = restaurarBorrador ? ReqDraft.load() : null;
+
+    window.requerimientoItemsLibres = [];
+    window.requerimientoItemsSeleccionados = [];
+
+    let borradorRestaurado = false;
+    window._reqRestaurandoBorrador = true;
+    try {
+      if (restaurarBorrador) {
+        borradorRestaurado = ReqDraft.restoreToForm();
+      }
+    } finally {
+      window._reqRestaurandoBorrador = false;
+    }
+
+    let itemsFinales = itemsCarritoInicial;
+    if (itemsCarritoInicial.length === 0 && draft?.items_catalogo?.length) {
+      CarritoReq.reemplazar(draft.items_catalogo);
+      itemsFinales = CarritoReq.getItems();
+    } else if (itemsCarritoInicial.length > 0) {
+      CarritoReq.reemplazar(itemsCarritoInicial);
+      itemsFinales = CarritoReq.getItems();
+    }
+
+    window.requerimientoItemsSeleccionados = itemsFinales;
+
+    const tipoEl = document.getElementById('req-tipo');
+    if (itemsFinales.length > 0 && itemsFinales[0].tipo) {
+      window._reqRestaurandoBorrador = true;
+      try {
+        if (tipoEl) tipoEl.value = itemsFinales[0].tipo;
+      } finally {
+        window._reqRestaurandoBorrador = false;
+      }
+    } else if (borradorRestaurado && draft?.tipo && tipoEl && !tipoEl.value) {
+      window._reqRestaurandoBorrador = true;
+      try {
+        tipoEl.value = draft.tipo;
+      } finally {
+        window._reqRestaurandoBorrador = false;
+      }
+    }
+
+    if (borradorRestaurado && draft?.modo_items === 'libres' && draft.items_libres?.length) {
+      window.requerimientoItemsLibres = draft.items_libres.map((i) => ({ ...i }));
+    } else if (!borradorRestaurado || draft?.modo_items !== 'libres') {
+      window.requerimientoItemsLibres = [];
     }
 
     renderItemsSeleccionados();
     renderLibresResumen();
 
-    const checkbox = document.getElementById('usar-items-nuevos');
-    if (checkbox) checkbox.checked = false;
-
     const seccion = document.getElementById('seccion-items-catalogo');
     if (seccion) seccion.style.opacity = '1';
 
-    if (itemsCarrito.length > 0) {
-      if (typeof window.seleccionarModoItems === 'function') {
-        window.seleccionarModoItems('catalogo');
-      }
-      const provId = itemsCarrito[0].proveedor_id;
+    const enModoLibres = draft?.modo_items === 'libres' && draft?.items_libres?.length;
+    if (enModoLibres) {
+      if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('libre', true);
+    } else if (itemsFinales.length > 0) {
+      if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('catalogo', true);
+      const provId = itemsFinales[0].proveedor_id;
       if (provId != null && typeof bloquearFiltroProveedorCatalogo === 'function') {
         bloquearFiltroProveedorCatalogo(provId);
       }
+    } else if (borradorRestaurado && draft?.modo_items === 'catalogo') {
+      if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('catalogo', true);
+    }
+
+    if (restaurarBorrador && (borradorRestaurado || itemsFinales.length > 0)) {
+      window._reqBorradorRecienRestaurado = true;
     }
   }
 
@@ -117,10 +249,8 @@ async function abrirEditorRequerimiento(req = null) {
   // El panel inline de libres lo controla mostrarLibreInline() — no se toca aquí.
 
   const provWrapper2 = document.getElementById('filtro-proveedor-wrapper');
-  const provSel2     = document.getElementById('filtro-proveedor-catalogo');
   if (provWrapper2) provWrapper2.style.display = tipoVal ? '' : 'none';
-  if (provSel2 && !tipoVal) provSel2.value = '';
-  if (tipoVal) cargarFiltroProveedoresParaCatalogo();
+  if (tipoVal && typeof initFiltroProveedorReq === 'function') initFiltroProveedorReq();
 
   UI.abrirModal('modal-req');
 }
@@ -147,6 +277,12 @@ document.getElementById('form-req').addEventListener('submit', async e => {
 
   if (tieneCatalogo && tieneLibres) {
     Toast.error('No se puede guardar un requerimiento con ítems del catálogo y ítems libres al mismo tiempo. Elige uno de los dos tipos.');
+    btn.disabled = false;
+    return;
+  }
+
+  if (!tieneCatalogo && !tieneLibres) {
+    Toast.error('Agrega al menos un ítem del catálogo o un ítem nuevo antes de guardar.');
     btn.disabled = false;
     return;
   }
@@ -192,6 +328,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       resultado = await Api.put(`/requerimientos/${idAEditar}`, payload);
       editandoId = null;
       CarritoReq.vaciar();
+      ReqDraft.clear();
       UI.cerrarModal('modal-req');
       if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
       Toast.success('Requerimiento actualizado');
@@ -202,6 +339,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       resultado = await Api.post('/requerimientos', payload);
       editandoId = null;
       CarritoReq.vaciar();
+      ReqDraft.clear();
       UI.cerrarModal('modal-req');
       if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
       Toast.success(`Requerimiento ${resultado.consecutivo} creado (borrador)`);

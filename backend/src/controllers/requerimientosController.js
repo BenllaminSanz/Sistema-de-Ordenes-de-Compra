@@ -23,7 +23,7 @@ const TRANSICIONES_POR_ROL = {
     borrador: ['en_revision'],
     incompleto: ['en_revision'],
     en_revision: ['aprobado', 'incompleto', 'rechazado'],
-    aprobado: ['cerrado'],
+    aprobado: ['cerrado', 'rechazado'],
   },
 };
 
@@ -114,8 +114,10 @@ async function crear(req, res) {
       });
     }
 
-    if (!tieneItemsEstructurados && !tieneItemsLibres && notasFinal.length < 5) {
-      return res.status(400).json({ mensaje: 'Las notas deben tener al menos 5 caracteres cuando no se seleccionan ítems del catálogo ni ítems libres' });
+    if (!tieneItemsEstructurados && !tieneItemsLibres) {
+      return res.status(400).json({
+        mensaje: 'Debe incluir al menos un ítem del catálogo o un ítem nuevo. No se pueden crear requerimientos vacíos.',
+      });
     }
 
     // Forzar requiere_cotizacion=true si hay ítems libres (regla de negocio: solo ellos necesitan cotización para alta en catálogo)
@@ -181,6 +183,12 @@ async function actualizar(req, res) {
     if (tieneItemsEstructurados && tieneItemsLibres) {
       return res.status(400).json({ 
         mensaje: 'No se puede mezclar ítems del catálogo con ítems en texto libre en el mismo requerimiento. Un requerimiento debe ser solo de ítems existentes (del catálogo) o solo de ítems nuevos (libres para cotizar y dar de alta).' 
+      });
+    }
+
+    if ((items !== undefined || items_libres !== undefined) && !tieneItemsEstructurados && !tieneItemsLibres) {
+      return res.status(400).json({
+        mensaje: 'Debe incluir al menos un ítem del catálogo o un ítem nuevo. No se pueden guardar requerimientos vacíos.',
       });
     }
 
@@ -269,6 +277,14 @@ async function cambiarEstado(req, res) {
       });
     }
 
+    if (estado === 'rechazado' && reqActual.estado === 'aprobado') {
+      if (reqActual.orden_compra_id || reqActual.oc_id) {
+        return res.status(422).json({
+          mensaje: 'No se puede cancelar un requerimiento que ya tiene una orden de compra generada.',
+        });
+      }
+    }
+
     // === VALIDACIÓN PARA APROBAR REQUERIMIENTOS QUE NECESITAN COTIZACIÓN ===
     if (estado === 'aprobado') {
       if (reqActual.requiere_cotizacion) {
@@ -283,11 +299,6 @@ async function cambiarEstado(req, res) {
           });
         }
 
-        if (!seleccionada.archivo_url || !seleccionada.archivo_url.trim()) {
-          return res.status(400).json({ 
-            mensaje: 'Debes adjuntar el PDF de la cotización seleccionada antes de aprobar el requerimiento.' 
-          });
-        }
       }
     }
 

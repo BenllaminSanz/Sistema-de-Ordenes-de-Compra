@@ -1,44 +1,21 @@
 // ── MODAL DE COTIZACIÓN ───────────────────────────────────────
 
-let _proveedoresCotizacionCache = [];
-
 function resolverProveedorCotizacionId() {
   const hidden = document.getElementById('cot_proveedor_id');
   const input  = document.getElementById('cot_proveedor_busqueda');
-  if (!input) return null;
-
-  const texto = input.value.trim();
-  if (!texto) {
-    if (hidden) hidden.value = '';
-    return null;
-  }
-
-  const exacto = _proveedoresCotizacionCache.find(p => UI.labelProveedor(p) === texto);
-  if (exacto) {
-    if (hidden) hidden.value = exacto.id;
-    return exacto.id;
-  }
-
-  const parcial = _proveedoresCotizacionCache.find(p => {
-    const label = UI.labelProveedor(p).toLowerCase();
-    return label.includes(texto.toLowerCase());
-  });
-
-  if (parcial) {
-    input.value = UI.labelProveedor(parcial);
-    if (hidden) hidden.value = parcial.id;
-    return parcial.id;
-  }
-
-  if (hidden) hidden.value = '';
-  return null;
+  if (typeof ProveedorBusqueda === 'undefined') return null;
+  return ProveedorBusqueda.resolver(input, hidden);
 }
 
 function setProveedorCotizacion(proveedorId, labelTexto) {
   const hidden = document.getElementById('cot_proveedor_id');
   const input  = document.getElementById('cot_proveedor_busqueda');
-  if (hidden) hidden.value = proveedorId || '';
-  if (input) input.value = labelTexto || '';
+  if (proveedorId && typeof ProveedorBusqueda !== 'undefined') {
+    ProveedorBusqueda.establecer(input, hidden, proveedorId);
+  } else {
+    if (hidden) hidden.value = proveedorId || '';
+    if (input) input.value = labelTexto || '';
+  }
 }
 
 function abrirModalCotizacion() {
@@ -64,6 +41,11 @@ function prepararModalCotizacion(req) {
   if (!cotizacionEditandoId) {
     configurarToggleDesglose(req, null);
     prellenarItemsCotizacionDesdeReq(req);
+    const notasEl = document.getElementById('cot_notas');
+    if (notasEl && req.notas) notasEl.value = req.notas;
+
+    const fechaEl = document.getElementById('cot_fecha_envio');
+    if (fechaEl) fechaEl.value = new Date().toISOString().slice(0, 10);
   }
 }
 
@@ -127,10 +109,6 @@ async function guardarCotizacionOriginal() {
         const catalogoIdRaw  = row.querySelector('.item-catalogo-id')?.value;
         const catalogo_id    = catalogoIdRaw ? parseInt(catalogoIdRaw, 10) : null;
 
-        if (!catalogo_id && !codigoCatalogo) {
-          return Toast.error(`El concepto "${descripcion}" requiere Nº ítem (código de catálogo). Ese código se guardará al formalizar en catálogo.`);
-        }
-
         datos.items.push({
           descripcion,
           cantidad,
@@ -166,7 +144,18 @@ async function guardarCotizacionOriginal() {
     }
 
     if (response.success || response.id || response.message) {
-      Toast.success(cotizacionEditandoId ? 'Cotización actualizada correctamente' : '¡Cotización guardada correctamente!');
+      let msg = cotizacionEditandoId ? 'Cotización actualizada correctamente' : '¡Cotización guardada correctamente!';
+      if (!cotizacionEditandoId && response.email_enviado) {
+        msg = 'Cotización guardada y solicitud enviada por correo al proveedor';
+      } else if (!cotizacionEditandoId && response.email_omitido) {
+        msg = 'Cotización guardada (registro interno, sin envío de correo)';
+      } else if (!cotizacionEditandoId && response.scheduled_at) {
+        const prog = new Date(response.scheduled_at);
+        if (prog > new Date()) {
+          msg = `Cotización guardada. El correo se enviará el ${prog.toLocaleString('es-MX')}`;
+        }
+      }
+      Toast.success(msg);
       cerrarModalCotizacion();
       await cargarCotizaciones(requerimientoActual.id);
     } else {
@@ -235,13 +224,8 @@ function prepararConfirmacionEnvioCotizacion() {
       <button class="btn btn-primary" onclick="confirmarGuardarSinEnvio()">Guardar sin enviar correo</button>`;
 
   } else if (esHoy) {
-    titulo.textContent = '¿Enviar cotización ahora?';
-    body.innerHTML = `
-      <p>La fecha de envío es <strong>hoy</strong>.</p>
-      <p>¿Deseas enviar esta solicitud de cotización al proveedor de inmediato?</p>`;
-    footer.innerHTML = `
-      <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmarEnvioInmediato()">Enviar ahora</button>`;
+    guardarCotizacionOriginal();
+    return;
 
   } else {
     const fechaFormateada = fechaSeleccionada.toLocaleDateString('es-MX', {
@@ -291,25 +275,13 @@ async function confirmarProgramarEnvioFuturo() {
 // ── Helpers del modal ─────────────────────────────────────────
 async function cargarProveedoresEnModal() {
   try {
-    const proveedores = await Api.get('/proveedores?activos=true');
-    _proveedoresCotizacionCache = proveedores || [];
-
-    const datalist = document.getElementById('cot_proveedores_list');
-    if (datalist) {
-      datalist.innerHTML = '';
-      _proveedoresCotizacionCache.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = UI.labelProveedor(p);
-        datalist.appendChild(opt);
-      });
-    }
-
-    const busqueda = document.getElementById('cot_proveedor_busqueda');
-    if (busqueda && !busqueda.dataset.boundResolver) {
-      busqueda.dataset.boundResolver = 'true';
-      busqueda.addEventListener('change', resolverProveedorCotizacionId);
-      busqueda.addEventListener('blur', resolverProveedorCotizacionId);
-    }
+    if (typeof ProveedorBusqueda === 'undefined') return;
+    await ProveedorBusqueda.init({
+      inputId: 'cot_proveedor_busqueda',
+      hiddenId: 'cot_proveedor_id',
+      datalistId: 'cot_proveedores_list',
+      placeholder: 'Buscar por código o nombre…',
+    });
   } catch (e) {
     console.error('Error cargando proveedores:', e);
   }
@@ -420,7 +392,7 @@ function crearFilaItem(itemData = {}) {
 
   row.innerHTML = `
     <td style="vertical-align: top;">
-      <input type="text" class="form-control item-codigo-catalogo" placeholder="Nº ítem *" value="${codigoCatalogo}" title="Nº ítem — se guardará como código en el catálogo" ${itemData.catalogo_id ? 'readonly' : ''}>
+      <input type="text" class="form-control item-codigo-catalogo" placeholder="Nº ítem" value="${codigoCatalogo}" title="Opcional al cotizar; obligatorio al autorizar la OC" ${itemData.catalogo_id ? 'readonly' : ''}>
       <input type="hidden" class="item-catalogo-id" value="${itemData.catalogo_id || ''}">
     </td>
     <td style="vertical-align: top;">

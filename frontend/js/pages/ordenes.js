@@ -1088,6 +1088,18 @@ if (busqOcInput) {
 }
 
 let _editItemCatalogoId = null;
+let _editItemProveedorInited = false;
+
+async function initProveedorBusquedaEditarItemOc() {
+  if (_editItemProveedorInited || typeof ProveedorBusqueda === 'undefined') return;
+  await ProveedorBusqueda.init({
+    inputId: 'editar-item-proveedor-busqueda',
+    hiddenId: 'editar-item-proveedor-id',
+    datalistId: 'editar-item-proveedores-list',
+    placeholder: 'Buscar por código o nombre…',
+  });
+  _editItemProveedorInited = true;
+}
 
 async function abrirEditarItemProveedor(catalogoId, descripcion, proveedorActualId, precioActual, unidadActual) {
   _editItemCatalogoId = catalogoId;
@@ -1100,26 +1112,21 @@ async function abrirEditarItemProveedor(catalogoId, descripcion, proveedorActual
   if (precioEl)  precioEl.value  = precioActual != null ? precioActual : '';
   if (unidadEl)  unidadEl.value  = unidadActual || '';
 
-  const sel = document.getElementById('editar-item-proveedor-select');
-  if (!sel) return;
+  const provInput  = document.getElementById('editar-item-proveedor-busqueda');
+  const provHidden = document.getElementById('editar-item-proveedor-id');
+  if (!provInput) return;
 
-  sel.innerHTML = '<option value="">Sin proveedor asignado</option>';
   try {
-    const proveedores = await Api.get('/proveedores');
-    proveedores.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.num_proveedor ? `${p.num_proveedor} — ${p.nombre}` : p.nombre;
-      if (p.id === proveedorActualId) opt.selected = true;
-      sel.appendChild(opt);
-    });
+    await initProveedorBusquedaEditarItemOc();
+    ProveedorBusqueda.establecer(provInput, provHidden, proveedorActualId || '');
   } catch {
     Toast.error('No se pudieron cargar los proveedores');
     return;
   }
 
   document.getElementById('btn-guardar-item-proveedor').onclick = async () => {
-    const provId = sel.value ? parseInt(sel.value, 10) : null;
+    ProveedorBusqueda.resolver(provInput, provHidden);
+    const provId = provHidden?.value ? parseInt(provHidden.value, 10) : null;
     const precio = precioEl?.value !== '' && precioEl?.value != null ? parseFloat(precioEl.value) : null;
     const unidad = unidadEl?.value.trim() || null;
     try {

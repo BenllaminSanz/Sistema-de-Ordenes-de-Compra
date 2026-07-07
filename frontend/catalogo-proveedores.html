@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catálogo por Proveedor — Sistema OC</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app-layout">
+  <aside id="sidebar"></aside>
+
+  <div style="flex:1">
+    <header id="topbar"></header>
+
+    <main id="main-content">
+      <div class="card">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">Catálogo por Proveedor</h2>
+            <nav class="catalog-view-tabs" aria-label="Vista del catálogo">
+              <a href="catalogo.html" class="catalog-view-tab">Por ítems</a>
+              <a href="catalogo-proveedores.html" class="catalog-view-tab active">Por proveedor</a>
+            </nav>
+          </div>
+        </div>
+
+        <div class="filters-bar">
+          <div class="search-wrap" style="flex:1 1 280px;">
+            <svg class="search-icon" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" id="busqueda-proveedor" class="form-control search-input"
+                   placeholder="Buscar proveedor por código o nombre…"
+                   oninput="filtrarListaProveedores()">
+          </div>
+          <select id="filtro-tipo-prov" class="form-control" onchange="filtrarListaProveedores()">
+            <option value="">Todos los tipos</option>
+            <option value="PARTES">Partes</option>
+            <option value="SERVICIOS">Servicios</option>
+            <option value="FLETES">Fletes</option>
+          </select>
+          <label class="chk-label">
+            <input type="checkbox" id="chk-activos-prov" checked onchange="cargarCatalogoPorProveedor()">
+            Solo ítems activos
+          </label>
+          <span id="prov-contador" class="filter-count"></span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:minmax(240px, 320px) 1fr; gap:16px; align-items:start;">
+          <div class="card" style="padding:0; overflow:hidden; margin:0;">
+            <div style="padding:10px 12px; background:#f8fafc; border-bottom:1px solid var(--border); font-size:12px; font-weight:600; color:var(--muted);">
+              Proveedores con ítems en catálogo
+            </div>
+            <div id="lista-proveedores-catalogo" style="max-height:520px; overflow-y:auto;"></div>
+          </div>
+          <div>
+            <div id="proveedor-seleccionado-titulo" style="font-size:13px; font-weight:600; color:var(--muted); margin-bottom:8px;">
+              Selecciona un proveedor para ver sus ítems
+            </div>
+            <div id="tabla-items-proveedor"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div id="carrito-req-bar" class="carrito-req-bar" style="display:none" aria-live="polite">
+  <div class="carrito-req-bar-inner">
+    <div class="carrito-req-bar-info">
+      <span class="carrito-req-bar-icon">🛒</span>
+      <div>
+        <div class="carrito-req-bar-title" id="carrito-req-titulo">0 ítems en tu solicitud</div>
+        <div class="carrito-req-bar-sub" id="carrito-req-sub"></div>
+      </div>
+    </div>
+    <div class="carrito-req-bar-actions">
+      <button type="button" class="btn btn-sm btn-outline" onclick="toggleDetalleCarritoReq()">Ver ítems</button>
+      <button type="button" class="btn btn-sm btn-primary" onclick="CarritoReqUI.irACrearRequerimiento()">Crear requerimiento</button>
+      <button type="button" class="btn btn-sm btn-outline" onclick="vaciarCarritoReq()" title="Vaciar solicitud">Vaciar</button>
+    </div>
+  </div>
+  <div id="carrito-req-detalle" class="carrito-req-detalle" style="display:none"></div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/carrito-req.js"></script>
+<script src="js/proveedor-busqueda.js"></script>
+<script src="js/pages/catalogo-proveedores.js"></script>
+</body>
+</html>

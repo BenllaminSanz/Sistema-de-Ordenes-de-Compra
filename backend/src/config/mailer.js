@@ -135,7 +135,7 @@ export function getConfigSource() {
  * Función genérica para enviar cualquier correo.
  * Usa el transporter actual (puede provenir de DB o .env).
  */
-export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text }) => {
+export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text, attachments }) => {
   const transporter = getTransporter();
   const from = getFromAddress();
 
@@ -151,6 +151,7 @@ export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text }
     if (cc) mailOptions.cc = cc;
     if (bcc) mailOptions.bcc = bcc;
     if (replyTo) mailOptions.replyTo = replyTo;
+    if (attachments?.length) mailOptions.attachments = attachments;
 
     const info = await transporter.sendMail(mailOptions);
     console.log(`📧 Correo enviado a ${to} | MessageId: ${info.messageId} (fuente:${currentConfigSource})`);

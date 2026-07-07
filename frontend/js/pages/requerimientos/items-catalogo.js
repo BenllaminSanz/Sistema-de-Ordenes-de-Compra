@@ -6,31 +6,62 @@ if (reqTipoSelect) {
     const seccion    = document.getElementById('seccion-items-catalogo');
     const selector   = document.getElementById('selector-items-nuevos');
     const provWrapper = document.getElementById('filtro-proveedor-wrapper');
-    const provSelect  = document.getElementById('filtro-proveedor-catalogo');
+    const provInput   = document.getElementById('filtro-proveedor-busqueda');
+    const provHidden  = document.getElementById('filtro-proveedor-id');
 
     if (seccion)    seccion.style.display    = reqTipoSelect.value ? 'block' : 'none';
     if (selector)   selector.style.display   = reqTipoSelect.value ? 'block' : 'none';
     if (provWrapper) provWrapper.style.display = reqTipoSelect.value ? '' : 'none';
-    if (provSelect && !reqTipoSelect.value) provSelect.value = '';
+    if (!reqTipoSelect.value && typeof ProveedorBusqueda !== 'undefined') {
+      ProveedorBusqueda.limpiar(provInput, provHidden);
+    }
 
     if (reqTipoSelect.value) {
-      CarritoReq.vaciar();
-      window.requerimientoItemsLibres = [];
-      desbloquearFiltroProveedorCatalogo();
+      const restaurando = window._reqRestaurandoBorrador === true;
+
+      if (!restaurando) {
+        CarritoReq.vaciar();
+        window.requerimientoItemsLibres = [];
+        desbloquearFiltroProveedorCatalogo();
+
+        const checkbox = document.getElementById('usar-items-nuevos');
+        if (checkbox) checkbox.checked = false;
+
+        if (typeof ocultarLibreInline === 'function') ocultarLibreInline(true);
+        if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('catalogo', true);
+      }
+
       renderItemsSeleccionados();
       renderLibresResumen();
-
-      const checkbox = document.getElementById('usar-items-nuevos');
-      if (checkbox) checkbox.checked = false;
-
-      // Resetear modo al cambiar tipo (arrays ya limpios, sin confirm)
-      if (typeof ocultarLibreInline === 'function') ocultarLibreInline(true);
-      if (typeof window.seleccionarModoItems === 'function') window.seleccionarModoItems('catalogo');
-
-      cargarFiltroProveedoresParaCatalogo();
+      initFiltroProveedorReq();
     }
   });
 }
+
+let _filtroProveedorReqInited = false;
+
+async function initFiltroProveedorReq() {
+  if (typeof ProveedorBusqueda === 'undefined') return;
+
+  await ProveedorBusqueda.init({
+    inputId: 'filtro-proveedor-busqueda',
+    hiddenId: 'filtro-proveedor-id',
+    datalistId: 'filtro-proveedores-req-list',
+    placeholder: 'Proveedor (código o nombre)…',
+    onChange: (id) => {
+      const cont = document.getElementById('resultados-catalogo');
+      if (!cont || !cont.innerHTML.trim() || cont.innerHTML.indexOf('Buscando') !== -1) return;
+      if (id || document.getElementById('busqueda-catalogo')?.value.trim()) {
+        buscarEnCatalogo();
+      }
+    },
+  });
+  _filtroProveedorReqInited = true;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initFiltroProveedorReq().catch(console.error);
+});
 
 function renderItemsSeleccionados() {
   const contenedor = document.getElementById('items-seleccionados-req');
@@ -131,20 +162,20 @@ window.eliminarItemSeleccionado = function(index) {
 };
 
 function bloquearFiltroProveedorCatalogo(proveedorId) {
-  const select = document.getElementById('filtro-proveedor-catalogo');
-  if (!select || proveedorId == null || proveedorId === '') return;
-
-  select.value = String(proveedorId);
-  select.disabled = true;
-  select.title = 'Proveedor fijado al del primer ítem agregado';
+  if (proveedorId == null || proveedorId === '') return;
+  const input  = document.getElementById('filtro-proveedor-busqueda');
+  const hidden = document.getElementById('filtro-proveedor-id');
+  if (typeof ProveedorBusqueda !== 'undefined') {
+    ProveedorBusqueda.bloquear(input, hidden, proveedorId);
+  }
 }
 
 function desbloquearFiltroProveedorCatalogo() {
-  const select = document.getElementById('filtro-proveedor-catalogo');
-  if (!select) return;
-
-  select.disabled = false;
-  select.title = '';
+  const input  = document.getElementById('filtro-proveedor-busqueda');
+  const hidden = document.getElementById('filtro-proveedor-id');
+  if (typeof ProveedorBusqueda !== 'undefined') {
+    ProveedorBusqueda.limpiar(input, hidden);
+  }
 }
 
 window.desbloquearFiltroProveedorCatalogo = desbloquearFiltroProveedorCatalogo;
@@ -156,18 +187,24 @@ async function buscarEnCatalogo() {
 
   const busqueda  = input.value.trim();
   const tipo      = document.getElementById('req-tipo')?.value;
-  const provSelect = document.getElementById('filtro-proveedor-catalogo');
+  const provHidden = document.getElementById('filtro-proveedor-id');
+  const provInput  = document.getElementById('filtro-proveedor-busqueda');
 
   if (!tipo) {
     Toast.info('Primero selecciona el Tipo de requerimiento');
     return;
   }
 
+  if (typeof ProveedorBusqueda !== 'undefined' && provInput && !provInput.disabled) {
+    ProveedorBusqueda.resolver(provInput, provHidden);
+  }
+
   contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#666;">Buscando...</div>';
 
   try {
     const params = new URLSearchParams({ tipo, busqueda, soloActivos: 'true' });
-    if (provSelect && provSelect.value) params.set('proveedor_id', provSelect.value);
+    const provId = provHidden?.value;
+    if (provId) params.set('proveedor_id', provId);
 
     const resultados = await Api.get(`/catalogo?${params.toString()}`);
 
@@ -299,42 +336,6 @@ window.agregarComoLibreDesdeBusqueda = function() {
   const contenedor = document.getElementById('resultados-catalogo');
   if (contenedor) contenedor.innerHTML = '';
 };
-
-async function cargarFiltroProveedoresParaCatalogo() {
-  const select = document.getElementById('filtro-proveedor-catalogo');
-  if (!select) return;
-
-  try {
-    if (!_proveedoresCatalogoCache) {
-      _proveedoresCatalogoCache = await Api.get('/proveedores?activos=true');
-    }
-
-    const previo = select.value;
-    select.innerHTML = '<option value="">Todos los proveedores</option>';
-    _proveedoresCatalogoCache.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = UI.labelProveedor(p);
-      select.appendChild(opt);
-    });
-
-    if (previo && Array.from(select.options).some(o => String(o.value) === String(previo))) {
-      select.value = previo;
-    }
-
-    if (!select.dataset.autoSearchBound) {
-      select.dataset.autoSearchBound = 'true';
-      select.addEventListener('change', () => {
-        const cont = document.getElementById('resultados-catalogo');
-        if (cont && cont.innerHTML.trim() !== '' && cont.innerHTML.indexOf('Buscando') === -1) {
-          buscarEnCatalogo();
-        }
-      });
-    }
-  } catch (e) {
-    console.error('Error cargando proveedores para filtro de catálogo:', e);
-  }
-}
 
 window.crearRequerimientoParaAltaCatalogo = function(texto, tipo) {
   const contenedor = document.getElementById('resultados-catalogo');

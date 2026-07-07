@@ -25,8 +25,14 @@ document.addEventListener('DOMContentLoaded', () => {
   CarritoReq.onChange(() => renderTablaCatalogo(_getCatalogoFiltradoActual()));
   actualizarBarraCarritoReq();
 
-  cargarProveedoresParaSelect();
-  cargarProveedoresParaFiltro();
+  initProveedorBusquedaModalCatalogo();
+  ProveedorBusqueda.init({
+    inputId: 'filtro-proveedor-busqueda',
+    hiddenId: 'filtro-proveedor-id',
+    datalistId: 'filtro-proveedores-list',
+    placeholder: 'Proveedor (código o nombre)…',
+    onChange: () => filtrarCatalogo(),
+  });
   cargarCatalogo();
 });
 
@@ -57,7 +63,7 @@ async function cargarCatalogo() {
 function _getCatalogoFiltradoActual() {
   const q         = (document.getElementById('busqueda')?.value ?? '').trim().toLowerCase();
   const tipo      = document.getElementById('filtro-tipo')?.value || '';
-  const proveedor = document.getElementById('filtro-proveedor')?.value || '';
+  const proveedor = document.getElementById('filtro-proveedor-id')?.value || '';
 
   return _catalogoData.filter(item => {
     const matchTipo = !tipo || item.tipo === tipo;
@@ -281,7 +287,7 @@ async function cargarProveedoresLista() {
   if (proveedoresCache.length) return proveedoresCache;
 
   try {
-    proveedoresCache = await Api.get('/proveedores?soloActivos=true');
+    proveedoresCache = await Api.get('/proveedores?activos=true');
   } catch (err) {
     console.warn('No se pudieron cargar proveedores');
     proveedoresCache = [];
@@ -290,40 +296,14 @@ async function cargarProveedoresLista() {
   return proveedoresCache;
 }
 
-// Cargar proveedores para el selector del modal
-async function cargarProveedoresParaSelect() {
+async function initProveedorBusquedaModalCatalogo() {
   if (!esAdminCatalogo) return;
-
-  const proveedores = await cargarProveedoresLista();
-  const select = document.getElementById('cat-proveedor');
-  if (select) {
-    select.innerHTML = '<option value="">Sin proveedor asignado</option>';
-    proveedores.forEach(p => {
-      const option = document.createElement('option');
-      option.value = p.id;
-      option.textContent = UI.labelProveedor(p);
-      select.appendChild(option);
-    });
-  }
-}
-
-async function cargarProveedoresParaFiltro() {
-  const proveedores = await cargarProveedoresLista();
-  const filtro = document.getElementById('filtro-proveedor');
-  if (!filtro) return;
-
-  const previo = filtro.value;
-  filtro.innerHTML = '<option value="">Todos los proveedores</option>';
-  proveedores.forEach(p => {
-    const option = document.createElement('option');
-    option.value = p.id;
-    option.textContent = UI.labelProveedor(p);
-    filtro.appendChild(option);
+  await ProveedorBusqueda.init({
+    inputId: 'cat-proveedor-busqueda',
+    hiddenId: 'cat-proveedor-id',
+    datalistId: 'cat-proveedores-list',
+    placeholder: 'Buscar por código o nombre…',
   });
-
-  if (previo && [...filtro.options].some(o => String(o.value) === String(previo))) {
-    filtro.value = previo;
-  }
 }
 
 function abrirModalCatalogo(item = null) {
@@ -347,10 +327,18 @@ function abrirModalCatalogo(item = null) {
     document.getElementById('cat-costo').value = item.costo_referencia || '';
     document.getElementById('cat-moneda').value = item.moneda || 'MXN';
     document.getElementById('cat-unidad').value = item.unidad || '';
-    document.getElementById('cat-proveedor').value = item.proveedor_id || '';
+    ProveedorBusqueda.establecer(
+      document.getElementById('cat-proveedor-busqueda'),
+      document.getElementById('cat-proveedor-id'),
+      item.proveedor_id || ''
+    );
   } else {
     titulo.textContent = 'Nuevo elemento del catálogo';
     document.getElementById('cat-moneda').value = 'MXN';
+    ProveedorBusqueda.limpiar(
+      document.getElementById('cat-proveedor-busqueda'),
+      document.getElementById('cat-proveedor-id')
+    );
   }
 
   modal.style.display = 'flex';
@@ -410,7 +398,10 @@ async function guardarCatalogo(e) {
   const costoStr = document.getElementById('cat-costo').value;
   const moneda = document.getElementById('cat-moneda').value || 'MXN';
   const unidad = document.getElementById('cat-unidad').value.trim() || null;
-  const proveedor_id = document.getElementById('cat-proveedor').value || null;
+  const provInput  = document.getElementById('cat-proveedor-busqueda');
+  const provHidden = document.getElementById('cat-proveedor-id');
+  ProveedorBusqueda.resolver(provInput, provHidden);
+  const proveedor_id = provHidden?.value || null;
 
   let tieneErrores = false;
 

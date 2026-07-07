@@ -180,9 +180,12 @@
     <div id="editar-item-desc" style="font-size:13px;color:#475569;margin-bottom:16px;padding:10px;background:#f8fafc;border-radius:6px;"></div>
     <div class="form-group">
       <label class="form-label">Proveedor</label>
-      <select id="editar-item-proveedor-select" class="form-control">
-        <option value="">Sin proveedor asignado</option>
-      </select>
+      <input type="text" id="editar-item-proveedor-busqueda" class="form-control"
+             list="editar-item-proveedores-list"
+             placeholder="Buscar por código o nombre…"
+             autocomplete="off">
+      <input type="hidden" id="editar-item-proveedor-id">
+      <datalist id="editar-item-proveedores-list"></datalist>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div class="form-group">
@@ -203,6 +206,7 @@
 
 <div id="toast-container"></div>
 <script src="js/app.js"></script>
+<script src="js/proveedor-busqueda.js"></script>
 <script src="js/pages/ordenes.js"></script>
 </body>
 </html>

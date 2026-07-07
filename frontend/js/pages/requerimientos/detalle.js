@@ -1,5 +1,271 @@
 // ── DETALLE DEL REQUERIMIENTO ─────────────────────────────────
 
+const EMPRESA_SUBTITULO = 'Hilos de Yecapixtla S.A. de C.V.';
+const LOGO_PRINT_PATH = 'img/topLogoParkdale.png';
+
+function buildPrintEncabezadoHtml() {
+  const logoUrl = `${window.location.origin}/${LOGO_PRINT_PATH}`;
+  return `
+    <div class="print-encabezado">
+      <img src="${logoUrl}" alt="Parkdale">
+      <p class="print-empresa">${EMPRESA_SUBTITULO}</p>
+    </div>`;
+}
+
+function getPrintStyles() {
+  return `
+    @page { size: letter portrait; margin: 8mm 10mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: white;
+      color: #111;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9pt;
+      line-height: 1.3;
+    }
+    #print-sheet {
+      width: 100%;
+      transform-origin: top left;
+    }
+    .print-encabezado {
+      text-align: center;
+      margin-bottom: 6px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    .print-encabezado img {
+      display: block;
+      margin: 0 auto 3px;
+      max-width: 150px;
+      max-height: 42px;
+      height: auto;
+    }
+    .print-empresa {
+      margin: 0;
+      font-size: 8.5pt;
+      font-weight: 600;
+      color: #334155;
+    }
+    .print-titulo {
+      text-align: center;
+      margin: 0 0 6px;
+      font-size: 11pt;
+      font-weight: 700;
+    }
+    .print-contenido .card-title {
+      font-size: 9.5pt;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+    .print-contenido table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8pt !important;
+    }
+    .print-contenido table td,
+    .print-contenido table th {
+      padding: 2px 4px !important;
+      vertical-align: top;
+    }
+    .print-contenido > div,
+    .print-contenido div[style*="margin-top"] {
+      margin-top: 5px !important;
+      padding-top: 5px !important;
+    }
+    .print-contenido p {
+      margin: 0 !important;
+      font-size: 8.5pt !important;
+      line-height: 1.35 !important;
+    }
+    .print-contenido ul {
+      margin: 0 !important;
+      padding-left: 14px !important;
+      font-size: 8pt !important;
+    }
+    .print-contenido li {
+      margin-bottom: 2px !important;
+    }
+    .print-contenido button {
+      display: none !important;
+    }
+    .print-contenido div[style*="font-size:12px"],
+    .print-contenido div[style*="font-size:11px"] {
+      font-size: 8pt !important;
+      margin-bottom: 2px !important;
+    }
+    .print-cotizacion {
+      margin-top: 6px !important;
+      border: 1px solid #166534;
+      padding: 6px 8px !important;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+    .print-cotizacion h3 {
+      color: #166534;
+      margin: 0 0 3px;
+      font-size: 9pt;
+    }
+    .print-cotizacion p {
+      margin: 1px 0 !important;
+      font-size: 8pt !important;
+    }
+    .print-cotizacion table {
+      font-size: 7.5pt !important;
+      margin-top: 4px !important;
+    }
+    .print-cotizacion table td,
+    .print-cotizacion table th {
+      padding: 2px 3px !important;
+    }
+    .print-firmas {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      padding-top: 4px;
+      page-break-inside: avoid;
+    }
+    .print-firma-col {
+      flex: 1;
+      text-align: center;
+      min-width: 0;
+    }
+    .print-firma-linea {
+      border-top: 1px solid #000;
+      margin: 0 6px 4px;
+      height: 1px;
+    }
+    .print-firma-label {
+      font-size: 7pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      color: #374151;
+      margin-bottom: 2px;
+    }
+    .print-firma-nombre {
+      font-size: 8pt;
+      color: #111827;
+    }
+    @media print {
+      html, body { height: auto; overflow: visible; }
+      #print-sheet { page-break-inside: avoid; }
+    }
+  `;
+}
+
+function ajustarImpresionUnaPagina(ventana) {
+  const sheet = ventana.document.getElementById('print-sheet');
+  if (!sheet) return;
+
+  sheet.style.transform = '';
+  sheet.style.width = '';
+  ventana.document.body.style.height = '';
+
+  const maxAltoPx = 1000;
+  const alto = sheet.getBoundingClientRect().height;
+  if (alto <= maxAltoPx) return;
+
+  const escala = maxAltoPx / alto;
+  sheet.style.transform = `scale(${escala})`;
+  sheet.style.width = `${100 / escala}%`;
+  ventana.document.body.style.height = `${Math.ceil(alto * escala)}px`;
+}
+
+function lanzarImpresionVentana(ventana) {
+  ajustarImpresionUnaPagina(ventana);
+  ventana.focus();
+  ventana.print();
+  ventana.close();
+}
+
+function _redondearMonto(n) {
+  return typeof redondear2 === 'function' ? redondear2(n) : Math.round(n * 100) / 100;
+}
+
+function renderProveedorSeleccionadoHtml(prov) {
+  if (!prov?.proveedor_id && !prov?.proveedor_nombre) return '';
+  const label = UI.labelProveedor(prov) || '—';
+  const monto = prov.cotizacion_monto != null
+    ? parseFloat(prov.cotizacion_monto).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : null;
+  return `
+    <tr>
+      <td style="padding:6px 0;color:#6b7280">Proveedor seleccionado</td>
+      <td>
+        <strong style="color:#166534;">${label}</strong>
+        ${monto ? `<span style="margin-left:8px;color:#64748b;font-size:12px;">($${monto} ${prov.cotizacion_moneda || 'MXN'})</span>` : ''}
+      </td>
+    </tr>`;
+}
+
+function renderTablaItemsCatalogo(items) {
+  if (!items?.length) return '';
+
+  let totalGeneral = 0;
+  let monedaTotal = 'MXN';
+  let tieneSubtotales = false;
+
+  const filas = items.map(item => {
+    const cantidad = parseFloat(item.cantidad) || 0;
+    const precioRef = item.costo_referencia != null ? parseFloat(item.costo_referencia) : null;
+    const moneda = item.moneda || 'MXN';
+    const precioFmt = precioRef != null ? precioRef.toFixed(2) : '—';
+
+    let subtotalFmt = '—';
+    if (precioRef != null) {
+      const sub = _redondearMonto(cantidad * precioRef);
+      totalGeneral = _redondearMonto(totalGeneral + sub);
+      monedaTotal = moneda;
+      tieneSubtotales = true;
+      subtotalFmt = sub.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    const prov = (item.proveedor_num || item.proveedor_nombre)
+      ? `<div style="font-size:10px; color:#64748b; margin-top:1px;">Prov: <strong>${item.proveedor_num || ''}${item.proveedor_nombre ? ' — ' + item.proveedor_nombre : ''}</strong></div>`
+      : '';
+
+    return `
+      <tr>
+        <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${item.codigo}</strong>${prov}</td>
+        <td style="padding:4px 6px; border-bottom:1px solid #eee;">${item.descripcion}</td>
+        <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${cantidad.toLocaleString('es-MX')}</td>
+        <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; color:#0d6efd; font-weight:500;">${precioFmt}${precioRef != null ? ` ${moneda}` : ''}</td>
+        <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">${subtotalFmt !== '—' ? `$${subtotalFmt} ${moneda}` : '—'}</td>
+      </tr>`;
+  }).join('');
+
+  const totalFmt = tieneSubtotales
+    ? totalGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : null;
+
+  return `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Ítems solicitados del Catálogo</div>
+      <table style="width:100%; font-size:13px; border-collapse: collapse;">
+        <thead>
+          <tr style="background:#f8f9fa;">
+            <th style="text-align:left; padding:4px 6px;">Código</th>
+            <th style="text-align:left; padding:4px 6px;">Descripción</th>
+            <th style="text-align:right; padding:4px 6px;">Cantidad</th>
+            <th style="text-align:right; padding:4px 6px;">Precio ref.</th>
+            <th style="text-align:right; padding:4px 6px;">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filas}
+          ${totalFmt ? `
+          <tr style="background:#f8fafc;">
+            <td colspan="4" style="padding:8px 6px; text-align:right; font-weight:700; border-top:2px solid #e2e8f0;">Total</td>
+            <td style="padding:8px 6px; text-align:right; font-weight:700; color:#166534; font-size:14px; border-top:2px solid #e2e8f0;">$${totalFmt} ${monedaTotal}</td>
+          </tr>` : ''}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 async function abrirDetalle(id) {
   const lista = document.getElementById('vista-lista');
   const detalle = document.getElementById('vista-detalle');
@@ -69,6 +335,7 @@ function renderDetalle(req) {
           <td>${req.solicitante_nombre}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Requiere cotización</td>
           <td>${req.requiere_cotizacion ? 'Sí' : 'No'}</td></tr>
+      ${renderProveedorSeleccionadoHtml(req.proveedor_seleccionado)}
       <tr><td style="padding:6px 0;color:#6b7280">PO en DataTextNow</td>
           <td>${req.datatextnow_id || '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Fecha creación</td>
@@ -79,36 +346,7 @@ function renderDetalle(req) {
       <p style="margin:0;line-height:1.6">${req.notas || req.descripcion || '—'}</p>
     </div>
 
-    ${req.items && req.items.length > 0 ? `
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
-      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Ítems solicitados del Catálogo</div>
-      <table style="width:100%; font-size:13px; border-collapse: collapse;">
-        <thead>
-          <tr style="background:#f8f9fa;">
-            <th style="text-align:left; padding:4px 6px;">Código</th>
-            <th style="text-align:left; padding:4px 6px;">Descripción</th>
-            <th style="text-align:right; padding:4px 6px;">Cantidad</th>
-            <th style="text-align:right; padding:4px 6px;">Precio ref.</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${req.items.map(item => {
-            const p = (item.costo_referencia != null) ? parseFloat(item.costo_referencia).toFixed(2) : '—';
-            const m = item.moneda || 'MXN';
-            const prov = (item.proveedor_num || item.proveedor_nombre)
-              ? `<div style="font-size:10px; color:#64748b; margin-top:1px;">Prov: <strong>${item.proveedor_num || ''}${item.proveedor_nombre ? ' — ' + item.proveedor_nombre : ''}</strong></div>`
-              : '';
-            return `
-            <tr>
-              <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${item.codigo}</strong>${prov}</td>
-              <td style="padding:4px 6px; border-bottom:1px solid #eee;">${item.descripcion}</td>
-              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${parseFloat(item.cantidad).toLocaleString('es-MX')}</td>
-              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; color:#0d6efd; font-weight:500;">${p} ${m}</td>
-            </tr>
-          `;}).join('')}
-        </tbody>
-      </table>
-    </div>` : ''}
+    ${renderTablaItemsCatalogo(req.items)}
 
     ${req.items_libres && req.items_libres.length > 0 ? `
     <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #f0ad4e">
@@ -224,6 +462,9 @@ function renderAcciones(req) {
     }
     if (req.estado === 'aprobado') {
       acciones.push({ label:'Generar OC', accion:'generarOC', clase:'btn-primary' });
+      if (!req.oc_id && !req.orden_compra_id) {
+        acciones.push({ label:'Cancelar REQ', estado:'rechazado', clase:'btn-danger' });
+      }
     }
   }
 
@@ -247,10 +488,35 @@ function renderAcciones(req) {
 }
 
 // ── Cambio de estado ──────────────────────────────────────────
-function prepararCambioEstado(estado, label) {
+async function prepararCambioEstado(estado, label) {
   estadoPendiente = estado;
-  document.getElementById('modal-estado-titulo').textContent = label;
+  const titulo = estado === 'rechazado' && requerimientoActual?.estado === 'aprobado'
+    ? 'Cancelar requerimiento'
+    : label;
+  document.getElementById('modal-estado-titulo').textContent = titulo;
   document.getElementById('estado-notas').value = '';
+
+  const avisoEl = document.getElementById('estado-aviso');
+  if (avisoEl) {
+    avisoEl.style.display = 'none';
+    avisoEl.innerHTML = '';
+
+    if (estado === 'aprobado' && requerimientoActual?.requiere_cotizacion) {
+      try {
+        const response = await Api.get(`/cotizaciones/${requerimientoActual.id}`);
+        const cotizaciones = Array.isArray(response) ? response
+          : (response.data && Array.isArray(response.data) ? response.data : []);
+        const seleccionada = cotizaciones.find(
+          (c) => c.seleccionada === 1 || c.estado === 'seleccionada'
+        );
+        if (seleccionada && !seleccionada.archivo_url) {
+          avisoEl.innerHTML = '<strong>Recomendación:</strong> la cotización seleccionada no tiene PDF adjunto. Puedes aprobar igual, pero se sugiere agregar el documento de respaldo del proveedor.';
+          avisoEl.style.display = 'block';
+        }
+      } catch (_) { /* ignorar */ }
+    }
+  }
+
   UI.abrirModal('modal-estado');
 
   document.getElementById('btn-confirmar-estado').onclick = async () => {
@@ -260,6 +526,9 @@ function prepararCambioEstado(estado, label) {
         { estado: estadoPendiente, notas });
       UI.cerrarModal('modal-estado');
       Toast.success('Estado actualizado');
+      if (estadoPendiente === 'aprobado' && avisoEl?.style.display === 'block') {
+        Toast.warning('Recuerda adjuntar el PDF de la cotización seleccionada cuando lo tengas disponible.', 7000);
+      }
       abrirDetalle(requerimientoActual.id);
     } catch (err) {
       Toast.error(err.mensaje || 'Error al cambiar estado');
@@ -286,14 +555,14 @@ async function imprimirRequerimiento() {
 
         if (seleccionada.items && seleccionada.items.length > 0) {
           itemsHtml = `
-            <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:12px;">
+            <table>
               <thead>
-                <tr style="background:#f1f5f9;">
-                  <th style="text-align:left; padding:6px; border:1px solid #ccc;">Descripción</th>
-                  <th style="text-align:center; padding:6px; border:1px solid #ccc;">Cant.</th>
-                  <th style="text-align:center; padding:6px; border:1px solid #ccc;">Unidad</th>
-                  <th style="text-align:right; padding:6px; border:1px solid #ccc;">Precio Unit.</th>
-                  <th style="text-align:right; padding:6px; border:1px solid #ccc;">Subtotal</th>
+                <tr>
+                  <th>Descripción</th>
+                  <th style="text-align:center;">Cant.</th>
+                  <th style="text-align:center;">Unidad</th>
+                  <th style="text-align:right;">Precio</th>
+                  <th style="text-align:right;">Subtotal</th>
                 </tr>
               </thead>
               <tbody>
@@ -303,11 +572,11 @@ async function imprimirRequerimiento() {
                   const sub = redondear2(cantidad * precio).toLocaleString('es-MX');
                   return `
                     <tr>
-                      <td style="padding:4px; border:1px solid #ccc;">${item.descripcion || ''}</td>
-                      <td style="text-align:center; padding:4px; border:1px solid #ccc;">${cantidad}</td>
-                      <td style="text-align:center; padding:4px; border:1px solid #ccc;">${item.unidad || 'pieza'}</td>
-                      <td style="text-align:right; padding:4px; border:1px solid #ccc;">$${precio.toLocaleString('es-MX')}</td>
-                      <td style="text-align:right; padding:4px; border:1px solid #ccc; font-weight:600;">$${sub}</td>
+                      <td>${item.descripcion || ''}</td>
+                      <td style="text-align:center;">${cantidad}</td>
+                      <td style="text-align:center;">${item.unidad || 'pieza'}</td>
+                      <td style="text-align:right;">$${precio.toLocaleString('es-MX')}</td>
+                      <td style="text-align:right; font-weight:600;">$${sub}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -316,12 +585,12 @@ async function imprimirRequerimiento() {
         }
 
         cotizacionHtml = `
-          <div style="margin-top:30px; border:2px solid #166534; padding:15px; border-radius:6px;">
-            <h3 style="color:#166534; margin:0 0 10px;">✓ Cotización Seleccionada</h3>
-            <p style="margin:4px 0;"><strong>Proveedor:</strong> ${UI.labelProveedor(seleccionada)}</p>
-            <p style="margin:4px 0;"><strong>Monto Total:</strong> <span style="font-size:18px; font-weight:700; color:#166534;">$${monto} ${seleccionada.moneda || 'MXN'}</span></p>
+          <div class="print-cotizacion">
+            <h3>Cotización seleccionada</h3>
+            <p><strong>Proveedor:</strong> ${UI.labelProveedor(seleccionada)}</p>
+            <p><strong>Monto total:</strong> <strong>$${monto} ${seleccionada.moneda || 'MXN'}</strong></p>
             ${itemsHtml}
-            ${seleccionada.notas ? `<p style="margin-top:10px;"><strong>Notas:</strong> ${seleccionada.notas}</p>` : ''}
+            ${seleccionada.notas ? `<p><strong>Notas:</strong> ${seleccionada.notas}</p>` : ''}
           </div>`;
       }
     } catch (e) {
@@ -353,54 +622,36 @@ async function imprimirRequerimiento() {
     <html>
       <head>
         <title>Requerimiento: ${requerimientoActual.consecutivo}</title>
-        <link rel="stylesheet" href="css/app.css">
-        <style>
-          body { padding: 30px; background: white; color: black; font-family: Arial, sans-serif; }
-          .no-print, .btn, #sidebar, #topbar { display: none !important; }
-          .card { border: 1px solid #000; box-shadow: none; padding: 20px; }
-          .print-firmas {
-            display: flex;
-            justify-content: space-between;
-            gap: 24px;
-            margin-top: 48px;
-            padding-top: 12px;
-            page-break-inside: avoid;
-          }
-          .print-firma-col {
-            flex: 1;
-            text-align: center;
-            min-width: 0;
-          }
-          .print-firma-linea {
-            border-top: 1px solid #000;
-            margin: 0 8px 8px;
-            height: 1px;
-          }
-          .print-firma-label {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .4px;
-            color: #374151;
-            margin-bottom: 4px;
-          }
-          .print-firma-nombre {
-            font-size: 12px;
-            color: #111827;
-          }
-        </style>
+        <style>${getPrintStyles()}</style>
       </head>
       <body>
-        <h2>Detalle del Requerimiento: ${requerimientoActual.consecutivo}</h2>
-        <hr>
-        ${detalleElement.innerHTML}
-        ${cotizacionHtml}
-        ${firmasHtml}
+        <div id="print-sheet">
+          ${buildPrintEncabezadoHtml()}
+          <h2 class="print-titulo">Requerimiento: ${requerimientoActual.consecutivo}</h2>
+          <div class="print-contenido">${detalleElement.innerHTML}</div>
+          ${cotizacionHtml}
+          ${firmasHtml}
+        </div>
       </body>
     </html>
   `);
   ventana.document.close();
-  setTimeout(() => { ventana.print(); ventana.close(); }, 600);
+
+  let impreso = false;
+  const imprimir = () => {
+    if (impreso) return;
+    impreso = true;
+    lanzarImpresionVentana(ventana);
+  };
+
+  const img = ventana.document.querySelector('.print-encabezado img');
+  if (img && !img.complete) {
+    img.onload = imprimir;
+    img.onerror = imprimir;
+    setTimeout(imprimir, 1200);
+  } else {
+    setTimeout(imprimir, 80);
+  }
 }
 
 function editarRequerimientoActual() {

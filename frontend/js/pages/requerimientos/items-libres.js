@@ -214,7 +214,7 @@ window.eliminarItemLibreInline = function(index) {
       // Sin confirm: el array ya está vacío, no hay nada que limpiar
       ocultarLibreInline(true); // silencioso: solo oculta
       if (typeof window.seleccionarModoItems === 'function') {
-        window.seleccionarModoItems('catalogo');
+        window.seleccionarModoItems('catalogo', true);
       }
     }
   }

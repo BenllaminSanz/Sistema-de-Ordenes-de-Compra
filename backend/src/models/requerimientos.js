@@ -1,11 +1,15 @@
 import pool from '../config/db.js';
 import { validarAreaDepartamento, obtenerAreas } from '../config/departamentosStore.js';
-import { siguienteConsecutivoNumerico } from '../utils/consecutivos.js';
+import { prefijoConsecutivoReq, siguienteConsecutivoConPrefijo } from '../utils/consecutivos.js';
 
-/** Genera el consecutivo siguiente: solo número (001, 002, …). */
-async function generarConsecutivo(conn) {
-  const [rows] = await conn.query('SELECT consecutivo FROM requerimientos');
-  return siguienteConsecutivoNumerico(rows.map((r) => r.consecutivo));
+/** Genera el consecutivo siguiente: {año}{P|S}-{seq} — ej. 2026S-001, 2026P-002 */
+async function generarConsecutivo(conn, tipo) {
+  const prefijo = prefijoConsecutivoReq(tipo);
+  const [rows] = await conn.query(
+    'SELECT consecutivo FROM requerimientos WHERE consecutivo LIKE ?',
+    [`${prefijo}-%`]
+  );
+  return siguienteConsecutivoConPrefijo(rows.map((r) => r.consecutivo), prefijo);
 }
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
@@ -166,7 +170,29 @@ async function obtenerPorId(id) {
     }
   }
 
-  return { ...req, historial, items, items_libres: itemsLibres };
+  const [[cotSel]] = await pool.query(
+    `SELECT
+       c.id AS cotizacion_id,
+       c.monto_total AS cotizacion_monto,
+       c.moneda AS cotizacion_moneda,
+       c.proveedor_id,
+       p.num_proveedor AS proveedor_num,
+       p.nombre AS proveedor_nombre
+     FROM cotizaciones c
+     JOIN proveedores p ON p.id = c.proveedor_id
+     WHERE c.requerimiento_id = ?
+       AND (c.seleccionada = 1 OR c.estado = 'seleccionada')
+     LIMIT 1`,
+    [id]
+  );
+
+  return {
+    ...req,
+    historial,
+    items,
+    items_libres: itemsLibres,
+    proveedor_seleccionado: cotSel || null,
+  };
 }
 
 /**
@@ -178,7 +204,7 @@ async function crear(datos, solicitante_id) {
   try {
     await conn.beginTransaction();
 
-    const consecutivo = await generarConsecutivo(conn);
+    const consecutivo = await generarConsecutivo(conn, datos.tipo);
   
     const tieneLibresEnDatos = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
     const requiereCotEnBD = tieneLibresEnDatos ? 1 : (datos.requiere_cotizacion ? 1 : 0);
@@ -392,7 +418,7 @@ const TRANSICIONES = {
   borrador:    ['en_revision'],
   en_revision: ['aprobado', 'incompleto', 'rechazado'],
   incompleto:  ['en_revision'],
-  aprobado:    ['cerrado'],
+  aprobado:    ['cerrado', 'rechazado'],
   rechazado:   [],
   cerrado:     [],
 };

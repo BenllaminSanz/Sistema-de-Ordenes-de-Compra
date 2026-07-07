@@ -1,6 +1,11 @@
 import { obtenerConfig, guardarConfig, desactivarConfig, obtenerConfigParaMailer } from '../models/configSmtp.js';
 import { recargarTransporter, enviarCorreo, getFromAddress, getConfigSource, getTransporter } from '../config/mailer.js';
 import logger from '../utils/logger.js';
+import {
+  EMPRESA_SUBTITULO,
+  buildEmailBrandingHtml,
+  getEmailBrandingAttachments,
+} from '../utils/emailBranding.js';
 
 /**
  * GET /api/config/smtp
@@ -159,6 +164,7 @@ export async function sendTestEmail(req, res) {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width:600px; margin:0 auto; padding:24px; background:#f8fafc;">
         <div style="background:white; border-radius:8px; padding:32px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+          ${buildEmailBrandingHtml()}
           <h2 style="color:#185FA5; margin-top:0;">✅ Prueba de configuración SMTP</h2>
           <p style="color:#334155; font-size:15px;">
             Este es un correo de prueba enviado desde el <strong>Sistema de Órdenes de Compra</strong>.
@@ -177,9 +183,10 @@ export async function sendTestEmail(req, res) {
 
     const result = await enviarCorreo({
       to: to.trim(),
-      subject: 'Prueba de SMTP - Sistema de Órdenes de Compra',
+      subject: `Prueba de SMTP - ${EMPRESA_SUBTITULO}`,
       html,
-      text: `Prueba de SMTP exitosa. Remitente: ${from}`
+      text: `Prueba de SMTP exitosa. Remitente: ${from}`,
+      attachments: getEmailBrandingAttachments(),
     });
 
     if (result.success) {

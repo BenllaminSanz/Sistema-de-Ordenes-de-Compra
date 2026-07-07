@@ -2,6 +2,29 @@ import { enviarCorreo } from '../config/mailer.js';
 import { obtenerCcCotizaciones } from '../models/configSmtp.js';
 import * as Requerimiento from '../models/requerimientos.js';
 import * as Cotizacion from '../models/cotizaciones.js';
+import {
+  EMPRESA_SUBTITULO,
+  buildEmailBrandingHtml,
+  getEmailBrandingAttachments,
+} from './emailBranding.js';
+
+const UNIDADES_ENTERAS = new Set([
+  'pieza', 'piezas', 'pza', 'pzas', 'hora', 'horas', 'hr', 'hrs',
+  'servicio', 'servicios', 'lote', 'lotes', 'unidad', 'unidades',
+]);
+
+function formatCantidadEmail(cantidad, unidad = '') {
+  const n = parseFloat(cantidad);
+  if (!Number.isFinite(n)) return '1';
+
+  const u = (unidad || '').toLowerCase().trim();
+  const esEntera = UNIDADES_ENTERAS.has(u) || Math.abs(n - Math.round(n)) < 0.0001;
+
+  if (esEntera) return String(Math.round(n));
+
+  const redondeada = Math.round(n * 100) / 100;
+  return String(redondeada);
+}
 
 /**
  * Envía correo al proveedor SOLICITANDO una cotización (RFQ).
@@ -58,9 +81,10 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       conceptosHtml = `
         <ul style="margin:8px 0 0 20px; padding-left:0; color:#334155; font-size:14px; line-height:1.5;">
           ${cot.items.map(item => {
-            const qty = item.cantidad || 1;
-            const unit = item.unidad ? ' ' + item.unidad : '';
-            return `<li style="margin-bottom:4px;"><strong>${item.descripcion}</strong>${qty > 1 || unit ? ` — ${qty}${unit}` : ''}</li>`;
+            const qty = formatCantidadEmail(item.cantidad, item.unidad);
+            const unit = item.unidad ? ` ${item.unidad}` : '';
+            const qtyNum = parseFloat(item.cantidad) || 1;
+            return `<li style="margin-bottom:4px;"><strong>${item.descripcion}</strong>${qtyNum > 1 || unit ? ` — ${qty}${unit}` : ''}</li>`;
           }).join('')}
         </ul>
       `;
@@ -74,7 +98,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; background:#f8fafc; padding: 24px;">
         <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
-          
+          ${buildEmailBrandingHtml()}
           <h2 style="color: #1e3a8a; margin: 0 0 8px; font-size: 22px;">Solicitud de Cotización</h2>
           <!-- Cuerpo simple estilo cliente: solo pedir los items -->
           <p style="color: #334155; font-size: 15px; margin: 16px 0 8px;">
@@ -96,7 +120,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
           <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
             Atentamente,<br>
             <strong>Equipo de Compras</strong><br>
-            Sistema de Órdenes de Compra
+            ${EMPRESA_SUBTITULO}
           </div>
 
           <!-- Datos del requerimiento -->
@@ -136,7 +160,11 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
     let itemsTextoPlano = '';
     if (tieneItems) {
       itemsTextoPlano = '\n' + cot.items.map(item => {
-        return `${item.descripcion}`;
+        const qty = formatCantidadEmail(item.cantidad, item.unidad);
+        const unit = item.unidad ? ` ${item.unidad}` : '';
+        const qtyNum = parseFloat(item.cantidad) || 1;
+        const detalle = qtyNum > 1 || unit ? ` — ${qty}${unit}` : '';
+        return `${item.descripcion}${detalle}`;
       }).join('\n\n');
     }
 
@@ -165,7 +193,8 @@ Saludos`;
       replyTo: ccCotizaciones || undefined,
       subject: `Solicitud de Cotización - ${req.consecutivo || 'Requerimiento ' + req.id}`,
       html,
-      text: textoPlano
+      text: textoPlano,
+      attachments: getEmailBrandingAttachments(),
     });
 
     return result;
@@ -185,6 +214,7 @@ export async function enviarCorreoVerificacion(nombre, email, token) {
   const html = `
     <div style="font-family: Arial, Helvetica, sans-serif; max-width: 620px; margin: 0 auto; background:#f8fafc; padding:24px;">
       <div style="background:white; border-radius:8px; padding:32px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        ${buildEmailBrandingHtml()}
         <h2 style="color:#1e40af; margin:0 0 12px;">Confirma tu cuenta</h2>
         
         <p style="color:#334155; font-size:15px;">Hola <strong>${nombre}</strong>,</p>
@@ -212,7 +242,7 @@ export async function enviarCorreoVerificacion(nombre, email, token) {
 
         <hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;">
         <p style="color:#94a3b8; font-size:12px; text-align:center;">
-          Sistema de Órdenes de Compra
+          ${EMPRESA_SUBTITULO}
         </p>
       </div>
     </div>
@@ -233,6 +263,7 @@ Si no solicitaste esta cuenta, ignora este correo.`;
     to: email,
     subject: 'Confirma tu cuenta - Sistema de Órdenes de Compra',
     html,
-    text
+    text,
+    attachments: getEmailBrandingAttachments(),
   });
 }

@@ -17,7 +17,19 @@ async function cargarCotizaciones(reqId) {
       return;
     }
 
-    let html = `
+    const seleccionadaSinPdf = cotizaciones.find(
+      (c) => (c.seleccionada === 1 || c.estado === 'seleccionada') && !c.archivo_url
+    );
+
+    let html = '';
+    if (seleccionadaSinPdf) {
+      html += `
+        <div style="font-size:12px; background:#fffbeb; color:#92400e; border:1px solid #fde68a; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+          <strong>Recomendación:</strong> la cotización seleccionada no tiene PDF adjunto. Se recomienda agregar el documento de respaldo del proveedor.
+        </div>`;
+    }
+
+    html += `
       <table class="table table-sm">
         <thead>
           <tr>
@@ -62,25 +74,27 @@ async function cargarCotizaciones(reqId) {
           <td>
             ${c.archivo_url
               ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline" title="Ver PDF adjunto">📄 Ver PDF</a>`
-              : `<span class="text-muted small">—</span>`}
+              : `<span class="text-muted small">Sin PDF</span>
+                 <span class="text-warning small" style="display:block;font-size:10px;">Se recomienda adjuntar</span>`}
           </td>
           <td class="text-center">
             ${c.seleccionada !== 1 && esGestor ? `
               <div class="d-flex gap-1 justify-content-center flex-wrap" style="font-size:0.75rem;">
                 <button class="btn btn-success btn-sm px-1 py-0" data-cot-action="seleccionar" data-cot-id="${c.id}" title="Seleccionar esta cotización">✓</button>
                 <button class="btn btn-outline btn-sm px-1 py-0" data-cot-action="editar" data-cot-id="${c.id}" title="Editar cotización">✎</button>
-                ${mostrarBotonEnviar ? `<button class="btn btn-primary btn-sm px-1 py-0" data-cot-action="enviar-correo" data-cot-id="${c.id}" title="Enviar solicitud por correo">✉</button>` : ''}
+                <button class="btn btn-warning btn-sm px-1 py-0" data-cot-action="adjuntar-pdf" data-cot-id="${c.id}" title="Adjuntar PDF (opcional, recomendado)">📎</button>
+                ${mostrarBotonEnviar ? `<button class="btn btn-primary btn-sm px-1 py-0" data-cot-action="enviar-correo" data-cot-id="${c.id}" data-cot-reenviar="${c.email_sent_at ? '1' : '0'}" title="${c.email_sent_at ? 'Reenviar solicitud por correo' : 'Enviar solicitud por correo'}">✉</button>` : ''}
                 <button class="btn btn-danger btn-sm px-1 py-0" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar cotización">×</button>
               </div>`
             : c.seleccionada === 1 ? `
               <div style="display:flex; flex-direction:column; align-items:center; gap:3px; font-size:0.72rem;">
                 <span class="text-success fw-600">✓ Seleccionada</span>
                 <div class="d-flex gap-1 justify-content-center flex-wrap">
-                  ${esGestor && !c.archivo_url ? `
+                  ${esGestor ? `
                     <button class="btn btn-warning btn-sm px-1 py-0"
                             data-cot-action="adjuntar-pdf" data-cot-id="${c.id}"
-                            title="Adjuntar PDF de respaldo">
-                      📎 Adjuntar PDF
+                            title="Adjuntar PDF (opcional, recomendado)">
+                      📎 ${c.archivo_url ? 'Cambiar PDF' : 'Adjuntar PDF'}
                     </button>` : ''}
                   ${esGestor ? `
                     <button class="btn btn-danger btn-sm px-1 py-0"
@@ -122,7 +136,7 @@ if (listaCotizaciones && !listaCotizaciones.dataset.delegateAttached) {
     if (action === 'eliminar')        eliminarCotizacion(cotId);
     if (action === 'adjuntar-pdf')    adjuntarPdfACotizacion(cotId);
     if (action === 'deseleccionar')   deseleccionarCotizacion(cotId, reqId);
-    if (action === 'enviar-correo')   enviarCorreoCotizacion(cotId);
+    if (action === 'enviar-correo')   enviarCorreoCotizacion(cotId, btn.dataset.cotReenviar === '1');
     if (action === 'toggle-desglose') toggleDesgloseCotizacion(btn, cotId);
   });
 }
@@ -216,8 +230,19 @@ async function seleccionarCotizacion(cotizacionId, requerimientoId) {
 
   try {
     await Api.post(`/cotizaciones/${cotizacionId}/seleccionar`, { requerimiento_id: requerimientoId });
+
+    let sinPdf = true;
+    try {
+      const det = await Api.get(`/cotizaciones/detalle/${cotizacionId}`);
+      const cot = det?.data || det;
+      sinPdf = !cot?.archivo_url;
+    } catch (_) { /* ignorar */ }
+
     Toast.success('Cotización seleccionada correctamente');
-    cargarCotizaciones(requerimientoActual.id);
+    if (sinPdf) {
+      Toast.warning('Se recomienda adjuntar el PDF de respaldo del proveedor a esta cotización.', 7000);
+    }
+    abrirDetalle(requerimientoId);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al seleccionar la cotización');
   }
@@ -230,19 +255,22 @@ async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
   try {
     await Api.post(`/cotizaciones/${cotizacionId}/deseleccionar`, { requerimiento_id: requerimientoId });
     Toast.success('Cotización deseleccionada correctamente');
-    cargarCotizaciones(requerimientoActual.id);
+    abrirDetalle(requerimientoId);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al deseleccionar la cotización');
   }
 }
 
-async function enviarCorreoCotizacion(cotizacionId) {
+async function enviarCorreoCotizacion(cotizacionId, esReenvio = false) {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para enviar correos de cotización');
-  if (!confirm('¿Enviar ahora la solicitud de cotización por correo a este proveedor?')) return;
+  const msg = esReenvio
+    ? '¿Reenviar la solicitud de cotización por correo a este proveedor?'
+    : '¿Enviar ahora la solicitud de cotización por correo a este proveedor?';
+  if (!confirm(msg)) return;
 
   try {
     await Api.post(`/cotizaciones/${cotizacionId}/enviar`);
-    Toast.success('Solicitud de cotización enviada por correo');
+    Toast.success(esReenvio ? 'Solicitud de cotización reenviada por correo' : 'Solicitud de cotización enviada por correo');
     await cargarCotizaciones(requerimientoActual.id);
   } catch (err) {
     Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');

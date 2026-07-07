@@ -313,7 +313,7 @@
             <div class="card" id="detalle-info"></div>
             <div class="card" id="detalle-cotizaciones" class="hidden">
               <div class="d-flex align-center justify-between" style="margin-bottom:14px">
-                <div class="card-title mb-0">Cotizaciones <small class="text-muted">(adjunta PDF de la seleccionada como respaldo)</small></div>
+                <div class="card-title mb-0">Cotizaciones <small class="text-muted">(el PDF de la seleccionada es opcional, pero se recomienda adjuntarlo)</small></div>
                   <button class="btn btn-sm btn-outline" onclick="abrirModalCotizacion()"
                         id="btn-agregar-cot">+ Agregar Cotización</button>
               </div>
@@ -460,8 +460,13 @@
           <div id="seccion-items-catalogo">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
               <span style="font-size:11px; color:var(--muted);">Busca aquí o explora el catálogo completo</span>
-              <a href="catalogo.html" class="btn btn-sm btn-outline" style="font-size:11px; white-space:nowrap;">
-                Ver catálogo completo →
+              <a href="catalogo.html" class="btn btn-sm btn-outline" style="font-size:11px; white-space:nowrap;"
+                 onclick="event.preventDefault(); irAlCatalogoDesdeReq();">
+                Catálogo por ítems →
+              </a>
+              <a href="catalogo-proveedores.html" class="btn btn-sm btn-outline" style="font-size:11px; white-space:nowrap;"
+                 onclick="event.preventDefault(); if(typeof ReqDraft!=='undefined'){ReqDraft.syncCarritoDesdeModal();ReqDraft.save();} window.location.href='catalogo-proveedores.html';">
+                Por proveedor →
               </a>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
@@ -470,10 +475,13 @@
                        placeholder="Buscar por código, descripción o proveedor…"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();buscarEnCatalogo();}">
               </div>
-              <div id="filtro-proveedor-wrapper" style="flex:1; min-width:120px; display:none;">
-                <select id="filtro-proveedor-catalogo" class="form-control form-control-sm">
-                  <option value="">Todos los proveedores</option>
-                </select>
+              <div id="filtro-proveedor-wrapper" style="flex:1; min-width:160px; display:none;">
+                <input type="text" id="filtro-proveedor-busqueda" class="form-control form-control-sm"
+                       list="filtro-proveedores-req-list"
+                       placeholder="Proveedor (código o nombre)…"
+                       autocomplete="off">
+                <input type="hidden" id="filtro-proveedor-id">
+                <datalist id="filtro-proveedores-req-list"></datalist>
               </div>
               <button type="button" class="btn btn-primary btn-sm" onclick="buscarEnCatalogo()">
                 <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
@@ -594,6 +602,7 @@
       <h3 class="modal-title" id="modal-estado-titulo">Cambiar estado</h3>
       <button class="modal-close" onclick="UI.cerrarModal('modal-estado')">×</button>
     </div>
+    <div id="estado-aviso" style="display:none; font-size:13px; background:#fffbeb; color:#92400e; border:1px solid #fde68a; border-radius:6px; padding:10px 12px; margin-bottom:12px;"></div>
     <div class="form-group">
       <label class="form-label">Notas (opcional)</label>
       <textarea id="estado-notas" class="form-control" rows="3"
@@ -670,7 +679,7 @@
             <table class="table table-sm" id="tabla-items-cot">
               <thead class="table-light">
                 <tr>
-                  <th width="10%">Nº ítem <span class="text-muted" style="font-weight:400;font-size:10px;">(→ catálogo)</span></th>
+                  <th width="10%">Nº ítem <span class="text-muted" style="font-weight:400;font-size:10px;">(opcional)</span></th>
                   <th width="42%">Descripción</th>
                   <th width="8%">Cantidad</th>
                   <th width="10%">Unidad</th>
@@ -726,10 +735,13 @@
 <div class="modal-backdrop" id="modal-adjuntar-pdf" style="display: none;">
   <div class="modal-box" style="max-width: 480px;">
     <div class="modal-header">
-      <h3 class="modal-title">Adjuntar PDF a la Cotización</h3>
+      <h3 class="modal-title">Adjuntar PDF a la Cotización <small class="text-muted" style="font-weight:400;font-size:12px;">(opcional)</small></h3>
       <button class="modal-close" onclick="cerrarModalAdjuntarPdf()">×</button>
     </div>
     <div class="modal-body">
+      <div style="font-size:12px; background:#fffbeb; color:#92400e; border:1px solid #fde68a; border-radius:6px; padding:8px 12px; margin-bottom:12px;">
+        <strong>Recomendación:</strong> adjunta el PDF o documento de respaldo que envió el proveedor para conservar evidencia de la cotización.
+      </div>
 
       <!-- Tabs -->
       <div style="display:flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 16px;">
@@ -862,7 +874,7 @@ async function cargarAreasEnForm() {
 window.cargarAreasEnForm = cargarAreasEnForm;
 
 // ── Selector de modo: catálogo vs ítem nuevo ─────────────────
-window.seleccionarModoItems = function(modo) {
+window.seleccionarModoItems = function(modo, silencioso = false) {
   const btnCat    = document.getElementById('mode-btn-catalogo');
   const btnLib    = document.getElementById('mode-btn-libre');
   const secCat    = document.getElementById('seccion-items-catalogo');
@@ -873,7 +885,7 @@ window.seleccionarModoItems = function(modo) {
     // Verificar si hay ítems libres y pedir confirmación
     const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
     if (tieneLibres) {
-      if (!confirm('Tienes ítems nuevos en la lista. ¿Limpiarlos y cambiar a catálogo?')) return;
+      if (!silencioso && !confirm('Tienes ítems nuevos en la lista. ¿Limpiarlos y cambiar a catálogo?')) return;
       window.requerimientoItemsLibres = [];
       const cb = document.getElementById('usar-items-nuevos');
       if (cb) cb.checked = false;
@@ -904,7 +916,7 @@ window.seleccionarModoItems = function(modo) {
     // Verificar si hay ítems del catálogo y pedir confirmación
     const tieneCatalogo = (window.requerimientoItemsSeleccionados || []).length > 0;
     if (tieneCatalogo) {
-      if (!confirm('Tienes ítems del catálogo en la lista. ¿Limpiarlos y cambiar a ítem nuevo?')) return;
+      if (!silencioso && !confirm('Tienes ítems del catálogo en la lista. ¿Limpiarlos y cambiar a ítem nuevo?')) return;
       window.requerimientoItemsSeleccionados = [];
       if (typeof desbloquearFiltroProveedorCatalogo === 'function') desbloquearFiltroProveedorCatalogo();
       if (resCat) resCat.innerHTML = '';
@@ -1037,6 +1049,7 @@ window.filtrarFiltroDeptosPorArea = filtrarFiltroDeptosPorArea;
 
 <script src="js/app.js"></script>
 <script src="js/carrito-req.js"></script>
+<script src="js/proveedor-busqueda.js"></script>
 <script src="js/pages/requerimientos/state.js"></script>
 <script src="js/pages/requerimientos/lista.js"></script>
 <script src="js/pages/requerimientos/detalle.js"></script>

@@ -126,39 +126,35 @@ export const crearCotizacion = async (req, res) => {
       });
     }
 
+    const ahora = new Date();
+    const hoySinHora = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+
+    const parseFechaSolo = (fechaStr) => {
+      const parte = String(fechaStr).split('T')[0];
+      const [y, m, d] = parte.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    };
+
+    const fechaEnvioSolo = fecha_envio ? parseFechaSolo(fecha_envio) : hoySinHora;
+    const esFechaAnterior = fechaEnvioSolo < hoySinHora;
+    const esFechaFutura   = fechaEnvioSolo > hoySinHora;
+    const esHoy           = !esFechaAnterior && !esFechaFutura;
+
     // Calcular scheduled_at
     let finalScheduledAt = scheduled_at || null;
 
     if (!finalScheduledAt && fecha_envio && hora_envio) {
       finalScheduledAt = `${fecha_envio} ${hora_envio}:00`;
-    } else if (!finalScheduledAt && fecha_envio) {
+    } else if (!finalScheduledAt && fecha_envio && esFechaFutura) {
       finalScheduledAt = `${fecha_envio} 09:00:00`;
     }
 
-    // Determinar si debemos enviar correo o no
-    const ahora = new Date();
     const scheduledDate = finalScheduledAt ? new Date(finalScheduledAt) : null;
 
-    const esFechaPasada = scheduledDate && scheduledDate < ahora;
-
-    // Comparamos solo la fecha (sin hora) para decidir si es hoy o anterior
-    let esHoyOMenor = true;
-    if (scheduledDate) {
-      const fechaProgramada = new Date(
-        scheduledDate.getFullYear(),
-        scheduledDate.getMonth(),
-        scheduledDate.getDate()
-      );
-      const hoySinHora = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
-      esHoyOMenor = fechaProgramada <= hoySinHora;
-    }
-
-    // Preparar datos adicionales según el caso
     let emailSentAtOnCreate = null;
     let estadoInicial = 'en_revision';
 
-    if (esFechaPasada) {
-      // Fecha pasada: guardamos el registro pero lo marcamos como "enviada" (sin enviar correo)
+    if (esFechaAnterior) {
       emailSentAtOnCreate = new Date();
       estadoInicial = 'enviada';
     }
@@ -188,25 +184,34 @@ export const crearCotizacion = async (req, res) => {
       notas: 'Cotización creada'
     });
 
-    if (esFechaPasada) {
-      logger.info(`[Cotizacion] Cotización #${id} con fecha pasada. Se guardó como enviada (sin enviar correo).`);
-    } else if (esHoyOMenor) {
-      // Hoy (o sin fecha programada) → intentar enviar inmediatamente
-      enviarSolicitudDeCotizacion(id).then(result => {
-        if (result.success) {
-          logger.info(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
-          Cotizacion.marcarComoEnviadaPorCorreo(id).catch(() => {});
-        } else if (result.reason === 'no_requiere_segun_condicion') {
-          // Según la regla de negocio (solo SERVICIOS o libres/actualizar precios para otros tipos)
-          // se crea el registro pero no se envía correo automático.
-          Cotizacion.marcarComoProcesadaSinEnvioCorreo(id).catch(() => {});
-          logger.info(`[Email] Cotización #${id} creada pero NO se envió correo (regla de tipo/catálogo/precios).`);
+    let emailEnviado = false;
+    let emailOmitido = false;
+
+    if (esFechaAnterior) {
+      logger.info(`[Cotizacion] Cotización #${id} con fecha anterior a hoy. Se guardó como enviada (sin enviar correo).`);
+    } else if (esHoy) {
+      const programadoMasTardeHoy = scheduledDate && scheduledDate > ahora;
+      if (!programadoMasTardeHoy) {
+        try {
+          const result = await enviarSolicitudDeCotizacion(id);
+          if (result.success) {
+            await Cotizacion.marcarComoEnviadaPorCorreo(id);
+            emailEnviado = true;
+            logger.info(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
+          } else if (result.reason === 'no_requiere_segun_condicion') {
+            await Cotizacion.marcarComoProcesadaSinEnvioCorreo(id);
+            emailOmitido = true;
+            logger.info(`[Email] Cotización #${id} creada pero NO se envió correo (regla de tipo/catálogo/precios).`);
+          } else {
+            logger.warn(`[Email] Cotización #${id} no enviada al crear: ${result.reason || result.error || 'desconocido'}`);
+          }
+        } catch (err) {
+          logger.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
         }
-      }).catch(err => {
-        logger.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
-      });
+      } else {
+        logger.info(`[Cotizacion] Cotización #${id} programada para hoy a las ${finalScheduledAt}`);
+      }
     } else {
-      // Futura → solo programada
       logger.info(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt}`);
     }
 
@@ -219,7 +224,9 @@ export const crearCotizacion = async (req, res) => {
       success: true,
       message: 'Cotización creada exitosamente',
       id,
-      scheduled_at: finalScheduledAt
+      scheduled_at: finalScheduledAt,
+      email_enviado: emailEnviado,
+      email_omitido: emailOmitido,
     });
 
   } catch (error) {

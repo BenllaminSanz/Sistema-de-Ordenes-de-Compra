@@ -18,6 +18,10 @@
         <div class="page-header">
           <div>
             <h2 class="page-title">Catálogo de Artículos y Servicios</h2>
+            <nav class="catalog-view-tabs" aria-label="Vista del catálogo">
+              <a href="catalogo.html" class="catalog-view-tab active">Por ítems</a>
+              <a href="catalogo-proveedores.html" class="catalog-view-tab">Por proveedor</a>
+            </nav>
           </div>
           <div class="page-header-actions" id="admin-actions" style="display:none">
             <button class="btn btn-outline btn-sm"
@@ -53,9 +57,14 @@
             <option value="SERVICIOS">Servicios</option>
             <option value="FLETES">Fletes</option>
           </select>
-          <select id="filtro-proveedor" class="form-control" onchange="filtrarCatalogo()">
-            <option value="">Todos los proveedores</option>
-          </select>
+          <div class="search-wrap" style="min-width:200px; flex:0 1 220px;">
+            <input type="text" id="filtro-proveedor-busqueda" class="form-control"
+                   list="filtro-proveedores-list"
+                   placeholder="Proveedor (código o nombre)…"
+                   autocomplete="off">
+            <input type="hidden" id="filtro-proveedor-id">
+            <datalist id="filtro-proveedores-list"></datalist>
+          </div>
           <label class="chk-label">
             <input type="checkbox" id="chk-activos" checked onchange="cargarCatalogo()">
             Solo activos
@@ -145,9 +154,12 @@
 
       <div class="form-group">
         <label class="form-label">Proveedor (opcional)</label>
-        <select id="cat-proveedor" class="form-control">
-          <option value="">Sin proveedor asignado</option>
-        </select>
+        <input type="text" id="cat-proveedor-busqueda" class="form-control"
+               list="cat-proveedores-list"
+               placeholder="Buscar por código o nombre…"
+               autocomplete="off">
+        <input type="hidden" id="cat-proveedor-id">
+        <datalist id="cat-proveedores-list"></datalist>
       </div>
 
       <div class="modal-footer">
@@ -160,6 +172,7 @@
 
 <script src="js/app.js"></script>
 <script src="js/carrito-req.js"></script>
+<script src="js/proveedor-busqueda.js"></script>
 <script src="js/pages/catalogo.js"></script>
 </body>
 </html>

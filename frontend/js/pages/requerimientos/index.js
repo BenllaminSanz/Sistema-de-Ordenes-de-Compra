@@ -30,11 +30,18 @@ if (params.get('id')) {
 
   if (params.get('crear') === '1' && Auth.puedeHacer(['solicitante', 'contabilidad', 'admin'])) {
     CarritoReq.load();
-    setTimeout(() => {
+    setTimeout(async () => {
       if (typeof abrirEditorRequerimiento === 'function') {
-        abrirEditorRequerimiento();
-        if (CarritoReq.count() > 0) {
+        await abrirEditorRequerimiento(null, { restaurarBorrador: true });
+        const tieneCarrito = CarritoReq.count() > 0;
+        const borradorRestaurado = window._reqBorradorRecienRestaurado === true;
+        window._reqBorradorRecienRestaurado = false;
+        if (tieneCarrito && borradorRestaurado) {
+          Toast.info('Se restauró tu borrador y los ítems del catálogo.');
+        } else if (tieneCarrito) {
           Toast.info('Ítems del catálogo cargados en tu solicitud. Completa los datos y guarda.');
+        } else if (borradorRestaurado) {
+          Toast.info('Se restauró tu borrador del requerimiento.');
         }
       }
     }, 80);

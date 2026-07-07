@@ -157,7 +157,7 @@ const Toast = {
     return this._container;
   },
   show(mensaje, tipo = 'info', duracion = 4000) {
-    const icons = { success: '✔', error: '✘', info: 'ℹ' };
+    const icons = { success: '✔', error: '✘', info: 'ℹ', warning: '⚠' };
     const t = document.createElement('div');
     t.className = `toast ${tipo}`;
     t.innerHTML = `<span>${icons[tipo] || 'ℹ'}</span>
@@ -166,9 +166,10 @@ const Toast = {
     this._getContainer().appendChild(t);
     setTimeout(() => t.remove(), duracion);
   },
-  success(msg) { this.show(msg, 'success'); },
-  error(msg)   { this.show(msg, 'error', 6000); },
-  info(msg)    { this.show(msg, 'info'); },
+  success(msg, duracion) { this.show(msg, 'success', duracion || 4000); },
+  error(msg, duracion)   { this.show(msg, 'error', duracion || 6000); },
+  info(msg, duracion)    { this.show(msg, 'info', duracion || 4000); },
+  warning(msg, duracion) { this.show(msg, 'warning', duracion || 6000); },
 };
 
 // ─── UTILIDADES DE UI ─────────────────────────────────────────────────────────
