@@ -23,33 +23,56 @@ export function siguienteConsecutivoNumerico(valores, digitos = 3) {
   return String(maxNum + 1).padStart(digitos, '0');
 }
 
-/** Letra de tipo para consecutivo: PARTES → P, SERVICIOS → S */
-export function letraTipoConsecutivo(tipo) {
-  return String(tipo || '').toUpperCase().startsWith('PART') ? 'P' : 'S';
-}
+/** Letra de tipo para consecutivo: PARTES → P, SERVICIOS → S, FLETES → F */
+const LETRA_POR_TIPO = { PARTES: 'P', SERVICIOS: 'S', FLETES: 'F' };
 
-/** Prefijo de consecutivo REQ: 2026S, 2026P, etc. */
-export function prefijoConsecutivoReq(tipo, year = new Date().getFullYear()) {
-  return `${year}${letraTipoConsecutivo(tipo)}`;
+export function letraTipoConsecutivo(tipo) {
+  const letra = LETRA_POR_TIPO[String(tipo || '').toUpperCase()];
+  if (!letra) throw new Error(`Tipo de requerimiento no soportado para consecutivo: "${tipo}"`);
+  return letra;
 }
 
 /**
- * Siguiente secuencia para un prefijo dado (ej. 2026S → 2026S-001, 2026S-002).
- * Solo considera consecutivos que coincidan con el prefijo.
+ * Obtiene el siguiente consecutivo para (año, tipo) usando la tabla de control
+ * `consecutivos_control`, con lock de fila (SELECT ... FOR UPDATE) para evitar
+ * duplicados ante creaciones concurrentes. Debe llamarse dentro de una transacción.
  */
-export function siguienteConsecutivoConPrefijo(valores, prefijo, digitos = 3) {
-  const prefijoNorm = String(prefijo || '').toUpperCase();
-  const patron = new RegExp(`^${prefijoNorm}-(\\d+)$`, 'i');
-  let maxNum = 0;
+export async function obtenerSiguienteConsecutivo(conn, tipo, anio = new Date().getFullYear()) {
+  const letra = letraTipoConsecutivo(tipo);
 
-  for (const valor of valores) {
-    const s = String(valor || '').trim().replace(/^REQ-/i, '');
-    const match = s.match(patron);
-    if (match) {
-      const n = parseInt(match[1], 10) || 0;
-      if (n > maxNum) maxNum = n;
-    }
-  }
+  await conn.query(
+    'INSERT IGNORE INTO consecutivos_control (anio, tipo, ultimo_numero) VALUES (?, ?, 0)',
+    [anio, tipo]
+  );
+  const [[row]] = await conn.query(
+    'SELECT ultimo_numero FROM consecutivos_control WHERE anio = ? AND tipo = ? FOR UPDATE',
+    [anio, tipo]
+  );
+  const siguiente = row.ultimo_numero + 1;
+  await conn.query(
+    'UPDATE consecutivos_control SET ultimo_numero = ? WHERE anio = ? AND tipo = ?',
+    [siguiente, anio, tipo]
+  );
 
-  return `${prefijoNorm}-${String(maxNum + 1).padStart(digitos, '0')}`;
+  return `${anio}${letra}-${siguiente}`;
+}
+
+/**
+ * Red de seguridad para flujos que insertan consecutivos textuales sin pasar por
+ * `obtenerSiguienteConsecutivo` (ej. importación de Excel histórico): adelanta
+ * `ultimo_numero` al máximo real visto en `requerimientos.consecutivo` por año+tipo,
+ * nunca hacia atrás, para que la próxima generación automática no colisione.
+ */
+export async function sincronizarConsecutivosControl(conn) {
+  await conn.query(`
+    INSERT INTO consecutivos_control (anio, tipo, ultimo_numero)
+    SELECT
+      CAST(LEFT(consecutivo, 4) AS UNSIGNED) AS anio,
+      tipo,
+      MAX(CAST(SUBSTRING(consecutivo, LOCATE('-', consecutivo) + 1) AS UNSIGNED)) AS maximo
+    FROM requerimientos
+    WHERE consecutivo REGEXP '^[0-9]{4}[A-Z]-[0-9]+$'
+    GROUP BY anio, tipo
+    ON DUPLICATE KEY UPDATE ultimo_numero = GREATEST(ultimo_numero, VALUES(maximo))
+  `);
 }

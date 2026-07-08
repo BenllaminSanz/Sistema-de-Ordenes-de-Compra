@@ -1,16 +1,6 @@
 import pool from '../config/db.js';
 import { validarAreaDepartamento, obtenerAreas } from '../config/departamentosStore.js';
-import { prefijoConsecutivoReq, siguienteConsecutivoConPrefijo } from '../utils/consecutivos.js';
-
-/** Genera el consecutivo siguiente: {año}{P|S}-{seq} — ej. 2026S-001, 2026P-002 */
-async function generarConsecutivo(conn, tipo) {
-  const prefijo = prefijoConsecutivoReq(tipo);
-  const [rows] = await conn.query(
-    'SELECT consecutivo FROM requerimientos WHERE consecutivo LIKE ?',
-    [`${prefijo}-%`]
-  );
-  return siguienteConsecutivoConPrefijo(rows.map((r) => r.consecutivo), prefijo);
-}
+import { obtenerSiguienteConsecutivo } from '../utils/consecutivos.js';
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
 
@@ -198,13 +188,20 @@ async function obtenerPorId(id) {
 /**
  * Crear un nuevo requerimiento dentro de una transacción.
  * Genera el consecutivo y registra el primer estado en historial.
+ *
+ * Reintenta ante deadlock: cuando dos requerimientos del mismo año+tipo se crean
+ * simultáneamente por primera vez, InnoDB puede reportar ER_LOCK_DEADLOCK al
+ * competir por la fila nueva en consecutivos_control (comportamiento normal de
+ * locks de InnoDB, no indica datos corruptos). Reintentar la transacción completa
+ * resuelve el conflicto sin generar consecutivos duplicados ni fallar la petición.
  */
-async function crear(datos, solicitante_id) {
+async function crear(datos, solicitante_id, intento = 1) {
+  const MAX_INTENTOS = 6;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const consecutivo = await generarConsecutivo(conn, datos.tipo);
+    const consecutivo = await obtenerSiguienteConsecutivo(conn, datos.tipo);
   
     const tieneLibresEnDatos = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
     const requiereCotEnBD = tieneLibresEnDatos ? 1 : (datos.requiere_cotizacion ? 1 : 0);
@@ -284,6 +281,10 @@ async function crear(datos, solicitante_id) {
     return requerimientoId;
   } catch (err) {
     await conn.rollback();
+    if (err.code === 'ER_LOCK_DEADLOCK' && intento < MAX_INTENTOS) {
+      await new Promise((r) => setTimeout(r, 10 + Math.random() * 40 * intento));
+      return crear(datos, solicitante_id, intento + 1);
+    }
     throw err;
   } finally {
     conn.release();

@@ -3,6 +3,7 @@ import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
 import { validarMismoProveedorCatalogo } from '../utils/catalogoItems.js';
 import { parseExcelRequerimientos, generarExcelRequerimientos } from '../utils/excelRequerimientos.js';
+import { sincronizarConsecutivosControl } from '../utils/consecutivos.js';
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 
@@ -485,6 +486,12 @@ async function importarExcel(req, res) {
       }
 
       await conn.commit();
+
+      try {
+        await sincronizarConsecutivosControl(pool);
+      } catch (syncErr) {
+        logger.error('[importarExcel] no se pudo sincronizar consecutivos_control', { error: syncErr.message });
+      }
 
       res.json({
         importados,
