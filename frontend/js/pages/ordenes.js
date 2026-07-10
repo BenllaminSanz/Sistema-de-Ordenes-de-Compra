@@ -387,47 +387,107 @@ function renderDetalle(oc) {
     ${oc.items && oc.items.length > 0 ? (() => {
       const esCatalogo  = !oc.cotizacion_id;
       const puedeEditar = esCatalogo && Auth.puedeHacer(['contabilidad', 'admin']);
-      const labelTotal  = oc.cotizacion_id ? 'Total cotización / OC' : 'Total (precios de referencia del catálogo)';
-      const nota        = oc.cotizacion_id
+      const moneda      = oc.moneda || 'MXN';
+      const labelTotal = 'Total';
+      const nota = oc.cotizacion_id
         ? 'Precios según la cotización elegida. Total calculado de líneas.'
         : 'Precios de referencia del catálogo (el precio real puede variar).';
+      const tituloItems = oc.cotizacion_id
+        ? 'Ítems / Líneas de la OC (según cotización seleccionada)'
+        : 'Ítems / Líneas de la OC (según requerimiento — sin cotización)';
 
-      const total = oc.items.reduce((sum, it) => {
-        const c = parseFloat(it.cantidad || 0);
-        const p = it.precio_unitario != null
-          ? parseFloat(it.precio_unitario)
-          : (it.precio_unitario_referencia != null ? parseFloat(it.precio_unitario_referencia) : 0);
-        return sum + c * p;
-      }, 0);
+      // Cotización: Código | Descripción | Cantidad | Precio unit. | Subtotal
+      if (!esCatalogo) {
+        let totalGeneral = 0;
+        let tieneSubtotales = false;
 
-      // Columnas: Desc | Cant | Unidad | Precio | [Proveedor] | [Edit]
-      // tfoot: colspan=3 para label (Desc+Cant+Unidad), 1 para valor, trailing vacías
-      const trailingCols = esCatalogo ? (puedeEditar ? 2 : 1) : 0;
-      const tfootTrail   = trailingCols ? `<td colspan="${trailingCols}"></td>` : '';
+        const filasCot = oc.items.map(it => {
+          const codigo = (it.codigo || it.codigo_catalogo || '').trim();
+          const cantidad = parseFloat(it.cantidad || 0) || 0;
+          const precio = it.precio_unitario != null ? parseFloat(it.precio_unitario) : null;
+          const precioFmt = precio != null
+            ? precio.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '—';
+
+          let subtotalFmt = '—';
+          if (precio != null) {
+            const sub = Math.round(cantidad * precio * 100) / 100;
+            totalGeneral = Math.round((totalGeneral + sub) * 100) / 100;
+            tieneSubtotales = true;
+            subtotalFmt = sub.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          }
+
+          const prov = (it.proveedor_num || it.proveedor_nombre)
+            ? `<div style="font-size:10px; color:#64748b; margin-top:1px;">Prov: <strong>${UI.esc(it.proveedor_num || '')}${it.proveedor_nombre ? ' — ' + UI.esc(it.proveedor_nombre) : ''}</strong></div>`
+            : '';
+
+          return `
+            <tr>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${UI.esc(codigo || '—')}</strong>${prov}</td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee;">${UI.esc(it.descripcion || '—')}</td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${cantidad.toLocaleString('es-MX')}${it.unidad ? ` <span style="color:#94a3b8;font-size:11px;">${UI.esc(it.unidad)}</span>` : ''}</td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; color:#0d6efd; font-weight:500;">${precio != null ? `${precioFmt} ${moneda}` : '—'}</td>
+              <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">${subtotalFmt !== '—' ? `$${subtotalFmt} ${moneda}` : '—'}</td>
+            </tr>`;
+        }).join('');
+
+        const totalFmt = tieneSubtotales
+          ? totalGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : null;
+
+        return `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:6px">${tituloItems}</div>
+          <table style="width:100%; font-size:13px; border-collapse: collapse;">
+            <thead>
+              <tr style="background:#f8f9fa;">
+                <th style="text-align:left; padding:4px 6px;">Código</th>
+                <th style="text-align:left; padding:4px 6px;">Descripción</th>
+                <th style="text-align:right; padding:4px 6px;">Cantidad</th>
+                <th style="text-align:right; padding:4px 6px;">Precio unit.</th>
+                <th style="text-align:right; padding:4px 6px;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filasCot}
+              ${totalFmt ? `
+              <tr style="background:#f8fafc;">
+                <td colspan="4" style="padding:8px 6px; text-align:right; font-weight:700; border-top:2px solid #e2e8f0;">${labelTotal}</td>
+                <td style="padding:8px 6px; text-align:right; font-weight:700; color:#166534; font-size:14px; border-top:2px solid #e2e8f0;">$${totalFmt} ${moneda}</td>
+              </tr>` : ''}
+            </tbody>
+          </table>
+          <div style="font-size:11px;color:#64748b;margin-top:4px;">${nota}</div>
+        </div>`;
+      }
+
+      // Catálogo directo (sin cotización)
+      let totalGeneral = 0;
+      let tieneSubtotales = false;
+      const trailingCols = puedeEditar ? 1 : 0;
 
       const filas = oc.items.map(it => {
-        const desc   = it.codigo ? `<strong>${it.codigo}</strong> — ${it.descripcion || ''}` : (it.descripcion || '—');
-        const cant   = parseFloat(it.cantidad || 0).toLocaleString('es-MX');
-        const unidad = it.unidad || '—';
-        let precio   = '—';
-        if (it.precio_unitario != null) {
-          precio = '$' + Number(it.precio_unitario).toLocaleString('es-MX');
-        } else if (it.precio_unitario_referencia != null) {
-          precio = '$' + Number(it.precio_unitario_referencia).toLocaleString('es-MX') + ' <span style="color:#94a3b8">(ref)</span>';
+        const codigo = (it.codigo || '').trim();
+        const cantidad = parseFloat(it.cantidad || 0) || 0;
+        const precio = it.precio_unitario != null
+          ? parseFloat(it.precio_unitario)
+          : (it.precio_unitario_referencia != null ? parseFloat(it.precio_unitario_referencia) : null);
+        const esRef = it.precio_unitario == null && it.precio_unitario_referencia != null;
+        const precioFmt = precio != null
+          ? precio.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : '—';
+
+        let subtotalFmt = '—';
+        if (precio != null) {
+          const sub = Math.round(cantidad * precio * 100) / 100;
+          totalGeneral = Math.round((totalGeneral + sub) * 100) / 100;
+          tieneSubtotales = true;
+          subtotalFmt = sub.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        if (!esCatalogo) {
-          return `<tr>
-            <td style="padding:4px 6px;border-bottom:1px solid #eee;">${desc}</td>
-            <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${cant}</td>
-            <td style="padding:4px 6px;border-bottom:1px solid #eee;">${unidad}</td>
-            <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${precio}</td>
-          </tr>`;
-        }
-
-        const provLabel = it.proveedor_nombre
-          ? (it.proveedor_num ? `${it.proveedor_num} — ${it.proveedor_nombre}` : it.proveedor_nombre)
-          : '<span style="color:#94a3b8">—</span>';
+        const prov = (it.proveedor_num || it.proveedor_nombre)
+          ? `<div style="font-size:10px; color:#64748b; margin-top:1px;">Prov: <strong>${UI.esc(it.proveedor_num || '')}${it.proveedor_nombre ? ' — ' + UI.esc(it.proveedor_nombre) : ''}</strong></div>`
+          : '';
 
         const safeDesc  = (it.descripcion || it.codigo || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const safeUnd   = (it.unidad || '').replace(/'/g, "\\'");
@@ -441,39 +501,45 @@ function renderDetalle(oc) {
             }</td>`
           : '';
 
-        return `<tr>
-          <td style="padding:4px 6px;border-bottom:1px solid #eee;">${desc}</td>
-          <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${cant}</td>
-          <td style="padding:4px 6px;border-bottom:1px solid #eee;">${unidad}</td>
-          <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;">${precio}</td>
-          <td style="padding:4px 6px;border-bottom:1px solid #eee;color:#475569;white-space:nowrap;">${provLabel}</td>
-          ${editBtn}
-        </tr>`;
+        return `
+          <tr>
+            <td style="padding:4px 6px; border-bottom:1px solid #eee;"><strong>${UI.esc(codigo || '—')}</strong>${prov}</td>
+            <td style="padding:4px 6px; border-bottom:1px solid #eee;">${UI.esc(it.descripcion || '—')}</td>
+            <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right;">${cantidad.toLocaleString('es-MX')}${it.unidad ? ` <span style="color:#94a3b8;font-size:11px;">${UI.esc(it.unidad)}</span>` : ''}</td>
+            <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; color:#0d6efd; font-weight:500;">${precio != null ? `${precioFmt} ${moneda}${esRef ? ' <span style="color:#94a3b8;font-weight:400">(ref)</span>' : ''}` : '—'}</td>
+            <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">${subtotalFmt !== '—' ? `$${subtotalFmt} ${moneda}` : '—'}</td>
+            ${editBtn}
+          </tr>`;
       }).join('');
 
+      const totalFmt = tieneSubtotales
+        ? totalGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : null;
+
       return `
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
-        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">
-          Ítems / Líneas de la OC ${oc.cotizacion_id ? '(según cotización seleccionada)' : '(según requerimiento — sin cotización)'}
-        </div>
-        <div style="overflow-x:auto;">
-        <table style="width:100%;font-size:12px;border-collapse:collapse;">
-          <thead><tr style="background:#f8f9fa">
-            <th style="text-align:left;padding:4px 6px;">Descripción</th>
-            <th style="text-align:right;padding:4px 6px;">Cant.</th>
-            <th style="text-align:left;padding:4px 6px;">Unidad</th>
-            <th style="text-align:right;padding:4px 6px;">Precio unit.</th>
-            ${esCatalogo ? '<th style="text-align:left;padding:4px 6px;">Proveedor</th>' : ''}
-            ${puedeEditar ? '<th style="width:32px;"></th>' : ''}
-          </tr></thead>
-          <tbody>${filas}</tbody>
-          <tfoot><tr style="font-weight:600;border-top:2px solid #ccc;">
-            <td colspan="3" style="padding:4px 6px;text-align:right;">${labelTotal}</td>
-            <td style="padding:4px 6px;text-align:right;">$${total.toLocaleString('es-MX')} ${oc.moneda || 'MXN'}</td>
-            ${tfootTrail}
-          </tr></tfoot>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">${tituloItems}</div>
+        <table style="width:100%; font-size:13px; border-collapse: collapse;">
+          <thead>
+            <tr style="background:#f8f9fa;">
+              <th style="text-align:left; padding:4px 6px;">Código</th>
+              <th style="text-align:left; padding:4px 6px;">Descripción</th>
+              <th style="text-align:right; padding:4px 6px;">Cantidad</th>
+              <th style="text-align:right; padding:4px 6px;">Precio ref.</th>
+              <th style="text-align:right; padding:4px 6px;">Subtotal</th>
+              ${puedeEditar ? '<th style="width:32px;"></th>' : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${filas}
+            ${totalFmt ? `
+            <tr style="background:#f8fafc;">
+              <td colspan="4" style="padding:8px 6px; text-align:right; font-weight:700; border-top:2px solid #e2e8f0;">${labelTotal}</td>
+              <td style="padding:8px 6px; text-align:right; font-weight:700; color:#166534; font-size:14px; border-top:2px solid #e2e8f0;">$${totalFmt} ${moneda}</td>
+              ${trailingCols ? '<td style="border-top:2px solid #e2e8f0;"></td>' : ''}
+            </tr>` : ''}
+          </tbody>
         </table>
-        </div>
         <div style="font-size:11px;color:#64748b;margin-top:4px;">${nota}</div>
       </div>`;
     })() : '' }`;

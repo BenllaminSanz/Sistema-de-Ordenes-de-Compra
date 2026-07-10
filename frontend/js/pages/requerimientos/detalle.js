@@ -727,27 +727,127 @@ window.confirmarAsignarCatalogo = async function(catalogoId) {
 };
 
 // ── Generar OC ────────────────────────────────────────────────
+let _generarOcPendiente = null;
+
+function esErrorFaltanCodigosCatalogo(err) {
+  const codigoErr = err?.data?.codigo || err?.codigo;
+  if (codigoErr === 'FALTAN_CODIGOS_CATALOGO') return true;
+  const msg = String(err?.mensaje || err?.data?.mensaje || '');
+  return /n[ºo°]?\s*í?tem/i.test(msg) && /cat[aá]logo|completalo|complétalo|generar la oc/i.test(msg);
+}
+
+function itemCotizacionSinCodigo(item) {
+  if (!item) return false;
+  if (item.catalogo_id) return false;
+  return !String(item.codigo_catalogo || item.codigo || '').trim();
+}
+
+async function obtenerItemsSinCodigoCatalogo(cotizacionId) {
+  if (!cotizacionId) return [];
+
+  try {
+    const cot = await Api.get(`/cotizaciones/detalle/${cotizacionId}`);
+    const items = Array.isArray(cot?.items) ? cot.items : [];
+    return items
+      .filter(itemCotizacionSinCodigo)
+      .map(it => ({
+        id: it.id,
+        descripcion: it.descripcion,
+        cantidad: it.cantidad,
+        unidad: it.unidad || '',
+      }));
+  } catch (_) {
+    try {
+      const response = await Api.get(`/cotizaciones/${requerimientoActual.id}`);
+      const cots = Array.isArray(response) ? response : (response.data || []);
+      const cot = cots.find(c => Number(c.id) === Number(cotizacionId));
+      const items = Array.isArray(cot?.items) ? cot.items : [];
+      return items
+        .filter(itemCotizacionSinCodigo)
+        .map(it => ({
+          id: it.id,
+          descripcion: it.descripcion,
+          cantidad: it.cantidad,
+          unidad: it.unidad || '',
+        }));
+    } catch (e2) {
+      console.warn('[generarOC] No se pudieron cargar ítems sin código', e2);
+      return [];
+    }
+  }
+}
+
 async function generarOC() {
   let cotizacion_id = null;
+  let cotSeleccionada = null;
+
   if (requerimientoActual.requiere_cotizacion) {
     const response = await Api.get(`/cotizaciones/${requerimientoActual.id}`);
     const cots = Array.isArray(response) ? response : (response.data || []);
-    const sel = cots.find(c => c.seleccionada === 1 || c.estado === 'seleccionada');
-    if (!sel) {
+    cotSeleccionada = cots.find(c => c.seleccionada === 1 || c.estado === 'seleccionada');
+    if (!cotSeleccionada) {
       Toast.error('Debes seleccionar una cotización antes de generar la OC');
       return;
     }
-    cotizacion_id = sel.id;
+    cotizacion_id = cotSeleccionada.id;
+
+    const itemsLocales = Array.isArray(cotSeleccionada.items) ? cotSeleccionada.items : [];
+    let faltantes = itemsLocales
+      .filter(itemCotizacionSinCodigo)
+      .map(it => ({
+        id: it.id,
+        descripcion: it.descripcion,
+        cantidad: it.cantidad,
+        unidad: it.unidad || '',
+      }));
+
+    if (!faltantes.length) {
+      faltantes = await obtenerItemsSinCodigoCatalogo(cotizacion_id);
+    }
+
+    if (faltantes.length > 0) {
+      _generarOcPendiente = { cotizacion_id };
+      abrirModalCompletarNroItemOC(
+        faltantes,
+        faltantes.length === 1
+          ? `El ítem "${faltantes[0].descripcion || 'sin descripción'}" no tiene Nº ítem. Complétalo para generar la OC; ese código se guardará en el catálogo.`
+          : `Hay ${faltantes.length} ítems sin Nº ítem. Complétalos para generar la OC; esos códigos se guardarán en el catálogo.`
+      );
+      return;
+    }
+  }
+
+  await intentarGenerarOC({ cotizacion_id, items_codigo_catalogo: null });
+}
+
+async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo }) {
+  const body = {
+    requerimiento_id: requerimientoActual.id,
+    cotizacion_id,
+  };
+  if (Array.isArray(items_codigo_catalogo) && items_codigo_catalogo.length > 0) {
+    body.items_codigo_catalogo = items_codigo_catalogo;
   }
 
   try {
-    const oc = await Api.post('/ordenes-compra', {
-      requerimiento_id: requerimientoActual.id,
-      cotizacion_id,
-    });
+    const oc = await Api.post('/ordenes-compra', body);
+    cerrarModalCompletarNroItemOC();
     Toast.success(`OC generada: ${oc.numero_oc}`);
-    setTimeout(() => window.location.href = `ordenes.html?id=${oc.id}`, 1200);
+    setTimeout(() => { window.location.href = `ordenes.html?id=${oc.id}`; }, 1200);
   } catch (err) {
+    if (esErrorFaltanCodigosCatalogo(err)) {
+      let itemsFaltantes = err?.data?.items || err?.items;
+      if (!Array.isArray(itemsFaltantes) || !itemsFaltantes.length) {
+        itemsFaltantes = await obtenerItemsSinCodigoCatalogo(cotizacion_id);
+      }
+
+      if (Array.isArray(itemsFaltantes) && itemsFaltantes.length) {
+        _generarOcPendiente = { cotizacion_id };
+        abrirModalCompletarNroItemOC(itemsFaltantes, err.mensaje);
+        return;
+      }
+    }
+
     if (err.status === 403 || (err.mensaje && err.mensaje.toLowerCase().includes('permiso'))) {
       Toast.error('No tienes permiso para generar Órdenes de Compra. Contacta a Contabilidad o Administrador.');
     } else {
@@ -755,3 +855,99 @@ async function generarOC() {
     }
   }
 }
+
+function abrirModalCompletarNroItemOC(items, mensaje) {
+  const modal = document.getElementById('modal-completar-nro-item-oc');
+  const aviso = document.getElementById('nro-item-oc-aviso');
+  const tbody = document.querySelector('#tabla-nro-item-oc tbody');
+
+  if (!modal || !aviso || !tbody) {
+    console.error('[generarOC] Modal de Nº ítem no encontrado en el DOM');
+    Toast.error(mensaje || 'Faltan Nº ítem en la cotización para generar la OC. Recarga la página e intenta de nuevo.');
+    return;
+  }
+
+  aviso.textContent = mensaje
+    || 'Uno o más ítems no tienen Nº ítem. Complétalos para continuar; ese código se guardará en el catálogo al generar la OC.';
+
+  tbody.innerHTML = (items || []).map(it => {
+    const qty = it.cantidad != null ? it.cantidad : '';
+    const unit = it.unidad ? ` ${UI.esc(it.unidad)}` : '';
+    const itemId = it.id != null ? it.id : '';
+    return `
+      <tr data-item-id="${itemId}">
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0; vertical-align:top;">
+          <div style="font-size:13px; color:#1e293b; line-height:1.4;">${UI.esc(it.descripcion || '—')}</div>
+          <div style="font-size:11px; color:#64748b; margin-top:2px;">Cantidad: ${UI.esc(String(qty))}${unit}</div>
+        </td>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0; width:160px;">
+          <input type="text" class="form-control nro-item-oc-input" placeholder="Ej. LLAV-001"
+                 style="font-size:13px;" data-item-id="${itemId}" autocomplete="off">
+        </td>
+      </tr>`;
+  }).join('');
+
+  modal.classList.add('show');
+  modal.style.display = 'flex';
+
+  const first = tbody.querySelector('.nro-item-oc-input');
+  if (first) setTimeout(() => first.focus(), 50);
+}
+
+async function confirmarCompletarNroItemYGenerarOC() {
+  if (!_generarOcPendiente) {
+    Toast.error('No hay generación de OC pendiente. Intenta de nuevo.');
+    return;
+  }
+
+  const inputs = document.querySelectorAll('#tabla-nro-item-oc .nro-item-oc-input');
+  const items_codigo_catalogo = [];
+  let incompleto = false;
+
+  inputs.forEach(inp => {
+    const codigo = (inp.value || '').trim();
+    const id = parseInt(inp.dataset.itemId, 10);
+    if (!codigo) {
+      incompleto = true;
+      inp.style.borderColor = '#dc2626';
+    } else {
+      inp.style.borderColor = '';
+      if (id) items_codigo_catalogo.push({ id, codigo_catalogo: codigo });
+    }
+  });
+
+  if (incompleto || items_codigo_catalogo.length === 0) {
+    Toast.error('Completa el Nº ítem de todos los conceptos listados.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirmar-nro-item-oc');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generando OC…';
+  }
+
+  try {
+    await intentarGenerarOC({
+      cotizacion_id: _generarOcPendiente.cotizacion_id,
+      items_codigo_catalogo,
+    });
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar y generar OC';
+    }
+  }
+}
+
+function cerrarModalCompletarNroItemOC() {
+  const modal = document.getElementById('modal-completar-nro-item-oc');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = '';
+  }
+  _generarOcPendiente = null;
+}
+
+window.cerrarModalCompletarNroItemOC = cerrarModalCompletarNroItemOC;
+window.confirmarCompletarNroItemYGenerarOC = confirmarCompletarNroItemYGenerarOC;

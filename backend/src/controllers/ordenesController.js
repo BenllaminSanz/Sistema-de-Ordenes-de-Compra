@@ -40,7 +40,7 @@ async function obtener(req, res) {
 
 async function crear(req, res) {
   try {
-    const { requerimiento_id, cotizacion_id } = req.body;
+    const { requerimiento_id, cotizacion_id, items_codigo_catalogo } = req.body;
     if (!requerimiento_id) {
       return res.status(400).json({ mensaje: 'requerimiento_id es requerido' });
     }
@@ -58,13 +58,24 @@ async function crear(req, res) {
       return res.status(400).json({ mensaje: 'Este requerimiento requiere cotización. Debes proporcionar cotizacion_id (selecciona una cotización antes de generar la OC).' });
     }
 
-    // Copiamos las notas del requerimiento como notas iniciales de la OC (útil para el caso sin cotización)
     const notasOC = reqData.notas || null;
-    const id = await _crear(requerimiento_id, cotizacion_id, req.usuario.id, notasOC);
+    const id = await _crear(
+      requerimiento_id,
+      cotizacion_id,
+      req.usuario.id,
+      notasOC,
+      items_codigo_catalogo || null
+    );
     res.status(201).json(await obtenerPorId(id));
   } catch (err) {
     logger.error('[crear OC]', err);
-    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje || 'Error' });
+    if (err.status) {
+      return res.status(err.status).json({
+        mensaje: err.mensaje || 'Error',
+        codigo: err.codigo || undefined,
+        items: err.items || undefined,
+      });
+    }
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }

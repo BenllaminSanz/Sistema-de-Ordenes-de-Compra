@@ -27,14 +27,8 @@ function formatCantidadEmail(cantidad, unidad = '') {
 }
 
 /**
- * Envía correo al proveedor SOLICITANDO una cotización (RFQ).
- * 
- * Importante: el correo lista únicamente los ítems (descripción, cantidad, unidad).
- * NO incluye precios propuestos por nosotros. Los proveedores responden con sus precios,
- * y luego los registramos/editamos en la cotización.
- * Si la cotización tiene notas, se incluyen como mensaje personalizado para el proveedor.
- * 
- * Se usa principalmente para ítems libres (no en catálogo) o servicios.
+ * RFQ al proveedor: conceptos (sin precios), notas y datos de referencia del requerimiento.
+ * Solo para SERVICIOS o requerimientos con ítems libres.
  */
 export async function enviarSolicitudDeCotizacion(cotizacionId) {
   try {
@@ -55,9 +49,6 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       return { success: false, reason: 'sin_requerimiento' };
     }
 
-    // Regla de envío de email para cotizaciones:
-    // - SERVICIOS o con items_libres: sí se envía.
-    // - Catálogo puro (no servicio): no se envía (solo registro interno).
     const tipo = (req.tipo || '').toUpperCase();
     const esServicio = tipo === 'SERVICIOS';
     const tieneLibres = Array.isArray(req.items_libres) && req.items_libres.length > 0;
@@ -67,120 +58,129 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       return { success: false, reason: 'no_requiere_segun_condicion' };
     }
 
-    // Continuar con envío para SERVICIOS o cuando hay ítems libres
-
-    const fechaLimite = cot.fecha_envio 
-      ? new Date(cot.fecha_envio).toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-      : null;
-
-    // Preparar lista de conceptos a cotizar (sin precios, ya que los provee el proveedor)
     const tieneItems = cot.items && cot.items.length > 0;
-    let conceptosHtml = '';
+    const items = tieneItems ? cot.items : [];
 
-    if (tieneItems) {
-      conceptosHtml = `
-        <ul style="margin:8px 0 0 20px; padding-left:0; color:#334155; font-size:14px; line-height:1.5;">
-          ${cot.items.map(item => {
-            const qty = formatCantidadEmail(item.cantidad, item.unidad);
-            const unit = item.unidad ? ` ${item.unidad}` : '';
-            const qtyNum = parseFloat(item.cantidad) || 1;
-            return `<li style="margin-bottom:4px;"><strong>${item.descripcion}</strong>${qtyNum > 1 || unit ? ` — ${qty}${unit}` : ''}</li>`;
-          }).join('')}
-        </ul>
-      `;
-    }
+    const conceptosHtml = items.length
+      ? items.map(item => {
+          const qty = formatCantidadEmail(item.cantidad, item.unidad);
+          const unit = item.unidad ? ` ${item.unidad}` : '';
+          return `
+            <div style="margin:0 0 14px;">
+              <p style="margin:0 0 4px; color:#334155; font-size:15px; line-height:1.55;">${item.descripcion || '—'}</p>
+              <p style="margin:0; color:#334155; font-size:15px;"><strong>Cantidad:</strong> ${qty}${unit}</p>
+            </div>`;
+        }).join('')
+      : `<p style="margin:0 0 14px; color:#334155; font-size:15px;">(sin conceptos detallados)</p>`;
 
     const notasCotizacion = (cot.notas || '').trim();
     const notasHtml = notasCotizacion
-      ? `<p style="color: #334155; font-size: 15px; line-height: 1.55; margin-top: 16px; white-space: pre-line;">${notasCotizacion}</p>`
+      ? `<p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 16px; white-space:pre-line;">${notasCotizacion}</p>`
       : '';
+
+    const areaSolicitante = [req.area, req.departamento].filter(Boolean).join(' / ') || '—';
+    const consecutivo = req.consecutivo || req.id;
+    const titulo = req.titulo_solicitud || '—';
+    const tipoLabel = req.tipo || '—';
 
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; background:#f8fafc; padding: 24px;">
         <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
           ${buildEmailBrandingHtml()}
-          <h2 style="color: #1e3a8a; margin: 0 0 8px; font-size: 22px;">Solicitud de Cotización</h2>
-          <!-- Cuerpo simple estilo cliente: solo pedir los items -->
-          <p style="color: #334155; font-size: 15px; margin: 16px 0 8px;">
-            Buenas tardes <strong>${cot.proveedor_num ? `${cot.proveedor_num} — ` : ''}${cot.proveedor_nombre || 'Proveedor'}</strong>,
+
+          <p style="color:#334155; font-size:15px; margin:0 0 16px;">
+            Estimado proveedor:
           </p>
 
-          <p style="color: #334155; font-size: 15px; line-height: 1.55; margin-bottom: 8px;">
-            Por favor su ayuda para cotizar lo siguiente
+          <p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 20px;">
+            Por medio de la presente, solicitamos de su apoyo para cotizar los conceptos descritos en el presente requerimiento.
           </p>
 
-          ${conceptosHtml || '<p style="margin:0; color:#334155;">- (sin conceptos detallados)</p>'}
-
+          <p style="color:#1e293b; font-size:15px; font-weight:700; margin:0 0 10px;">
+            Descripción del requerimiento:
+          </p>
+          ${conceptosHtml}
           ${notasHtml}
 
-          <p style="color: #334155; font-size: 15px; margin-top: 20px;">
-            Saludos
+          <p style="color:#1e293b; font-size:15px; font-weight:700; margin:20px 0 10px;">
+            Datos de referencia:
           </p>
-
-          <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
-            Atentamente,<br>
-            <strong>Equipo de Compras</strong><br>
-            ${EMPRESA_SUBTITULO}
-          </div>
-
-          <!-- Datos del requerimiento -->
-          <div style="background: #f1f5f9; border-radius: 6px; padding: 18px; margin: 20px 0;">
-            <table style="width:100%; font-size:14px; color:#1e293b;">
+          <div style="background:#f1f5f9; border-radius:6px; padding:16px 18px; margin:0 0 20px;">
+            <table style="width:100%; font-size:14px; color:#1e293b; border-collapse:collapse;">
               <tr>
-                <td style="padding:4px 0; width:140px;"><strong>Requerimiento:</strong></td>
-                <td style="padding:4px 0;"><strong>${req.consecutivo || req.id}</strong></td>
+                <td style="padding:4px 0; width:150px; vertical-align:top;"><strong>Requerimiento:</strong></td>
+                <td style="padding:4px 0;">${consecutivo}</td>
               </tr>
               <tr>
-                <td style="padding:4px 0;"><strong>Título:</strong></td>
-                <td style="padding:4px 0;">${req.titulo_solicitud || '—'}</td>
+                <td style="padding:4px 0; vertical-align:top;"><strong>Título:</strong></td>
+                <td style="padding:4px 0;">${titulo}</td>
               </tr>
               <tr>
-                <td style="padding:4px 0; vertical-align:top;"><strong>Descripción:</strong></td>
-                <td style="padding:4px 0; white-space:pre-line;">${req.notas || req.descripcion || '—'}</td>
+                <td style="padding:4px 0; vertical-align:top;"><strong>Tipo:</strong></td>
+                <td style="padding:4px 0;">${tipoLabel}</td>
               </tr>
               <tr>
-                <td style="padding:4px 0;"><strong>Tipo:</strong></td>
-                <td style="padding:4px 0;">${req.tipo || '—'}</td>
-              </tr>
-              <tr>
-                <td style="padding:4px 0;"><strong>Área / Depto:</strong></td>
-                <td style="padding:4px 0;">${req.area || ''} ${req.departamento ? ' / ' + req.departamento : ''}</td>
+                <td style="padding:4px 0; vertical-align:top;"><strong>Área solicitante:</strong></td>
+                <td style="padding:4px 0;">${areaSolicitante}</td>
               </tr>
             </table>
           </div>
+
+          <p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 12px;">
+            Agradeceremos nos comparta su propuesta económica, tiempo de atención y cualquier información adicional relevante para la ejecución del servicio.
+          </p>
+
+          <p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 20px;">
+            Quedamos atentos a sus comentarios.
+          </p>
+
+          <p style="color:#334155; font-size:15px; margin:0 0 4px;">
+            Saludos cordiales,
+          </p>
+          <p style="color:#334155; font-size:15px; margin:0; line-height:1.55;">
+            <strong>Equipo de Compras</strong><br>
+            ${EMPRESA_SUBTITULO}
+          </p>
         </div>
-        
+
         <p style="text-align:center; color:#94a3b8; font-size:11px; margin-top:16px;">
           Este es un correo automático generado por el Sistema de Órdenes de Compra.
         </p>
       </div>
     `;
 
-    // Texto plano simple (estilo del ejemplo del cliente)
-    let itemsTextoPlano = '';
-    if (tieneItems) {
-      itemsTextoPlano = '\n' + cot.items.map(item => {
-        const qty = formatCantidadEmail(item.cantidad, item.unidad);
-        const unit = item.unidad ? ` ${item.unidad}` : '';
-        const qtyNum = parseFloat(item.cantidad) || 1;
-        const detalle = qtyNum > 1 || unit ? ` — ${qty}${unit}` : '';
-        return `${item.descripcion}${detalle}`;
-      }).join('\n\n');
-    }
-
-    const proveedorNombre = cot.proveedor_num
-      ? `${cot.proveedor_num} — ${cot.proveedor_nombre || 'Proveedor'}`
-      : (cot.proveedor_nombre || 'Proveedor');
+    const itemsTextoPlano = items.length
+      ? items.map(item => {
+          const qty = formatCantidadEmail(item.cantidad, item.unidad);
+          const unit = item.unidad ? ` ${item.unidad}` : '';
+          return `${item.descripcion || '—'}\nCantidad: ${qty}${unit}`;
+        }).join('\n\n')
+      : '(sin conceptos detallados)';
 
     const notasTextoPlano = notasCotizacion ? `\n\n${notasCotizacion}` : '';
 
-    const textoPlano = `Buenas tardes ${proveedorNombre}
+    const textoPlano = `Estimado proveedor:
 
-Por favor su ayuda para cotizar lo siguiente
+Por medio de la presente, solicitamos de su apoyo para cotizar los conceptos descritos en el presente requerimiento.
 
+Descripción del requerimiento:
 ${itemsTextoPlano}${notasTextoPlano}
 
-Saludos`;
+Datos de referencia:
+Requerimiento: ${consecutivo}
+Título: ${titulo}
+Tipo: ${tipoLabel}
+Área solicitante: ${areaSolicitante}
+
+Agradeceremos nos comparta su propuesta económica, tiempo de atención y cualquier información adicional relevante para la ejecución del servicio.
+
+Quedamos atentos a sus comentarios.
+
+Saludos cordiales,
+Equipo de Compras
+${EMPRESA_SUBTITULO}
+
+Este es un correo automático generado por el Sistema de Órdenes de Compra.`;
 
     const ccCotizaciones = await obtenerCcCotizaciones();
     if (ccCotizaciones) {
@@ -191,7 +191,7 @@ Saludos`;
       to: cot.proveedor_email,
       cc: ccCotizaciones || undefined,
       replyTo: ccCotizaciones || undefined,
-      subject: `Solicitud de Cotización - ${req.consecutivo || 'Requerimiento ' + req.id}`,
+      subject: `Solicitud de Cotización - ${consecutivo}`,
       html,
       text: textoPlano,
       attachments: getEmailBrandingAttachments(),

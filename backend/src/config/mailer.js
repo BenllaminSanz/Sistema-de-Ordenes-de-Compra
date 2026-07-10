@@ -162,10 +162,7 @@ export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text, 
   }
 };
 
-/**
- * Mantener compatibilidad con función anterior
- * Validar logica si aun es util para la nueva función del catalogo
- */
+/** Compatibilidad: notificación simple de cotización registrada. */
 export const enviarCorreoCotizacion = async (correoDestino, idCotizacion) => {
   return enviarCorreo({
     to: correoDestino,

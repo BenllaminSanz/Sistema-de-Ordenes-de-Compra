@@ -392,7 +392,7 @@ function crearFilaItem(itemData = {}) {
 
   row.innerHTML = `
     <td style="vertical-align: top;">
-      <input type="text" class="form-control item-codigo-catalogo" placeholder="Nº ítem" value="${codigoCatalogo}" title="Opcional al cotizar; obligatorio al autorizar la OC" ${itemData.catalogo_id ? 'readonly' : ''}>
+      <input type="text" class="form-control item-codigo-catalogo" placeholder="Nº ítem" value="${codigoCatalogo}" title="Opcional al cotizar; si falta, se pide al generar la OC" ${itemData.catalogo_id ? 'readonly' : ''}>
       <input type="hidden" class="item-catalogo-id" value="${itemData.catalogo_id || ''}">
     </td>
     <td style="vertical-align: top;">

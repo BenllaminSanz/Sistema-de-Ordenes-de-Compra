@@ -1,4 +1,3 @@
-// backend/src/models/cotizaciones.js
 import pool from '../config/db.js';
 
 async function listarPorRequerimiento(requerimiento_id, incluirItems = true) {
@@ -167,14 +166,12 @@ export async function marcarComoProcesadaSinEnvioCorreo(cotizacionId) {
   `, [cotizacionId]);
 }
 
-// Actualizar manteniendo restricción de no modificar si ya está seleccionada
-// Soporta reemplazo de items si se pasa el arreglo 'items'
+// Actualizar cotización. Si está seleccionada, solo archivo_url y notas (montos/ítems bloqueados en UI).
 async function actualizar(id, datos, items = null) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1. Verificar si está seleccionada
     const [[verificacion]] = await conn.query(
       'SELECT seleccionada FROM cotizaciones WHERE id = ?',
       [id]
@@ -182,15 +179,11 @@ async function actualizar(id, datos, items = null) {
 
     if (!verificacion) {
       await conn.rollback();
-      return 0; // No existe
+      return 0;
     }
 
-    // Campos que sí se pueden modificar aunque esté seleccionada
     const camposPermitidosSeleccionada = ['archivo_url', 'notas'];
-
     const estaSeleccionada = verificacion.seleccionada === 1;
-
-    // Determinar qué campos quiere actualizar el usuario
     const camposSolicitados = Object.keys(datos || {});
     const intentaActualizarCamposRestringidos = camposSolicitados.some(
       c => !camposPermitidosSeleccionada.includes(c)
@@ -198,10 +191,9 @@ async function actualizar(id, datos, items = null) {
 
     if (estaSeleccionada && intentaActualizarCamposRestringidos && !items) {
       await conn.rollback();
-      return 0; // No se puede modificar montos/items una vez seleccionada
+      return 0;
     }
 
-    // 2. Actualizar campos del encabezado
     const campos = {};
     ['monto_total', 'monto_subtotal', 'iva', 'moneda', 'archivo_url', 'fecha_envio', 'fecha_recepcion', 'notas', 'estado'].forEach(c => {
       if (datos[c] !== undefined) campos[c] = datos[c];
@@ -217,12 +209,9 @@ async function actualizar(id, datos, items = null) {
       affected = r.affectedRows;
     }
 
-    // 3. Reemplazar items si se proporcionaron
     if (items && Array.isArray(items)) {
-      // Eliminar items anteriores
       await conn.query('DELETE FROM cotizacion_items WHERE cotizacion_id = ?', [id]);
 
-      // Insertar los nuevos
       for (const item of items) {
         const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
         const precio = item.precio_unitario != null ? parseFloat(item.precio_unitario) : 0;
@@ -245,7 +234,7 @@ async function actualizar(id, datos, items = null) {
     }
 
     await conn.commit();
-    return affected || 1; // Si solo se actualizaron items, devolvemos 1 como éxito
+    return affected || 1;
   } catch (error) {
     await conn.rollback();
     throw error;
@@ -254,22 +243,17 @@ async function actualizar(id, datos, items = null) {
   }
 }
 
-/**
- * Seleccionar una cotización - MEJORADA
- * Desmarca todas las demás y marca la seleccionada + actualiza estado y fecha
- */
+/** Marca una cotización como seleccionada y rechaza el resto del requerimiento. */
 async function seleccionar(id, requerimiento_id) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // Desmarcar todas
     await conn.query(
       'UPDATE cotizaciones SET seleccionada = 0, estado = "rechazada" WHERE requerimiento_id = ? AND id != ?',
       [requerimiento_id, id]
     );
 
-    // Marcar la seleccionada
     await conn.query(`
       UPDATE cotizaciones 
       SET seleccionada = 1, 
@@ -277,10 +261,7 @@ async function seleccionar(id, requerimiento_id) {
           fecha_seleccion = NOW()
       WHERE id = ?`, [id]);
 
-    // NOTA: la formalización de ítems libres en catálogo (con proveedor de la cot)
-    // se realiza exclusivamente al generar la OC (ver ordenes.js crear + formalizarCotizacionEnCatalogo).
-    // Esto cumple con "cargar después de generar la OC".
-
+    // El catálogo se formaliza al generar la OC, no aquí.
     await conn.commit();
     return true;
   } catch (err) {
@@ -291,16 +272,11 @@ async function seleccionar(id, requerimiento_id) {
   }
 }
 
-/**
- * Deseleccionar una cotización previamente seleccionada.
- * Permite revertir la selección (con confirmación en frontend).
- */
 async function deseleccionar(id, requerimiento_id) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // Desmarcar esta cotización específica
     const [result] = await conn.query(`
       UPDATE cotizaciones 
       SET seleccionada = 0, 
@@ -311,7 +287,7 @@ async function deseleccionar(id, requerimiento_id) {
 
     if (result.affectedRows === 0) {
       await conn.rollback();
-      return false; // No estaba seleccionada o no existe
+      return false;
     }
 
     await conn.commit();
@@ -332,11 +308,60 @@ async function eliminar(id) {
   return r.affectedRows;
 }
 
+/** Actualiza solo codigo_catalogo en ítems libres (p. ej. al generar OC). */
+async function aplicarCodigosCatalogoItems(cotizacionId, itemsCodigos, conn) {
+  if (!Array.isArray(itemsCodigos) || itemsCodigos.length === 0) return;
+
+  for (const row of itemsCodigos) {
+    const itemId = parseInt(row?.id, 10);
+    const codigo = String(row?.codigo_catalogo || '').trim();
+    if (!itemId || !codigo) continue;
+
+    await conn.query(
+      `UPDATE cotizacion_items
+       SET codigo_catalogo = ?
+       WHERE id = ? AND cotizacion_id = ?
+         AND (catalogo_id IS NULL OR catalogo_id = 0)`,
+      [codigo, itemId, cotizacionId]
+    );
+  }
+}
+
+/** Exige Nº ítem en ítems libres; lanza 422 FALTAN_CODIGOS_CATALOGO con items[]. */
+async function assertCodigosCatalogoListos(cotizacionId, conn) {
+  const [faltantes] = await conn.query(
+    `SELECT id, descripcion, cantidad, unidad
+     FROM cotizacion_items
+     WHERE cotizacion_id = ?
+       AND (catalogo_id IS NULL OR catalogo_id = 0)
+       AND (codigo_catalogo IS NULL OR TRIM(codigo_catalogo) = '')
+     ORDER BY id ASC`,
+    [cotizacionId]
+  );
+
+  if (faltantes.length === 0) return;
+
+  const items = faltantes.map(item => ({
+    id: item.id,
+    descripcion: item.descripcion,
+    cantidad: item.cantidad,
+    unidad: item.unidad || '',
+  }));
+  const primerDesc = items[0].descripcion || 'sin descripción';
+
+  throw {
+    status: 422,
+    codigo: 'FALTAN_CODIGOS_CATALOGO',
+    mensaje: items.length === 1
+      ? `El ítem "${primerDesc}" no tiene Nº ítem. Complétalo para generar la OC; ese código se guardará en el catálogo.`
+      : `Hay ${items.length} ítems sin Nº ítem (p. ej. "${primerDesc}"). Complétalos para generar la OC; esos códigos se guardarán en el catálogo.`,
+    items,
+  };
+}
+
 /**
- * Formaliza ítems de una cotización en el catálogo.
- * Llamado EXCLUSIVAMENTE desde creación de OC (después de generar la OC).
- * - El código del catálogo es el Nº ítem (codigo_catalogo) capturado en la cotización.
- * - La moneda y el costo de referencia provienen de la cotización seleccionada.
+ * Inserta/actualiza en catálogo los ítems de la cotización al generar la OC.
+ * Usa codigo_catalogo como código de catálogo y el precio de la cotización como costo_referencia.
  */
 async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
   const [[cot]] = await conn.query(
@@ -350,13 +375,15 @@ async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
   if (!cot) return;
 
   const [cotItems] = await conn.query(
-    `SELECT descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario
+    `SELECT id, descripcion, codigo_catalogo, catalogo_id, cantidad, unidad, precio_unitario
      FROM cotizacion_items
      WHERE cotizacion_id = ?`,
     [cotizacionId]
   );
 
   if (cotItems.length === 0) return;
+
+  await assertCodigosCatalogoListos(cotizacionId, conn);
 
   const tipo = cot.req_tipo || 'PARTES';
   const moneda = cot.moneda || 'MXN';
@@ -390,13 +417,6 @@ async function formalizarCotizacionEnCatalogo(cotizacionId, conn) {
       continue;
     }
 
-    if (!codigo) {
-      throw {
-        status: 422,
-        mensaje: `El ítem "${item.descripcion}" no tiene Nº ítem en la cotización. Complétalo antes de generar la OC; ese código se guardará en el catálogo.`,
-      };
-    }
-
     const [porCodigo] = await conn.query(
       'SELECT id FROM catalogo WHERE codigo = ? LIMIT 1',
       [codigo]
@@ -423,5 +443,7 @@ export {
   seleccionar, 
   deseleccionar,
   eliminar,
+  aplicarCodigosCatalogoItems,
+  assertCodigosCatalogoListos,
   formalizarCotizacionEnCatalogo
 };

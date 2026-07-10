@@ -1,6 +1,10 @@
 import pool from '../config/db.js';
 import * as Catalogo from './catalogo.js';
-import { formalizarCotizacionEnCatalogo } from './cotizaciones.js';
+import {
+  formalizarCotizacionEnCatalogo,
+  aplicarCodigosCatalogoItems,
+  assertCodigosCatalogoListos,
+} from './cotizaciones.js';
 import { validarCierreOrden } from '../utils/ocCierre.js';
 import { calcularTotalesCatalogoRequerimiento } from '../utils/catalogoItems.js';
 import { siguienteConsecutivoNumerico } from '../utils/consecutivos.js';
@@ -180,8 +184,13 @@ async function obtenerPorId(id) {
   let items = [];
   if (oc.cotizacion_id) {
     const [cotItems] = await pool.query(`
-      SELECT ci.id, ci.descripcion, ci.cantidad, ci.unidad, ci.precio_unitario, ci.notas_item
+      SELECT ci.id, ci.descripcion, ci.cantidad, ci.unidad, ci.precio_unitario, ci.notas_item,
+             ci.codigo_catalogo, ci.catalogo_id,
+             COALESCE(NULLIF(TRIM(ci.codigo_catalogo), ''), c.codigo) AS codigo,
+             c.proveedor_id, p.num_proveedor AS proveedor_num, p.nombre AS proveedor_nombre
       FROM cotizacion_items ci
+      LEFT JOIN catalogo c ON c.id = ci.catalogo_id
+      LEFT JOIN proveedores p ON p.id = c.proveedor_id
       WHERE ci.cotizacion_id = ?
       ORDER BY ci.id ASC
     `, [oc.cotizacion_id]);
@@ -213,15 +222,25 @@ async function obtenerPorId(id) {
   return { ...oc, historial, items };
 }
 
-async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = null) {
+/**
+ * Crea una OC. itemsCodigoCatalogo: [{ id, codigo_catalogo }] opcional (modal de Nº ítem).
+ * Formaliza catálogo al final de la misma transacción.
+ */
+async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = null, itemsCodigoCatalogo = null) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
+    if (cotizacion_id && Array.isArray(itemsCodigoCatalogo) && itemsCodigoCatalogo.length > 0) {
+      await aplicarCodigosCatalogoItems(cotizacion_id, itemsCodigoCatalogo, conn);
+    }
+
+    if (cotizacion_id) {
+      await assertCodigosCatalogoListos(cotizacion_id, conn);
+    }
+
     const numero_oc = await generarNumeroOC(conn, requerimiento_id);
 
-    // Heredar proveedor, monto_total y moneda de la cotización (si existe).
-    // Si no hay cotización, derivar del catálogo del requerimiento (costos de referencia).
     let proveedor_id = null;
     let monto_total = null;
     let moneda = 'MXN';
@@ -254,14 +273,12 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
     );
     const ocId = result.insertId;
 
-    // Marcar el requerimiento como aprobado si no lo estaba
     await conn.query(
       `UPDATE requerimientos SET estado = 'aprobado'
        WHERE id = ? AND estado != 'aprobado'`,
       [requerimiento_id]
     );
 
-    // Enlazar la OC generada de vuelta al requerimiento (para vista de solicitante + trazabilidad)
     await conn.query(
       `UPDATE requerimientos SET orden_compra_id = ?
        WHERE id = ?`,
@@ -275,7 +292,6 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
       [ocId, autorizado_por]
     );
 
-    // Formalizar ítems de la cotización en catálogo (helper compartido)
     if (cotizacion_id) {
       await formalizarCotizacionEnCatalogo(cotizacion_id, conn);
     }
