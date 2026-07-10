@@ -1,5 +1,8 @@
 # Versionado del proyecto
 
+> **¿Vas a subir cambios ahora?** Abre primero el manual de consulta:  
+> **[docs/MANUAL-GIT-GITHUB.md](./docs/MANUAL-GIT-GITHUB.md)** (push del día vs release, checklists y comandos).
+
 Este repositorio usa **[Semantic Versioning](https://semver.org/lang/es/)** (`MAJOR.MINOR.PATCH`) y tags Git con el prefijo `v` (ejemplo: `v1.3.2`).
 
 ## Fuentes de verdad

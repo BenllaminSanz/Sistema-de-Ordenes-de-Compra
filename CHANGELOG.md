@@ -12,6 +12,7 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - Versión visible en sidebar y pantalla de login
 - Script `npm run test:ci` (comprobaciones sin MySQL)
 - GitHub Actions CI en push/PR a `main`
+- Manual de consulta para subir cambios: `docs/MANUAL-GIT-GITHUB.md`
 
 ## [1.3.2] — 2026-07-10
 

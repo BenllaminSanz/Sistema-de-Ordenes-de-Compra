@@ -4,7 +4,7 @@
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · **Manual al subir cambios:** [docs/MANUAL-GIT-GITHUB.md](./docs/MANUAL-GIT-GITHUB.md)
 
 ## Novedades v1.3.2
 
@@ -130,6 +130,8 @@ Sistema de Ordenes de Compra/
 ├── empaquetar-deploy.ps1    # Empaquetado para servidor
 ├── CHANGELOG.md             # Historial de versiones
 ├── VERSIONING.md            # Flujo de tags y releases
+├── docs/
+│   └── MANUAL-GIT-GITHUB.md # Consulta al subir cambios a GitHub
 ├── .env.example
 ├── README.md
 └── .env                     # No se sube al repositorio
