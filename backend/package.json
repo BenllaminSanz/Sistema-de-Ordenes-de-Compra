@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "test": "node scripts/test-flujo.mjs && node scripts/test-cambios-cliente.mjs"
+    "test": "node scripts/test-flujo.mjs && node scripts/test-cambios-cliente.mjs",
+    "test:ci": "node scripts/test-ci.mjs"
   },
   "keywords": [],
   "author": "",

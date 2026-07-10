@@ -74,6 +74,17 @@ No es obligatorio, pero facilita el CHANGELOG:
 - `chore:` mantenimiento (deps, versionado, scripts)
 - `release: vX.Y.Z` — commit de corte de versión
 
+## CI y pruebas
+
+| Comando | Cuándo | Requiere |
+|---------|--------|----------|
+| `npm run test:ci` | Siempre (local y GitHub Actions) | Solo Node + archivos del repo |
+| `npm test` | Antes de un release, en tu máquina | Servidor en marcha, MySQL, admin en `.env` |
+
+El workflow [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) ejecuta `test:ci` en cada push/PR a `main`.
+
+La versión en pantalla (sidebar / login) y en `GET /api/health` sale de `backend/package.json`. Si el footer muestra otra versión que el tag, el servidor no se actualizó o hay un deploy incompleto.
+
 ## Qué no hacer
 
 - No reescribir tags ya publicados en `origin` (`git tag -f` + force-push) salvo acuerdo explícito.

@@ -1,0 +1,36 @@
+# CI — se ejecuta en cada push y pull request a main
+# Por qué: detectar roturas de sintaxis/versión/archivos clave antes de desplegar.
+# Qué NO hace: las pruebas de flujo (npm test) requieren MySQL + servidor + credenciales;
+#              esas se corren en local o en un entorno con BD de prueba.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-ci:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas CI (sin base de datos)
+        run: npm run test:ci

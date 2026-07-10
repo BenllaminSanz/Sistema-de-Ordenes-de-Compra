@@ -54,6 +54,7 @@
     <div style="text-align:center; margin-top:16px; font-size:13px; color:#64748b;">
       ¿No tienes cuenta? <a href="register.html" style="color:#185FA5; font-weight:500;">Regístrate como solicitante</a>
     </div>
+    <span class="app-version-login" id="app-version" title="Versión del servidor">…</span>
   </div>
 </div>
 
@@ -64,6 +65,9 @@
   if (Auth.getToken()) {
     window.location.href = 'dashboard.html';
   }
+
+  // Mostrar versión del servidor (sin requerir login)
+  if (typeof cargarVersionApp === 'function') cargarVersionApp();
 
   const form = document.getElementById('form-login');
   const btn = document.getElementById('btn-login');

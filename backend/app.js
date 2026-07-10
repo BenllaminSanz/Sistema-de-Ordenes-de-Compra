@@ -10,6 +10,11 @@ import fs from "fs";
 import logger from "./src/utils/logger.js";
 import { AppError } from "./src/utils/AppError.js";
 
+// Versión de la app (misma fuente que package.json / tags Git)
+const { version: APP_VERSION } = JSON.parse(
+  fs.readFileSync(new URL("./package.json", import.meta.url), "utf8")
+);
+
 import authRoutes from "./src/routes/auth.route.js";
 import requerimientosRoutes from "./src/routes/requerimiento.route.js";
 import proveedoresRoutes from "./src/routes/proveedores.route.js";
@@ -111,8 +116,13 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/areas", areasRoutes);
 
 // ─── Health check ──────────────────────────────────────────
+// Incluye versión para verificar qué build está corriendo en cada ambiente
 app.get("/api/health", (req, res) => {
-  res.json({ estado: "ok", timestamp: new Date().toISOString() });
+  res.json({
+    estado: "ok",
+    version: APP_VERSION,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ─── 404 ───────────────────────────────────────────────────

@@ -142,7 +142,8 @@ Sistema de Ordenes de Compra/
 | `npm run dev` | Servidor con recarga automática |
 | `npm start` | Servidor en modo producción |
 | `node backend/scripts/seed-admin.js` | Crear o actualizar usuario administrador |
-| `npm test` (en `backend/`) | Pruebas de flujo API y cambios recientes |
+| `npm run test:ci` (en `backend/`) | Comprobaciones sin BD (versión, archivos, sintaxis) — lo usa GitHub Actions |
+| `npm test` (en `backend/`) | Pruebas de flujo API (requiere servidor + MySQL + admin en `.env`) |
 | `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy (sin `node_modules`, `.env` ni `uploads`) |
 
 ## Variables de Entorno
@@ -199,7 +200,7 @@ flowchart TD
 | `GET /api/dashboard/stats` | KPIs del dashboard |
 | `GET /api/ordenes-compra?estado=activas` | OC pendientes de cerrar |
 | `GET /api/areas` | Áreas y departamentos |
-| `GET /api/health` | Estado del servidor |
+| `GET /api/health` | Estado del servidor + `version` desplegada |
 
 ## Actualizar en producción
 

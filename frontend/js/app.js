@@ -393,9 +393,33 @@ function renderSidebar() {
     <div class="sidebar-footer">
       <strong>${u.nombre}</strong>
       ${u.email}
+      <span class="app-version" id="app-version" title="Versión del servidor">…</span>
     </div>`;
 
   marcarNavActivo();
+  cargarVersionApp();
+}
+
+/**
+ * Lee /api/health y muestra la versión del servidor (fuente: backend/package.json).
+ * Si el health falla, deja un guion para no romper la UI.
+ */
+async function cargarVersionApp() {
+  const targets = document.querySelectorAll('#app-version, .app-version-login');
+  if (!targets.length) return;
+  try {
+    const data = await Api.get('/health');
+    const label = data?.version ? `v${data.version}` : '—';
+    targets.forEach((el) => {
+      el.textContent = label;
+      if (data?.version) el.title = `Sistema OC v${data.version}`;
+    });
+  } catch {
+    targets.forEach((el) => {
+      el.textContent = '—';
+      el.title = 'No se pudo obtener la versión';
+    });
+  }
 }
 
 // ─── UTILIDADES COMPARTIDAS ────────────────────────────────────────────────────

@@ -5,6 +5,14 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+### Añadido
+- Endpoint `/api/health` devuelve `version` (desde `backend/package.json`)
+- Versión visible en sidebar y pantalla de login
+- Script `npm run test:ci` (comprobaciones sin MySQL)
+- GitHub Actions CI en push/PR a `main`
+
 ## [1.3.2] — 2026-07-10
 
 ### Añadido

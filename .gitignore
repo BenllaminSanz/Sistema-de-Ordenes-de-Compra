@@ -5,8 +5,14 @@ docs/node_modules/
 terminals/
 .claude/
 deploy-oc-*.zip
+*.zip
+!docs/**/*.zip
 _Respaldos/
+Thumbs.db
+.DS_Store
 backend/uploads/cotizaciones/*
 backend/uploads/referencias/*
+backend/uploads/items-referencia/*
 !backend/uploads/cotizaciones/.gitkeep
 !backend/uploads/referencias/.gitkeep
+!backend/uploads/items-referencia/.gitkeep
