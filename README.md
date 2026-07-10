@@ -1,8 +1,15 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.3** — Julio 2026
+**Versión 1.3.2** — Julio 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
+
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md)
+
+## Novedades v1.3.2
+
+- **Plantilla RFQ** mejorada para cotizaciones
+- **Nº de ítem** al generar OC y líneas de OC alineadas al catálogo
 
 ## Novedades v1.3
 
@@ -121,6 +128,8 @@ Sistema de Ordenes de Compra/
 ├── frontend/                # HTML + JS + CSS
 ├── docs/                    # Manual de operaciones
 ├── empaquetar-deploy.ps1    # Empaquetado para servidor
+├── CHANGELOG.md             # Historial de versiones
+├── VERSIONING.md            # Flujo de tags y releases
 ├── .env.example
 ├── README.md
 └── .env                     # No se sube al repositorio
