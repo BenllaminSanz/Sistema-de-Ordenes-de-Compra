@@ -3,6 +3,9 @@
 let _itemsCatalogoProv = [];
 let _proveedorSeleccionadoId = null;
 let puedeSolicitarReqProv = false;
+let esAdminCatalogoProv = false;
+let _unidadesMedidaProv = [];
+let _proveedorModalInited = false;
 
 const CAT_PROV_FILTROS_KEY = 'oc_catalogo_prov_filtros';
 
@@ -40,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderTopbar('Catálogo por proveedor');
 
   puedeSolicitarReqProv = Auth.puedeHacer(['solicitante', 'contabilidad', 'admin']);
+  esAdminCatalogoProv = Auth.puedeHacer(['contabilidad', 'admin']);
 
   CarritoReq.load();
   CarritoReq.onChange(() => {
@@ -48,6 +52,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   actualizarBarraCarritoReqProv();
 
   await ProveedorBusqueda.cargar();
+  if (esAdminCatalogoProv) {
+    await cargarUnidadesMedidaProv();
+  }
   const guardados = restaurarFiltrosCatalogoProv();
   await cargarCatalogoPorProveedor();
 
@@ -55,6 +62,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   const provParam = params.get('proveedor_id') || guardados?.proveedor_id;
   if (provParam) seleccionarProveedorCatalogo(parseInt(provParam, 10));
 });
+
+async function cargarUnidadesMedidaProv() {
+  try {
+    _unidadesMedidaProv = await Api.get('/unidades-medida?soloActivas=true') || [];
+  } catch {
+    _unidadesMedidaProv = [];
+  }
+}
+
+function rellenarSelectUnidadesProv(selected = '') {
+  const sel = document.getElementById('cat-prov-unidad');
+  if (!sel) return;
+  const val = selected || sel.value || '';
+  const opts = ['<option value="">— Seleccionar unidad —</option>'];
+  (_unidadesMedidaProv || []).forEach((u) => {
+    const cod = u.codigo || u.nombre || '';
+    const label = u.codigo && u.nombre && u.codigo !== u.nombre
+      ? `${u.codigo} — ${u.nombre}`
+      : (u.nombre || u.codigo);
+    opts.push(`<option value="${UI.esc(cod)}">${UI.esc(label)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if (val) {
+    if (![...sel.options].some((o) => o.value === val)) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = val;
+      sel.appendChild(o);
+    }
+    sel.value = val;
+  }
+}
+
+async function initProveedorModalBusqueda() {
+  if (_proveedorModalInited || typeof ProveedorBusqueda === 'undefined') return;
+  await ProveedorBusqueda.init({
+    inputId: 'cat-prov-proveedor-busqueda',
+    hiddenId: 'cat-prov-proveedor-id',
+    datalistId: 'cat-prov-proveedores-list',
+    placeholder: 'Buscar por código o nombre…',
+  });
+  _proveedorModalInited = true;
+}
 
 async function cargarCatalogoPorProveedor() {
   const lista = document.getElementById('lista-proveedores-catalogo');
@@ -190,6 +240,9 @@ function renderItemsProveedor(proveedorId) {
       ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2 })
       : '—';
     const yaEnCarrito = puedeSolicitarReqProv && item.activo && CarritoReq.tiene(item.id);
+    const estadoBadge = item.activo
+      ? '<span class="badge badge-aprobado">Activo</span>'
+      : '<span class="badge badge-rechazado">Inactivo</span>';
 
     const celdaSolicitar = (puedeSolicitarReqProv && item.activo) ? `
       <div class="d-flex gap-1 align-items-center">
@@ -201,6 +254,36 @@ function renderItemsProveedor(proveedorId) {
         `}
       </div>` : '<span class="text-muted">—</span>';
 
+    const accionesAdmin = esAdminCatalogoProv ? `
+      <td>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline" title="Editar ítem"
+                  style="padding:2px 6px;"
+                  onclick="editarItemCatalogoDesdeProveedor(${item.id})">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24" style="vertical-align:-1px;">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button type="button" class="btn btn-sm ${item.activo ? 'btn-danger' : 'btn-success'}"
+                  style="padding:2px 6px;"
+                  title="${item.activo ? 'Desactivar' : 'Activar'}"
+                  onclick="cambiarEstadoCatalogoProv(${item.id}, ${!item.activo})">
+            ${item.activo
+              ? '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'
+              : '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><path d="M20 6L9 17l-5-5"/></svg>'}
+          </button>
+          ${!item.activo ? `
+          <button type="button" class="btn btn-sm btn-outline"
+                  style="padding:2px 6px;color:#b91c1c;border-color:#fca5a5;"
+                  title="Eliminar definitivamente (solo desactivados)"
+                  onclick="eliminarCatalogoProvDesactivado(${item.id}, '${String(item.codigo || '').replace(/'/g, "\\'")}')">
+            🗑
+          </button>` : ''}
+        </div>
+      </td>` : '';
+
     return `<tr>
       <td><strong>${item.codigo}</strong></td>
       <td style="max-width:300px">${item.descripcion || '—'}</td>
@@ -208,7 +291,9 @@ function renderItemsProveedor(proveedorId) {
       <td>${item.unidad || '—'}</td>
       <td style="text-align:right">${costo}</td>
       <td><span style="font-size:11px;font-weight:600;color:var(--muted)">${moneda}</span></td>
+      <td>${estadoBadge}</td>
       ${puedeSolicitarReqProv ? `<td>${celdaSolicitar}</td>` : ''}
+      ${accionesAdmin}
     </tr>`;
   }).join('');
 
@@ -217,12 +302,164 @@ function renderItemsProveedor(proveedorId) {
       <table>
         <thead><tr>
           <th>Código</th><th>Descripción</th><th>Tipo</th><th>Unidad</th>
-          <th style="text-align:right">Costo ref.</th><th>Moneda</th>
+          <th style="text-align:right">Costo ref.</th><th>Moneda</th><th>Estado</th>
           ${puedeSolicitarReqProv ? '<th>Solicitar</th>' : ''}
+          ${esAdminCatalogoProv ? '<th>Acciones</th>' : ''}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+function limpiarErroresModalProv() {
+  ['tipo', 'codigo', 'descripcion', 'costo'].forEach((campo) => {
+    const el = document.getElementById(`error-cat-prov-${campo}`);
+    if (el) el.textContent = '';
+  });
+}
+
+function mostrarErrorCampoProv(campo, mensaje) {
+  const el = document.getElementById(`error-cat-prov-${campo}`);
+  if (el) el.textContent = mensaje;
+}
+
+function cerrarModalCatalogoProv() {
+  const modal = document.getElementById('modal-catalogo-prov');
+  if (modal) modal.style.display = 'none';
+}
+
+async function editarItemCatalogoDesdeProveedor(id) {
+  if (!esAdminCatalogoProv) return;
+  try {
+    if (!_unidadesMedidaProv.length) await cargarUnidadesMedidaProv();
+    await initProveedorModalBusqueda();
+
+    const item = await Api.get(`/catalogo/${id}`);
+    if (!item) return Toast.error('Ítem no encontrado');
+
+    limpiarErroresModalProv();
+    document.getElementById('modal-catalogo-prov-titulo').textContent = 'Editar elemento del catálogo';
+    document.getElementById('cat-prov-id').value = item.id;
+    document.getElementById('cat-prov-tipo').value = item.tipo || '';
+    document.getElementById('cat-prov-codigo').value = item.codigo || '';
+    document.getElementById('cat-prov-descripcion').value = item.descripcion || '';
+    document.getElementById('cat-prov-costo').value = item.costo_referencia ?? '';
+    document.getElementById('cat-prov-moneda').value = item.moneda || 'MXN';
+    rellenarSelectUnidadesProv(item.unidad || '');
+    ProveedorBusqueda.establecer(
+      document.getElementById('cat-prov-proveedor-busqueda'),
+      document.getElementById('cat-prov-proveedor-id'),
+      item.proveedor_id || ''
+    );
+
+    const modal = document.getElementById('modal-catalogo-prov');
+    if (modal) modal.style.display = 'flex';
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo abrir el ítem para editar');
+  }
+}
+
+async function guardarCatalogoProv(e) {
+  e.preventDefault();
+  if (!esAdminCatalogoProv) return;
+
+  const btn = document.getElementById('btn-guardar-catalogo-prov');
+  const id = document.getElementById('cat-prov-id').value;
+  limpiarErroresModalProv();
+
+  const tipo = document.getElementById('cat-prov-tipo').value;
+  const codigo = document.getElementById('cat-prov-codigo').value.trim();
+  const descripcion = document.getElementById('cat-prov-descripcion').value.trim();
+  const costoStr = document.getElementById('cat-prov-costo').value;
+  const moneda = document.getElementById('cat-prov-moneda').value || 'MXN';
+  const unidad = (document.getElementById('cat-prov-unidad')?.value || '').trim() || null;
+  const provInput = document.getElementById('cat-prov-proveedor-busqueda');
+  const provHidden = document.getElementById('cat-prov-proveedor-id');
+  ProveedorBusqueda.resolver(provInput, provHidden);
+  const proveedor_id = provHidden?.value || null;
+
+  let tieneErrores = false;
+  if (!tipo) { mostrarErrorCampoProv('tipo', 'El tipo es obligatorio'); tieneErrores = true; }
+  if (!codigo) { mostrarErrorCampoProv('codigo', 'El código es obligatorio'); tieneErrores = true; }
+  if (!descripcion) { mostrarErrorCampoProv('descripcion', 'La descripción es obligatoria'); tieneErrores = true; }
+
+  let costo = null;
+  if (costoStr && costoStr.trim() !== '') {
+    costo = parseFloat(costoStr);
+    if (isNaN(costo) || costo < 0) {
+      mostrarErrorCampoProv('costo', 'El costo de referencia debe ser un número ≥ 0');
+      tieneErrores = true;
+    }
+  }
+  if (tieneErrores) return;
+
+  const datos = {
+    tipo,
+    codigo,
+    descripcion,
+    unidad,
+    costo_referencia: costo,
+    moneda,
+    proveedor_id: proveedor_id ? parseInt(proveedor_id, 10) : null,
+  };
+
+  const textoOriginal = btn?.textContent || 'Guardar';
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+  try {
+    await Api.put(`/catalogo/${id}`, datos);
+    Toast.success('Elemento actualizado correctamente');
+    cerrarModalCatalogoProv();
+    const provAntes = _proveedorSeleccionadoId;
+    await cargarCatalogoPorProveedor();
+    // Si cambió de proveedor, seguir mostrando el proveedor de la lista actual
+    if (provAntes) seleccionarProveedorCatalogo(provAntes);
+  } catch (err) {
+    const mensaje = err.mensaje || 'Error al guardar el elemento';
+    if (mensaje.toLowerCase().includes('código') || mensaje.toLowerCase().includes('codigo')) {
+      mostrarErrorCampoProv('codigo', mensaje);
+    } else {
+      Toast.error(mensaje);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
+  }
+}
+
+async function cambiarEstadoCatalogoProv(id, nuevoEstado) {
+  if (!esAdminCatalogoProv) return;
+  const accion = nuevoEstado ? 'activar' : 'desactivar';
+  if (!confirm(`¿Seguro que deseas ${accion} este elemento?`)) return;
+
+  try {
+    await Api.patch(`/catalogo/${id}/estado`, { activo: nuevoEstado });
+    Toast.success(`Elemento ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`);
+    const provAntes = _proveedorSeleccionadoId;
+    // Al desactivar con filtro "solo activos", el ítem desaparece de la lista
+    await cargarCatalogoPorProveedor();
+    if (provAntes) seleccionarProveedorCatalogo(provAntes);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al cambiar el estado');
+  }
+}
+
+async function eliminarCatalogoProvDesactivado(id, codigo) {
+  if (!esAdminCatalogoProv) return;
+  if (!confirm(
+    `¿Eliminar definitivamente el ítem desactivado "${codigo || id}"?\n\n`
+    + 'Solo se borra del catálogo si no tiene registros relacionados (REQ/OC). '
+    + 'Los históricos no se eliminan.'
+  )) return;
+
+  try {
+    const data = await Api.delete(`/catalogo/${id}`);
+    Toast.success(data.mensaje || 'Ítem eliminado');
+    const provAntes = _proveedorSeleccionadoId;
+    await cargarCatalogoPorProveedor();
+    if (provAntes) seleccionarProveedorCatalogo(provAntes);
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo eliminar el ítem');
+  }
 }
 
 function agregarItemProveedorAlCarrito(catalogoId) {
@@ -293,5 +530,10 @@ window.cargarCatalogoPorProveedor = cargarCatalogoPorProveedor;
 window.filtrarListaProveedores = filtrarListaProveedores;
 window.seleccionarProveedorCatalogo = seleccionarProveedorCatalogo;
 window.agregarItemProveedorAlCarrito = agregarItemProveedorAlCarrito;
+window.editarItemCatalogoDesdeProveedor = editarItemCatalogoDesdeProveedor;
+window.cerrarModalCatalogoProv = cerrarModalCatalogoProv;
+window.guardarCatalogoProv = guardarCatalogoProv;
+window.cambiarEstadoCatalogoProv = cambiarEstadoCatalogoProv;
+window.eliminarCatalogoProvDesactivado = eliminarCatalogoProvDesactivado;
 window.toggleDetalleCarritoReq = toggleDetalleCarritoReq;
 window.vaciarCarritoReq = vaciarCarritoReq;

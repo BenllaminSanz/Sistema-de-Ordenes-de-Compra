@@ -71,11 +71,13 @@ async function crear(datos, items = []) {
     await conn.beginTransaction();
 
     // Crear cotización principal
+    const idioma = (datos.idioma_correo || 'es').toString().toLowerCase().startsWith('en') ? 'en' : 'es';
+
     const [result] = await conn.query(`
       INSERT INTO cotizaciones 
         (requerimiento_id, proveedor_id, monto_total, monto_subtotal, iva, moneda,
-         archivo_url, fecha_envio, scheduled_at, email_sent_at, notas, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         archivo_url, fecha_envio, scheduled_at, email_sent_at, idioma_correo, notas, estado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datos.requerimiento_id,
         datos.proveedor_id,
@@ -87,6 +89,7 @@ async function crear(datos, items = []) {
         datos.fecha_envio || null,
         datos.scheduled_at || null,
         datos.email_sent_at || null,
+        idioma,
         datos.notas || null,
         datos.estado || 'en_revision'
       ]);

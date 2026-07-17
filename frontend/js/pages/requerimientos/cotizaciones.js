@@ -276,30 +276,66 @@ async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
 async function enviarCorreoCotizacion(cotizacionId, esReenvio = false) {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para enviar correos de cotización');
 
-  const accion = esReenvio ? 'Reenviar' : 'Enviar';
-  // 1 = Español, 2 = Inglés, cancel = abortar
-  const eleccion = prompt(
-    `${accion} solicitud de cotización al proveedor.\n\n`
-    + 'Idioma del correo:\n'
-    + '  1 = Español\n'
-    + '  2 = English\n\n'
-    + 'Escribe 1 o 2:',
-    '1'
-  );
-  if (eleccion === null) return;
-  const idioma = String(eleccion).trim().startsWith('2') ? 'en' : 'es';
+  const modal = document.getElementById('modal-idioma-correo-cot');
+  if (!modal) {
+    // Fallback si no hay modal en el DOM
+    const idioma = confirm('¿Enviar el correo en inglés?\n\nAceptar = English\nCancelar = Español') ? 'en' : 'es';
+    try {
+      await Api.post(`/cotizaciones/${cotizacionId}/enviar`, { idioma });
+      Toast.success((esReenvio ? 'Cotización reenviada' : 'Cotización enviada') + (idioma === 'en' ? ' (English)' : ' (Español)'));
+      await cargarCotizaciones(requerimientoActual.id);
+    } catch (err) {
+      Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
+    }
+    return;
+  }
 
+  window._cotizacionEnvioPendiente = { id: cotizacionId, reenvio: esReenvio };
+  const titulo = document.getElementById('idioma-correo-titulo');
+  if (titulo) {
+    titulo.textContent = esReenvio
+      ? 'Reenviar solicitud de cotización'
+      : 'Enviar solicitud de cotización';
+  }
+  const sel = document.getElementById('idioma-correo-select');
+  if (sel) sel.value = 'es';
+  modal.style.display = 'flex';
+  modal.classList.add('show');
+}
+
+function cerrarModalIdiomaCorreo() {
+  const modal = document.getElementById('modal-idioma-correo-cot');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+  }
+  window._cotizacionEnvioPendiente = null;
+}
+
+async function confirmarEnvioCorreoConIdioma() {
+  const pend = window._cotizacionEnvioPendiente;
+  if (!pend?.id) return cerrarModalIdiomaCorreo();
+  const sel = document.getElementById('idioma-correo-select');
+  const idioma = (sel?.value || 'es').toString().toLowerCase().startsWith('en') ? 'en' : 'es';
+  const btn = document.getElementById('btn-confirmar-idioma-correo');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
   try {
-    await Api.post(`/cotizaciones/${cotizacionId}/enviar`, { idioma });
+    await Api.post(`/cotizaciones/${pend.id}/enviar`, { idioma });
     Toast.success(
-      (esReenvio ? 'Cotización reenviada' : 'Cotización enviada')
+      (pend.reenvio ? 'Cotización reenviada' : 'Cotización enviada')
       + (idioma === 'en' ? ' (English)' : ' (Español)')
     );
+    cerrarModalIdiomaCorreo();
     await cargarCotizaciones(requerimientoActual.id);
   } catch (err) {
     Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Enviar correo'; }
   }
 }
+
+window.cerrarModalIdiomaCorreo = cerrarModalIdiomaCorreo;
+window.confirmarEnvioCorreoConIdioma = confirmarEnvioCorreoConIdioma;
 
 async function adjuntarPdfACotizacion(cotizacionId) {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para adjuntar archivos a cotizaciones');

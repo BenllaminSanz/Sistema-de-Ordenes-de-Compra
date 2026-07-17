@@ -125,6 +125,94 @@ const EXCEL_HEADERS = [
   'Moneda',
 ];
 
+/** Normaliza encabezado de columna Excel para comparación. */
+function normHeader(v) {
+  return String(v ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Mapea columnas por nombre de encabezado.
+ * Por defecto (sin encabezado o no reconocido): A=0 proveedor, B=1 nombre, C=2 código, D=3 descripción.
+ */
+function resolverMapaColumnasCatalogo(headerRow) {
+  // Índices fijos Excel: A=0 … G=6  →  Código siempre en C (índice 2)
+  const fallback = {
+    numProv: 0,
+    nombreProv: 1,
+    codigo: 2,
+    descripcion: 3,
+    uom: 4,
+    costo: 5,
+    moneda: 6,
+  };
+  if (!headerRow || !Array.isArray(headerRow)) return { map: fallback, esHeader: false };
+
+  const cells = headerRow.map(normHeader);
+  const esHeader = cells.some((c) =>
+    /proveedor|numero de parte|no\.?\s*de\s*parte|codigo|descripcion|uom|unidad|costo|moneda/.test(c)
+  );
+  if (!esHeader) return { map: fallback, esHeader: false };
+
+  const findIdx = (...patterns) => {
+    for (let i = 0; i < cells.length; i++) {
+      for (const p of patterns) {
+        if (p.test(cells[i])) return i;
+      }
+    }
+    return -1;
+  };
+
+  // Código / Nº de parte: priorizar "numero de parte", "codigo", NO "descripcion"
+  let codigo = findIdx(
+    /^numero de parte$/,
+    /^n[oº°.]?\s*de\s*parte$/,
+    /^codigo(\s*de\s*item)?$/,
+    /^part\s*number$/,
+    /^sku$/
+  );
+  // Si no hay match por nombre, forzar columna C (índice 2)
+  if (codigo < 0) codigo = 2;
+
+  let descripcion = findIdx(/^descripcion$/, /^description$/, /^concepto$/);
+  if (descripcion < 0) descripcion = 3;
+  // Evitar que descripción y código apunten a la misma columna
+  if (descripcion === codigo) {
+    descripcion = codigo === 3 ? 2 : 3;
+  }
+
+  let numProv = findIdx(/^no\.?\s*de\s*proveedor$/, /^num(ero)?\s*proveedor$/, /^vendor$/);
+  if (numProv < 0) numProv = 0;
+
+  let nombreProv = findIdx(/^proveedor$/, /^nombre\s*proveedor$/, /^supplier$/);
+  if (nombreProv < 0) nombreProv = 1;
+
+  let uom = findIdx(/^uom$/, /^unidad(es)?$/, /^udm$/);
+  if (uom < 0) uom = 4;
+
+  let costo = findIdx(/^costo/, /^precio/, /^cost\s*unit/);
+  if (costo < 0) costo = 5;
+
+  let moneda = findIdx(/^moneda$/, /^currency$/);
+  if (moneda < 0) moneda = 6;
+
+  return {
+    map: { numProv, nombreProv, codigo, descripcion, uom, costo, moneda },
+    esHeader: true,
+  };
+}
+
+function celda(row, idx) {
+  if (idx == null || idx < 0 || !row) return '';
+  const v = row[idx];
+  if (v == null || v === '') return '';
+  return String(v).trim();
+}
+
 async function importarExcel(req, res) {
   try {
     if (!req.file) {
@@ -133,36 +221,49 @@ async function importarExcel(req, res) {
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    // raw:false ayuda a leer textos; defval vacío evita undefined
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
 
     if (!rows.length) {
       return res.status(400).json({ mensaje: 'El archivo Excel está vacío' });
     }
 
+    const { map, esHeader } = resolverMapaColumnasCatalogo(rows[0]);
+    const startIdx = esHeader ? 1 : 0;
+
     let nuevos = 0;
     let actualizados = 0;
     let omitidos = 0;
 
-    for (let i = 0; i < rows.length; i++) {
+    for (let i = startIdx; i < rows.length; i++) {
       const row = rows[i];
       if (!row || !Array.isArray(row)) {
         omitidos++;
         continue;
       }
 
-      // Saltar encabezado
-      if (i === 0 && typeof row[0] === 'string' && /proveedor|no de|numero de parte/i.test(String(row[0]))) {
+      // Saltar filas de encabezado residuales
+      const c0 = celda(row, map.numProv);
+      const cCod = celda(row, map.codigo);
+      if (/proveedor|numero de parte|descripcion/i.test(c0) || /numero de parte|^codigo$/i.test(cCod)) {
         continue;
       }
 
-      const rawNumProv = row[0];
-      const numeroParte = row[2] != null && row[2] !== '' ? String(row[2]).trim() : '';
-      const descripcion = row[3] != null && row[3] !== '' ? String(row[3]).trim() : '';
-      const uom = row[4] != null && row[4] !== '' ? String(row[4]).trim() : '';
-      const costo = row[5] != null && row[5] !== '' ? parseFloat(row[5]) : null;
-      const moneda = row[6] != null && row[6] !== '' ? String(row[6]).trim().toUpperCase() : 'MXN';
+      const rawNumProv = celda(row, map.numProv);
+      // Código de ítem = columna C (índice 2) salvo mapeo por encabezado explícito
+      const numeroParte = celda(row, map.codigo);
+      const descripcion = celda(row, map.descripcion);
+      const uom = celda(row, map.uom);
+      const costoRaw = celda(row, map.costo);
+      const costo = costoRaw !== '' ? parseFloat(String(costoRaw).replace(/,/g, '')) : null;
+      const moneda = celda(row, map.moneda).toUpperCase() || 'MXN';
 
       if (!numeroParte || !descripcion) {
+        omitidos++;
+        continue;
+      }
+      // Evitar cargar descripción como código (filas mal alineadas)
+      if (numeroParte.length > 80 && descripcion && numeroParte === descripcion) {
         omitidos++;
         continue;
       }

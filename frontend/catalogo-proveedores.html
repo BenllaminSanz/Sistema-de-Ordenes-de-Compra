@@ -69,6 +69,80 @@
 
 <div id="toast-container"></div>
 
+<!-- Modal: Editar elemento del catálogo (en vista por proveedor) -->
+<div class="modal-backdrop" id="modal-catalogo-prov" style="display:none;">
+  <div class="modal-box" style="max-width: 520px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-catalogo-prov-titulo">Editar elemento</h3>
+      <button type="button" class="modal-close" onclick="cerrarModalCatalogoProv()">×</button>
+    </div>
+    <form id="form-catalogo-prov" onsubmit="guardarCatalogoProv(event)">
+      <input type="hidden" id="cat-prov-id">
+
+      <div class="form-group">
+        <label class="form-label">Tipo *</label>
+        <select id="cat-prov-tipo" class="form-control" required>
+          <option value="">Selecciona tipo...</option>
+          <option value="PARTES">Partes</option>
+          <option value="SERVICIOS">Servicios</option>
+          <option value="FLETES">Fletes</option>
+        </select>
+        <small class="text-danger" id="error-cat-prov-tipo"></small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Código *</label>
+        <input type="text" id="cat-prov-codigo" class="form-control" required placeholder="Ej: MOT-150HP">
+        <small class="text-danger" id="error-cat-prov-codigo"></small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Descripción *</label>
+        <textarea id="cat-prov-descripcion" class="form-control" rows="3" required
+                  placeholder="Descripción detallada del artículo o servicio"></textarea>
+        <small class="text-danger" id="error-cat-prov-descripcion"></small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Unidad de medida <span class="text-muted">(opcional)</span></label>
+        <select id="cat-prov-unidad" class="form-control">
+          <option value="">— Seleccionar unidad —</option>
+        </select>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">Costo de Referencia <span class="text-muted">(opcional)</span></label>
+          <input type="number" id="cat-prov-costo" class="form-control" step="0.01" min="0">
+          <small class="text-danger" id="error-cat-prov-costo"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Moneda</label>
+          <select id="cat-prov-moneda" class="form-control">
+            <option value="MXN">MXN - Peso Mexicano</option>
+            <option value="USD">USD - Dólar Americano</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Proveedor (opcional)</label>
+        <input type="text" id="cat-prov-proveedor-busqueda" class="form-control"
+               list="cat-prov-proveedores-list"
+               placeholder="Buscar por código o nombre…"
+               autocomplete="off">
+        <input type="hidden" id="cat-prov-proveedor-id">
+        <datalist id="cat-prov-proveedores-list"></datalist>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="cerrarModalCatalogoProv()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-guardar-catalogo-prov">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div id="carrito-req-bar" class="carrito-req-bar" style="display:none" aria-live="polite">
   <div class="carrito-req-bar-inner">
     <div class="carrito-req-bar-info">

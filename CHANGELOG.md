@@ -7,6 +7,24 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-07-17
+
+Patch post-reunión de entrega v1.4.0 (correcciones y mejoras de usabilidad).
+
+### Añadido
+- Idioma ES/EN con menú formal al envío automático/programado y reenvío de cotización; se guarda en `cotizaciones.idioma_correo`
+- No. de recibo por ítem en cada recepción (`recepcion_items.numero_recibo`)
+- Reporte Excel de OC desglosado por ítem (código, cantidades, importe, No. de recibo)
+- Acciones de catálogo en vista **por proveedor**: editar en modal, activar/desactivar y eliminar desactivados (sin salir de la vista)
+
+### Cambiado
+- Unidades en cotización homologadas con el catálogo de unidades de medida (UDM)
+- Listado de OC: columna PO DTN muestra el valor o **—** si no hay registro
+- Timeouts SMTP más cortos; aviso en UI si la cotización se guardó pero el correo falló (p. ej. red/SMTP)
+
+### Corregido
+- Carga Excel de catálogo: código = columna C (antes podía tomar la descripción de la D)
+
 ## [1.4.0] — 2026-07-14
 
 Checklist completo: `docs/CHECKLIST-v1.4.0.md`.

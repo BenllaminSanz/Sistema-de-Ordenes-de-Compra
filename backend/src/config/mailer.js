@@ -27,11 +27,19 @@ function buildTransporter(cfg) {
     ? !!cfg.reject_unauthorized
     : (process.env.EMAIL_REJECT_UNAUTHORIZED !== 'false');
 
+  // Timeouts cortos: si el SMTP de red local no responde, no bloquear la API ~20s
+  const connectionTimeout = Number(process.env.EMAIL_CONNECTION_TIMEOUT_MS) || 8000;
+  const greetingTimeout = Number(process.env.EMAIL_GREETING_TIMEOUT_MS) || 8000;
+  const socketTimeout = Number(process.env.EMAIL_SOCKET_TIMEOUT_MS) || 15000;
+
   return nodemailer.createTransport({
     host,
     port,
     secure,
     auth: user && pass ? { user, pass } : undefined,
+    connectionTimeout,
+    greetingTimeout,
+    socketTimeout,
     tls: {
       ciphers: tlsCiphers,
       rejectUnauthorized

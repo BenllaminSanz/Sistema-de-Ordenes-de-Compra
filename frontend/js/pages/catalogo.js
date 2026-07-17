@@ -112,6 +112,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   restaurarFiltrosCatalogo();
   await cargarUnidadesMedida();
   await cargarCatalogo({ preservarFiltros: true });
+
+  // Abrir edición si se viene desde vista por proveedor
+  try {
+    const editarId = sessionStorage.getItem('oc_catalogo_editar_id');
+    if (editarId && esAdminCatalogo) {
+      sessionStorage.removeItem('oc_catalogo_editar_id');
+      setTimeout(() => editarCatalogo(parseInt(editarId, 10)), 200);
+    }
+  } catch (_) { /* ignore */ }
 });
 
 async function cargarUnidadesMedida() {

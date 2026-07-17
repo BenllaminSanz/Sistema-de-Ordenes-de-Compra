@@ -67,10 +67,13 @@ async function insertarItemsRecepcion(conn, recepcionId, items = []) {
   for (const item of items) {
     const recibida = aCantidadRecepcion(item.cantidad_recibida);
     if (recibida <= 0) continue;
+    const numRecibo = item.numero_recibo != null && String(item.numero_recibo).trim() !== ''
+      ? String(item.numero_recibo).trim()
+      : null;
     await conn.query(
       `INSERT INTO recepcion_items
-         (recepcion_id, item_key, descripcion, codigo, cantidad_solicitada, cantidad_recibida, unidad)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (recepcion_id, item_key, descripcion, codigo, cantidad_solicitada, cantidad_recibida, unidad, numero_recibo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         recepcionId,
         item.item_key,
@@ -79,6 +82,7 @@ async function insertarItemsRecepcion(conn, recepcionId, items = []) {
         parseFloat(item.cantidad_solicitada) || 0,
         recibida,
         item.unidad || null,
+        numRecibo,
       ]
     );
   }

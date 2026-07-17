@@ -337,13 +337,14 @@ async function cargarOrdenes(pagina) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>No. OC</th><th>Fecha PO</th><th>Requerimiento</th><th>Tipo</th>
+            <th>No. OC</th><th>PO DTN</th><th>Fecha PO</th><th>Requerimiento</th><th>Tipo</th>
             <th>Proveedor</th><th>Monto</th><th>${columnaHeader}</th>
             <th>Estado</th><th>Últ. modificación</th><th></th>
           </tr></thead>
           <tbody>${datos.map(o => `
             <tr>
               <td class="fw-600">${o.numero_oc}</td>
+              <td class="text-muted small">${(o.datatextnow_id && String(o.datatextnow_id).trim()) ? UI.esc(String(o.datatextnow_id).trim()) : '—'}</td>
               <td class="text-muted small">${o.fecha_po ? fechaPoUi(o.fecha_po) : (esPoNa(o.datatextnow_id) ? 'NA' : '—')}</td>
               <td>${o.consecutivo}</td>
               <td>${o.tipo}</td>
@@ -902,8 +903,10 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
   }
 
   const mapRec = {};
+  const mapRecibo = {};
   (itemsRecepcion || []).forEach(it => {
     mapRec[it.item_key] = cantidadRecepcion(it.cantidad_recibida);
+    if (it.numero_recibo) mapRecibo[it.item_key] = it.numero_recibo;
   });
 
   contenedor.innerHTML = `
@@ -915,7 +918,8 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
           <th style="padding:6px 8px; text-align:right; white-space:nowrap;">Solicit.</th>
           <th style="padding:6px 8px; text-align:right; white-space:nowrap;">Ya recib.</th>
           <th style="padding:6px 8px; text-align:right; white-space:nowrap; color:#854d0e;">Pendiente</th>
-          <th style="padding:6px 8px; text-align:right; width:96px; white-space:nowrap;">Esta entrega</th>
+          <th style="padding:6px 8px; text-align:right; width:90px; white-space:nowrap;">Esta entrega</th>
+          <th style="padding:6px 8px; text-align:left; width:110px; white-space:nowrap;">No. recibo</th>
         </tr>
       </thead>
       <tbody>
@@ -931,6 +935,7 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
             ? `<strong>${it.codigo}</strong> — ${it.descripcion}`
             : it.descripcion;
           const pendColor = pendiente > 0 ? 'color:#854d0e;font-weight:600' : 'color:#22c55e;font-weight:600';
+          const reciboPref = mapRecibo[it.item_key] || '';
           const fmt = (n) => {
             const v = parseFloat(n) || 0;
             return v.toLocaleString('es-MX', { maximumFractionDigits: 3 });
@@ -952,11 +957,17 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
                        title="Puedes escribir decimales (ej. 0.5). Flechas del teclado: ±1"
                        oninput="recalcEstadoAuto()">
               </td>
+              <td style="padding:6px 8px;">
+                <input type="text" class="form-control form-control-sm rec-item-recibo"
+                       value="${UI.esc(reciboPref)}" placeholder="No. recibo"
+                       style="width:100%; min-width:90px; font-size:12px;"
+                       title="Número de recibo de esta entrega para el ítem">
+              </td>
             </tr>`;
         }).join('')}
       </tbody>
     </table>
-    <div class="text-muted" style="font-size:11px; padding:6px 8px 2px;">Puedes capturar decimales (ej. 0.5). Con flechas del teclado sube/baja de 1 en 1.</div>`;
+    <div class="text-muted" style="font-size:11px; padding:6px 8px 2px;">Decimales permitidos en cantidad. Capture el <strong>No. de recibo</strong> por ítem de esta entrega.</div>`;
 
   contenedor.querySelectorAll('.rec-item-cantidad').forEach(adjuntarStepEnteroFlechas);
 
@@ -964,12 +975,15 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
     chk.addEventListener('change', () => {
       const row = chk.closest('.rec-item-row');
       const input = row?.querySelector('.rec-item-cantidad');
+      const recibo = row?.querySelector('.rec-item-recibo');
       if (!input) return;
       if (!chk.checked) {
         input.value = '';
         input.disabled = true;
+        if (recibo) recibo.disabled = true;
       } else {
         input.disabled = false;
+        if (recibo) recibo.disabled = false;
         if (!input.value) {
           const pend = parseFloat(row.dataset.pendiente) || 0;
           input.value = pend > 0 ? pend : '';
@@ -994,6 +1008,8 @@ function recolectarItemsRecepcionFormulario() {
     const key = row.dataset.itemKey;
     const resumen = (resumenItemsOc || []).find(i => i.item_key === key) || {};
 
+    const numero_recibo = (row.querySelector('.rec-item-recibo')?.value || '').trim() || null;
+
     items.push({
       item_key: key,
       descripcion: resumen.descripcion || null,
@@ -1001,6 +1017,7 @@ function recolectarItemsRecepcionFormulario() {
       cantidad_solicitada: parseFloat(resumen.cantidad_solicitada) || 0,
       cantidad_recibida: cantidad,
       unidad: resumen.unidad || null,
+      numero_recibo,
     });
   });
   return items;

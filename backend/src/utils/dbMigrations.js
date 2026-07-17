@@ -92,6 +92,20 @@ export async function runDbMigrations() {
 
   await ensureUnidadesMedidaTable();
 
+  // Idioma del correo RFQ (es|en) para envío automático y manual
+  await addColumnIfMissing(
+    'cotizaciones',
+    'idioma_correo',
+    "VARCHAR(5) NOT NULL DEFAULT 'es' COMMENT 'Idioma del correo RFQ: es o en' AFTER email_sent_at"
+  );
+
+  // Número de recibo por línea de recepción
+  await addColumnIfMissing(
+    'recepcion_items',
+    'numero_recibo',
+    "VARCHAR(80) NULL COMMENT 'No. de recibo de la entrega para este ítem' AFTER unidad"
+  );
+
   logger.info('[migrate] Migraciones aplicadas');
 }
 

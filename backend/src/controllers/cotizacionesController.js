@@ -15,10 +15,11 @@ async function enviarCotizacionesPendientesOportunista() {
 
     for (const cot of pendientes) {
       try {
-        const result = await enviarSolicitudDeCotizacion(cot.id);
+        const idioma = (cot.idioma_correo || 'es').toString().toLowerCase().startsWith('en') ? 'en' : 'es';
+        const result = await enviarSolicitudDeCotizacion(cot.id, { idioma });
         if (result.success) {
           await Cotizacion.marcarComoEnviadaPorCorreo(cot.id);
-          logger.info(`[Email] Cotización #${cot.id} enviada (programada)`);
+          logger.info(`[Email] Cotización #${cot.id} enviada (programada, idioma=${idioma})`);
         } else if (result.reason === 'no_requiere_segun_condicion') {
           // Regla de negocio: no corresponde enviar correo para este tipo de requerimiento
           await Cotizacion.marcarComoProcesadaSinEnvioCorreo(cot.id);
@@ -109,13 +110,16 @@ export const crearCotizacion = async (req, res) => {
       fecha_envio, 
       scheduled_at,   // Nueva forma recomendada (datetime completo)
       hora_envio,     // Alternativa: fecha_envio + hora_envio
-      notas, 
+      notas,
+      idioma_correo,
       items 
     } = req.body;
 
     if (!requerimiento_id || !proveedor_id) {
       return res.status(400).json({ mensaje: 'requerimiento_id y proveedor_id son obligatorios' });
     }
+
+    const idioma = (idioma_correo || 'es').toString().toLowerCase().startsWith('en') ? 'en' : 'es';
 
     // Validación básica de fecha
     const validacionFecha = validarFechaEnvio(fecha_envio);
@@ -170,6 +174,7 @@ export const crearCotizacion = async (req, res) => {
       fecha_envio: fecha_envio || null,
       scheduled_at: finalScheduledAt,
       email_sent_at: emailSentAtOnCreate,
+      idioma_correo: idioma,
       notas: notas || null,
       estado: estadoInicial
     }, items || []);
@@ -186,6 +191,7 @@ export const crearCotizacion = async (req, res) => {
 
     let emailEnviado = false;
     let emailOmitido = false;
+    let emailError = null;
 
     if (esFechaAnterior) {
       logger.info(`[Cotizacion] Cotización #${id} con fecha anterior a hoy. Se guardó como enviada (sin enviar correo).`);
@@ -193,33 +199,37 @@ export const crearCotizacion = async (req, res) => {
       const programadoMasTardeHoy = scheduledDate && scheduledDate > ahora;
       if (!programadoMasTardeHoy) {
         try {
-          const result = await enviarSolicitudDeCotizacion(id);
+          const result = await enviarSolicitudDeCotizacion(id, { idioma });
           if (result.success) {
             await Cotizacion.marcarComoEnviadaPorCorreo(id);
             emailEnviado = true;
-            logger.info(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id})`);
+            logger.info(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id}, idioma=${idioma})`);
           } else if (result.reason === 'no_requiere_segun_condicion') {
             await Cotizacion.marcarComoProcesadaSinEnvioCorreo(id);
             emailOmitido = true;
             logger.info(`[Email] Cotización #${id} creada pero NO se envió correo (regla de tipo/catálogo/precios).`);
           } else {
-            logger.warn(`[Email] Cotización #${id} no enviada al crear: ${result.reason || result.error || 'desconocido'}`);
+            emailError = result.error || result.reason || 'No se pudo enviar el correo';
+            logger.warn(`[Email] Cotización #${id} no enviada al crear: ${emailError}`);
           }
         } catch (err) {
-          logger.error(`[Email] Error enviando solicitud de cotización #${id}:`, err.message);
+          emailError = err.message || 'Error al enviar el correo';
+          logger.error(`[Email] Error enviando solicitud de cotización #${id}:`, emailError);
         }
       } else {
-        logger.info(`[Cotizacion] Cotización #${id} programada para hoy a las ${finalScheduledAt}`);
+        logger.info(`[Cotizacion] Cotización #${id} programada para hoy a las ${finalScheduledAt} (idioma=${idioma})`);
       }
     } else {
-      logger.info(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt}`);
+      logger.info(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt} (idioma=${idioma})`);
     }
 
     // Intentar enviar otras cotizaciones pendientes (envío oportunista)
+    // No bloquear la respuesta: se ejecuta en segundo plano
     enviarCotizacionesPendientesOportunista().catch(err => {
       logger.error('[Email] Error enviando cotizaciones pendientes:', err.message);
     });
 
+    const esTimeoutRed = emailError && /ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH|ENOTFOUND|timeout/i.test(emailError);
     res.status(201).json({
       success: true,
       message: 'Cotización creada exitosamente',
@@ -227,6 +237,8 @@ export const crearCotizacion = async (req, res) => {
       scheduled_at: finalScheduledAt,
       email_enviado: emailEnviado,
       email_omitido: emailOmitido,
+      email_error: emailError || null,
+      email_error_red: esTimeoutRed || false,
     });
 
   } catch (error) {

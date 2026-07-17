@@ -714,6 +714,32 @@
   </div>
 </div>
 
+<!-- Modal formal: idioma del correo (envío manual) -->
+<div class="modal-backdrop" id="modal-idioma-correo-cot" style="display:none;">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="idioma-correo-titulo">Enviar solicitud de cotización</h3>
+      <button type="button" class="modal-close" onclick="cerrarModalIdiomaCorreo()">×</button>
+    </div>
+    <div class="modal-body" style="padding:16px 20px;">
+      <p style="margin:0 0 14px; font-size:14px; color:#334155; line-height:1.5;">
+        Seleccione el idioma en el que se enviará el correo al proveedor.
+      </p>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label" for="idioma-correo-select">Idioma del correo *</label>
+        <select id="idioma-correo-select" class="form-control">
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="cerrarModalIdiomaCorreo()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-confirmar-idioma-correo" onclick="confirmarEnvioCorreoConIdioma()">Enviar correo</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal: Confirmar Envío de Cotización ───────────────────────────────── -->
 <div class="modal-backdrop" id="modal-confirmar-envio-cotizacion">
   <div class="modal-box" style="max-width: 460px;">

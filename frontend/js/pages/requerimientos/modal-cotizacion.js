@@ -23,6 +23,7 @@ function abrirModalCotizacion() {
   if (!requerimientoActual)          return Toast.error('No se encontró el requerimiento');
 
   cotizacionEditandoId = null;
+  cargarUnidadesCotizacion().catch(() => {});
   prepararModalCotizacion(requerimientoActual);
   document.getElementById('modal-cotizacion').style.display = 'flex';
 }
@@ -60,6 +61,51 @@ function cerrarModalCotizacion() {
   if (modalTitle) modalTitle.textContent = 'Nueva Cotización';
 }
 
+// Unidades homologadas con catálogo (unidades_medida)
+let _unidadesCotCache = null;
+
+async function cargarUnidadesCotizacion() {
+  if (_unidadesCotCache) return _unidadesCotCache;
+  try {
+    _unidadesCotCache = await Api.get('/unidades-medida?soloActivas=true') || [];
+  } catch {
+    _unidadesCotCache = [];
+  }
+  return _unidadesCotCache;
+}
+
+function rellenarSelectUnidadCotizacion(selectEl, selected = '') {
+  if (!selectEl) return;
+  const aplicar = (unidades) => {
+    const val = selected || selectEl.dataset.unidadInicial || selectEl.value || '';
+    const opts = ['<option value="">— Unidad —</option>'];
+    (unidades || []).forEach((u) => {
+      const cod = u.codigo || u.nombre || '';
+      const label = u.codigo && u.nombre && u.codigo !== u.nombre
+        ? `${u.codigo} — ${u.nombre}`
+        : (u.nombre || u.codigo);
+      const esc = (typeof UI !== 'undefined' && UI.esc) ? UI.esc : (s) => String(s ?? '');
+      opts.push(`<option value="${esc(cod)}">${esc(label)}</option>`);
+    });
+    selectEl.innerHTML = opts.join('');
+    if (val) {
+      if (![...selectEl.options].some((o) => o.value === val)) {
+        const o = document.createElement('option');
+        o.value = val;
+        o.textContent = val;
+        selectEl.appendChild(o);
+      }
+      selectEl.value = val;
+    }
+  };
+
+  if (_unidadesCotCache) {
+    aplicar(_unidadesCotCache);
+    return;
+  }
+  cargarUnidadesCotizacion().then(aplicar).catch(() => aplicar([]));
+}
+
 // ── Guardar cotización ────────────────────────────────────────
 async function guardarCotizacionOriginal() {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para guardar cotizaciones');
@@ -84,6 +130,12 @@ async function guardarCotizacionOriginal() {
 
     if (datosCotizacionPendiente?.hora_envio) {
       datos.hora_envio = datosCotizacionPendiente.hora_envio;
+    }
+    if (datosCotizacionPendiente?.idioma_correo) {
+      datos.idioma_correo = datosCotizacionPendiente.idioma_correo;
+    } else {
+      const idiomaEl = document.getElementById('cot_idioma_correo');
+      if (idiomaEl?.value) datos.idioma_correo = idiomaEl.value;
     }
 
     const tbody           = document.querySelector('#tabla-items-cot tbody');
@@ -147,15 +199,26 @@ async function guardarCotizacionOriginal() {
       let msg = cotizacionEditandoId ? 'Cotización actualizada correctamente' : '¡Cotización guardada correctamente!';
       if (!cotizacionEditandoId && response.email_enviado) {
         msg = 'Cotización guardada y solicitud enviada por correo al proveedor';
+        Toast.success(msg);
       } else if (!cotizacionEditandoId && response.email_omitido) {
         msg = 'Cotización guardada (registro interno, sin envío de correo)';
+        Toast.success(msg);
+      } else if (!cotizacionEditandoId && response.email_error) {
+        // La cotización SÍ se guardó; falló solo el SMTP
+        Toast.success('Cotización guardada correctamente');
+        const detalle = response.email_error_red
+          ? 'No se pudo conectar al servidor de correo (red/SMTP). Verifique la configuración en Configuración → SMTP o que el equipo tenga acceso a la red del servidor de correo.'
+          : `No se pudo enviar el correo: ${response.email_error}`;
+        Toast.warning(`${detalle} Puede reenviarlo desde la lista de cotizaciones.`, 9000);
       } else if (!cotizacionEditandoId && response.scheduled_at) {
         const prog = new Date(response.scheduled_at);
         if (prog > new Date()) {
           msg = `Cotización guardada. El correo se enviará el ${prog.toLocaleString('es-MX')}`;
         }
+        Toast.success(msg);
+      } else {
+        Toast.success(msg);
       }
-      Toast.success(msg);
       cerrarModalCotizacion();
       await cargarCotizaciones(requerimientoActual.id);
     } else {
@@ -224,8 +287,22 @@ function prepararConfirmacionEnvioCotizacion() {
       <button class="btn btn-primary" onclick="confirmarGuardarSinEnvio()">Guardar sin enviar correo</button>`;
 
   } else if (esHoy) {
-    guardarCotizacionOriginal();
-    return;
+    titulo.textContent = 'Confirmar envío de cotización';
+    body.innerHTML = `
+      <p style="margin:0 0 14px;line-height:1.5;color:#334155;">
+        La cotización se enviará <strong>automáticamente por correo</strong> al proveedor al guardar.
+      </p>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label" for="idioma-envio-correo">Idioma del correo *</label>
+        <select id="idioma-envio-correo" class="form-control">
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
+        <small class="text-muted">Seleccione el idioma en el que se redactará la solicitud al proveedor.</small>
+      </div>`;
+    footer.innerHTML = `
+      <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEnvioInmediato()">Guardar y enviar correo</button>`;
 
   } else {
     const fechaFormateada = fechaSeleccionada.toLocaleDateString('es-MX', {
@@ -233,11 +310,18 @@ function prepararConfirmacionEnvioCotizacion() {
     });
     titulo.textContent = 'Programar envío de cotización';
     body.innerHTML = `
-      <p>Has seleccionado enviar la cotización el <strong>${fechaFormateada}</strong>.</p>
+      <p>Ha seleccionado enviar la cotización el <strong>${fechaFormateada}</strong>.</p>
       <div class="form-group">
-        <label class="form-label">¿A qué hora deseas que se envíe?</label>
+        <label class="form-label" for="hora-envio-programado">Hora de envío *</label>
         <input type="time" id="hora-envio-programado" class="form-control" value="09:00">
         <small class="text-muted">Se enviará automáticamente a la hora indicada (requiere que el sistema esté activo).</small>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label" for="idioma-envio-correo">Idioma del correo *</label>
+        <select id="idioma-envio-correo" class="form-control">
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
       </div>`;
     footer.innerHTML = `
       <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
@@ -253,9 +337,23 @@ function cerrarModalConfirmacionEnvio() {
   datosCotizacionPendiente = null;
 }
 
+function leerIdiomaEnvioCorreo() {
+  const sel = document.getElementById('idioma-envio-correo');
+  const v = (sel?.value || 'es').toString().toLowerCase();
+  return v.startsWith('en') ? 'en' : 'es';
+}
+
 async function confirmarEnvioInmediato() {
-  cerrarModalConfirmacionEnvio();
+  if (datosCotizacionPendiente) {
+    datosCotizacionPendiente.idioma_correo = leerIdiomaEnvioCorreo();
+  }
+  const pendiente = datosCotizacionPendiente;
+  const modal = document.getElementById('modal-confirmar-envio-cotizacion');
+  if (modal) modal.style.display = 'none';
+  // Conservar idioma al guardar (no anular pendiente antes de leer)
+  datosCotizacionPendiente = pendiente;
   await guardarCotizacionOriginal();
+  datosCotizacionPendiente = null;
 }
 
 async function confirmarGuardarSinEnvio() {
@@ -268,8 +366,15 @@ async function confirmarProgramarEnvioFuturo() {
   if (horaInput && datosCotizacionPendiente) {
     datosCotizacionPendiente.hora_envio = horaInput.value;
   }
-  cerrarModalConfirmacionEnvio();
+  if (datosCotizacionPendiente) {
+    datosCotizacionPendiente.idioma_correo = leerIdiomaEnvioCorreo();
+  }
+  const pendiente = datosCotizacionPendiente;
+  const modal = document.getElementById('modal-confirmar-envio-cotizacion');
+  if (modal) modal.style.display = 'none';
+  datosCotizacionPendiente = pendiente;
   await guardarCotizacionOriginal();
+  datosCotizacionPendiente = null;
 }
 
 // ── Helpers del modal ─────────────────────────────────────────
@@ -401,13 +506,8 @@ function crearFilaItem(itemData = {}) {
     </td>
     <td><input type="number" class="form-control item-cant text-center" value="${itemData.cantidad || 1}" min="1" step="1"></td>
     <td>
-      <select class="form-control item-unidad">
-        <option value="pieza">pieza</option>
-        <option value="kg">kg</option>
-        <option value="hora">hora</option>
-        <option value="servicio">servicio</option>
-        <option value="lote">lote</option>
-        <option value="m">m</option>
+      <select class="form-control item-unidad" data-unidad-inicial="${(itemData.unidad || '').replace(/"/g, '&quot;')}">
+        <option value="">— Unidad —</option>
       </select>
     </td>
     <td><input type="number" class="form-control item-precio text-end" step="0.01" placeholder="0.00" value="${redondear2(itemData.precio_unitario)}"></td>
@@ -417,7 +517,9 @@ function crearFilaItem(itemData = {}) {
     </td>`;
 
   const unidadSelect = row.querySelector('.item-unidad');
-  if (unidadSelect && itemData.unidad) unidadSelect.value = itemData.unidad;
+  if (unidadSelect) {
+    rellenarSelectUnidadCotizacion(unidadSelect, itemData.unidad || '');
+  }
 
   const cantInput   = row.querySelector('.item-cant');
   const precioInput = row.querySelector('.item-precio');
