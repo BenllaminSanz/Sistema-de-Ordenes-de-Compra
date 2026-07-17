@@ -4,6 +4,36 @@ let _itemsCatalogoProv = [];
 let _proveedorSeleccionadoId = null;
 let puedeSolicitarReqProv = false;
 
+const CAT_PROV_FILTROS_KEY = 'oc_catalogo_prov_filtros';
+
+function guardarFiltrosCatalogoProv() {
+  try {
+    sessionStorage.setItem(CAT_PROV_FILTROS_KEY, JSON.stringify({
+      busqueda: document.getElementById('busqueda-proveedor')?.value || '',
+      tipo: document.getElementById('filtro-tipo-prov')?.value || '',
+      soloActivos: document.getElementById('chk-activos-prov')?.checked ?? true,
+      proveedor_id: _proveedorSeleccionadoId || null,
+    }));
+  } catch (_) { /* ignore */ }
+}
+
+function restaurarFiltrosCatalogoProv() {
+  try {
+    const raw = sessionStorage.getItem(CAT_PROV_FILTROS_KEY);
+    if (!raw) return null;
+    const f = JSON.parse(raw);
+    const busq = document.getElementById('busqueda-proveedor');
+    const tipo = document.getElementById('filtro-tipo-prov');
+    const chk = document.getElementById('chk-activos-prov');
+    if (busq && f.busqueda != null) busq.value = f.busqueda;
+    if (tipo && f.tipo != null) tipo.value = f.tipo;
+    if (chk && f.soloActivos != null) chk.checked = !!f.soloActivos;
+    return f;
+  } catch (_) {
+    return null;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   Auth.requiereAuth();
   renderSidebar();
@@ -18,16 +48,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   actualizarBarraCarritoReqProv();
 
   await ProveedorBusqueda.cargar();
+  const guardados = restaurarFiltrosCatalogoProv();
   await cargarCatalogoPorProveedor();
 
   const params = new URLSearchParams(window.location.search);
-  const provParam = params.get('proveedor_id');
+  const provParam = params.get('proveedor_id') || guardados?.proveedor_id;
   if (provParam) seleccionarProveedorCatalogo(parseInt(provParam, 10));
 });
 
 async function cargarCatalogoPorProveedor() {
   const lista = document.getElementById('lista-proveedores-catalogo');
   if (lista) UI.spinner(lista);
+
+  guardarFiltrosCatalogoProv();
 
   const soloActivos = document.getElementById('chk-activos-prov')?.checked ?? true;
   const params = new URLSearchParams();
@@ -74,6 +107,8 @@ function filtrarListaProveedores() {
   const contador   = document.getElementById('prov-contador');
   if (!contenedor) return;
 
+  guardarFiltrosCatalogoProv();
+
   const q    = (document.getElementById('busqueda-proveedor')?.value || '').trim();
   const tipo = document.getElementById('filtro-tipo-prov')?.value || '';
 
@@ -119,6 +154,7 @@ function seleccionarProveedorCatalogo(proveedorId) {
   _proveedorSeleccionadoId = proveedorId;
   filtrarListaProveedores();
   renderItemsProveedor(proveedorId);
+  guardarFiltrosCatalogoProv();
   history.replaceState(null, '', `catalogo-proveedores.html?proveedor_id=${proveedorId}`);
 }
 

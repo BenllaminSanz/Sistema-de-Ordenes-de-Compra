@@ -153,4 +153,76 @@ async function cambiarEstado(id, activo) {
   return r.affectedRows;
 }
 
-export { listar, obtenerPorId, crear, actualizar, cambiarEstado, generarCodigoUnico };
+async function obtenerPorCodigo(codigo) {
+  if (!codigo) return null;
+  const [[item]] = await pool.query(
+    `SELECT c.*, p.num_proveedor AS proveedor_num, p.nombre AS proveedor_nombre
+     FROM catalogo c
+     LEFT JOIN proveedores p ON p.id = c.proveedor_id
+     WHERE c.codigo = ?
+     LIMIT 1`,
+    [String(codigo).trim()]
+  );
+  return item || null;
+}
+
+/**
+ * Borrado físico solo si el ítem está desactivado y no hay referencias.
+ * No elimina registros de REQ/OC/cotizaciones relacionados.
+ */
+async function eliminarDesactivado(id) {
+  const [[item]] = await pool.query(
+    'SELECT id, activo, codigo FROM catalogo WHERE id = ?',
+    [id]
+  );
+  if (!item) return { ok: false, status: 404, mensaje: 'Elemento no encontrado en el catálogo' };
+  if (item.activo) {
+    return {
+      ok: false,
+      status: 422,
+      mensaje: 'Solo se pueden eliminar ítems desactivados. Desactívalo primero.',
+    };
+  }
+
+  const checks = [
+    ['requerimiento_items', 'catalogo_id'],
+    ['cotizacion_items', 'catalogo_id'],
+    ['requerimiento_items_libres', 'catalogo_asignado_id'],
+  ];
+
+  for (const [tabla, col] of checks) {
+    try {
+      const [[{ cnt }]] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM \`${tabla}\` WHERE \`${col}\` = ?`,
+        [id]
+      );
+      if (cnt > 0) {
+        return {
+          ok: false,
+          status: 422,
+          mensaje: `No se puede eliminar "${item.codigo}": está referenciado en ${cnt} registro(s) de ${tabla}. Los históricos se conservan; el ítem permanece desactivado.`,
+        };
+      }
+    } catch (err) {
+      // Tabla/columna puede no existir en instalaciones antiguas
+      if (err.code !== 'ER_NO_SUCH_TABLE' && err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+    }
+  }
+
+  const [r] = await pool.query('DELETE FROM catalogo WHERE id = ? AND activo = 0', [id]);
+  if (!r.affectedRows) {
+    return { ok: false, status: 404, mensaje: 'No se pudo eliminar el elemento' };
+  }
+  return { ok: true, mensaje: `Ítem "${item.codigo}" eliminado del catálogo` };
+}
+
+export {
+  listar,
+  obtenerPorId,
+  obtenerPorCodigo,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminarDesactivado,
+  generarCodigoUnico,
+};

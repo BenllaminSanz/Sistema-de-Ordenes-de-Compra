@@ -14,11 +14,42 @@ let recepcionEditandoId = null;
 
 const ESTADOS_RECEPCION_LISTOS_CIERRE = ['entregado_solicitante', 'recibido_completo'];
 
+function esPoNa(po) {
+  return po != null && String(po).trim().toUpperCase() === 'NA';
+}
+
 function resolverPoOrden(oc, recepciones, poNuevo) {
   if (poNuevo != null && String(poNuevo).trim()) return String(poNuevo).trim();
   if (oc?.datatextnow_id && String(oc.datatextnow_id).trim()) return String(oc.datatextnow_id).trim();
   const rec = (recepciones || []).find(r => r.datatextnow_id && String(r.datatextnow_id).trim());
   return rec ? String(rec.datatextnow_id).trim() : null;
+}
+
+function formatearFechaPoInput(valor) {
+  if (!valor) return '';
+  if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) return valor.slice(0, 10);
+  try {
+    const d = new Date(valor);
+    if (Number.isNaN(d.getTime())) return '';
+    // Usar componentes locales para DATE de MySQL sin corrimiento UTC
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  } catch {
+    return '';
+  }
+}
+
+/** Formato de fecha para campos DATE (fecha_po) sin desfase de zona horaria. */
+function fechaPoUi(valor) {
+  if (!valor) return '—';
+  const ymd = formatearFechaPoInput(valor);
+  if (!ymd) return '—';
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('es-MX', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
 }
 
 function evaluarCierreOc(oc, recepciones, { poNuevo } = {}) {
@@ -62,11 +93,38 @@ function calcularEstadoRecepcion() {
   document.querySelectorAll('#rec-items-list .rec-item-row').forEach(row => {
     const chk = row.querySelector('.rec-item-check');
     if (!chk?.checked) return;
-    const cantidad  = parseFloat(row.querySelector('.rec-item-cantidad')?.value || 0);
-    const pendiente = parseFloat(row.dataset.pendiente || 0);
+    const cantidad  = cantidadRecepcion(row.querySelector('.rec-item-cantidad')?.value);
+    const pendiente = cantidadRecepcion(row.dataset.pendiente);
     if (cantidad < pendiente) algunoParcial = true;
   });
   return algunoParcial ? 'recibido_parcial' : 'recibido_completo';
+}
+
+/** Cantidad de recepción: admite decimales (ej. 0.5). */
+function cantidadRecepcion(valor) {
+  if (valor == null || valor === '') return 0;
+  // Aceptar coma decimal del teclado local (0,5)
+  const n = parseFloat(String(valor).replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 1000) / 1000;
+}
+
+/**
+ * step="any" permite 0.5 en el formulario HTML5.
+ * Las flechas ▲▼ del teclado/input suben o bajan de 1 en 1.
+ */
+function adjuntarStepEnteroFlechas(input) {
+  if (!input || input.dataset.stepEnteroAttached === '1') return;
+  input.dataset.stepEnteroAttached = '1';
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const actual = parseFloat(String(input.value || '0').replace(',', '.')) || 0;
+    const delta = e.key === 'ArrowUp' ? 1 : -1;
+    const siguiente = Math.max(0, Math.round((actual + delta) * 1000) / 1000);
+    input.value = String(siguiente);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 }
 
 function recalcEstadoAuto() {
@@ -79,8 +137,8 @@ function recalcEstadoAuto() {
     const chk = row.querySelector('.rec-item-check');
     if (!chk?.checked) return;
     algunoMarcado = true;
-    const cantidad  = parseFloat(row.querySelector('.rec-item-cantidad')?.value || 0);
-    const pendiente = parseFloat(row.dataset.pendiente || 0);
+    const cantidad  = cantidadRecepcion(row.querySelector('.rec-item-cantidad')?.value);
+    const pendiente = cantidadRecepcion(row.dataset.pendiente);
     if (cantidad < pendiente) algunoParcial = true;
   });
 
@@ -170,6 +228,46 @@ if (tablaOC) {
 }
 
 // ── LISTA ─────────────────────────────────────────────────────
+async function exportarOrdenesExcel() {
+  if (!Auth.puedeHacer(['contabilidad', 'admin'])) {
+    return Toast.error('Solo Contabilidad/Admin pueden exportar OCs');
+  }
+  try {
+    const estado   = document.getElementById('fil-estado')?.value || '';
+    const tipo     = document.getElementById('fil-tipo')?.value || '';
+    const sinPo    = document.getElementById('fil-sin-po')?.checked;
+    const busqueda = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
+
+    const qs = new URLSearchParams({ libre: '1' });
+    if (estado) qs.set('estado', estado);
+    if (tipo) qs.set('tipo_req', tipo);
+    if (sinPo) qs.set('sin_po', 'true');
+    if (busqueda) qs.set('busqueda', busqueda);
+
+    Toast.info('Generando Excel de órdenes de compra…');
+    const token = Auth.getToken();
+    const res = await fetch(`${API_BASE}/reportes/ordenes-compra?${qs.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      let msg = 'Error al exportar';
+      try { const j = await res.json(); msg = j.mensaje || msg; } catch (_) {}
+      throw { mensaje: msg };
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Ordenes_Compra_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    Toast.success('Excel de OCs descargado');
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al exportar OCs');
+  }
+}
+
 async function cargarOrdenes(pagina) {
   const contenedor = document.getElementById('tabla-oc');
   UI.spinner(contenedor);
@@ -177,6 +275,11 @@ async function cargarOrdenes(pagina) {
   const usuario = Auth.getUsuario();
   const esSolicitante = usuario?.rol === 'solicitante';
   const esAdminOContab = !esSolicitante;
+
+  const adminActions = document.getElementById('oc-admin-actions');
+  if (adminActions) {
+    adminActions.style.display = esAdminOContab ? 'flex' : 'none';
+  }
 
   // Subtítulo contextual para solicitantes
   const subtitle = document.getElementById('oc-subtitle');
@@ -234,14 +337,14 @@ async function cargarOrdenes(pagina) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Número OC</th><th>PO DTN</th><th>Requerimiento</th><th>Tipo</th>
+            <th>No. OC</th><th>Fecha PO</th><th>Requerimiento</th><th>Tipo</th>
             <th>Proveedor</th><th>Monto</th><th>${columnaHeader}</th>
-            <th>Estado</th><th>Fecha</th><th></th>
+            <th>Estado</th><th>Últ. modificación</th><th></th>
           </tr></thead>
           <tbody>${datos.map(o => `
             <tr>
               <td class="fw-600">${o.numero_oc}</td>
-              <td class="text-muted small">${o.datatextnow_id || '—'}</td>
+              <td class="text-muted small">${o.fecha_po ? fechaPoUi(o.fecha_po) : (esPoNa(o.datatextnow_id) ? 'NA' : '—')}</td>
               <td>${o.consecutivo}</td>
               <td>${o.tipo}</td>
               <td>${UI.labelProveedor(o)}</td>
@@ -250,7 +353,7 @@ async function cargarOrdenes(pagina) {
                     : '—'}</td>
               <td>${getColumnaValor(o)}</td>
               <td>${UI.badge(o.estado)}</td>
-              <td class="text-muted text-sm">${UI.fecha(o.created_at)}</td>
+              <td class="text-muted text-sm">${UI.fecha(o.updated_at || o.created_at)}</td>
               <td>
                 <button class="btn btn-sm btn-outline" data-action="ver-oc" data-id="${o.id}" title="Ver detalle" style="padding:2px 6px;">
                   <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" style="vertical-align:-1px;">
@@ -300,16 +403,82 @@ function volverLista() {
   history.replaceState(null, '', window.location.pathname);
 }
 
-// Editar DataTextNow de la OC principal (PO Number de los reportes Excel de DataTextNow)
-async function editarDataTextNowOC(ocId, valorActual) {
-  const nuevo = prompt('Ingresa el Número de PO de DataTextNow (ej. 0310005905):', valorActual || '');
-  if (nuevo === null) return;
+function mostrarEditorNotasContabilidad(ocId) {
+  const vista = document.getElementById('oc-notas-vista');
+  const editor = document.getElementById('oc-notas-editor');
+  const ta = document.getElementById('oc-notas-textarea');
+  if (!vista || !editor || !ta) return;
+  ta.value = ocActual?.notas || '';
+  vista.style.display = 'none';
+  editor.style.display = 'block';
+  setTimeout(() => ta.focus(), 40);
+}
+
+function cancelarEditorNotasContabilidad() {
+  const vista = document.getElementById('oc-notas-vista');
+  const editor = document.getElementById('oc-notas-editor');
+  if (vista) vista.style.display = 'block';
+  if (editor) editor.style.display = 'none';
+}
+
+async function guardarNotasContabilidadOC(ocId) {
+  const ta = document.getElementById('oc-notas-textarea');
+  if (!ta) return;
+  const btn = document.getElementById('oc-notas-btn-guardar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    const updated = await Api.patch(`/ordenes-compra/${ocId}/notas`, { notas: ta.value });
+    Toast.success('Notas de contabilidad actualizadas');
+    ocActual = updated;
+    renderDetalle(updated);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar notas');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar notas'; }
+  }
+}
+
+/** @deprecated usar mostrarEditorNotasContabilidad */
+async function editarNotasContabilidadOC(ocId) {
+  mostrarEditorNotasContabilidad(ocId);
+}
+
+// Editar PO DataTextNow + fecha_po de la OC
+async function editarDataTextNowOC(ocId, valorActual, fechaActual) {
+  const actual = (valorActual && String(valorActual).trim()) || '';
+  const esNaActual = esPoNa(actual);
+  const tienePo = confirm(
+    esNaActual || !actual
+      ? '¿Esta OC tiene número de PO en DataTextNow?\n\nAceptar = Sí (capturar PO y fecha)\nCancelar = No (registrar como NA)'
+      : `PO actual: ${actual}\n\nAceptar = Editar número y fecha de PO\nCancelar = Marcar como NA (sin PO)`
+  );
+
+  let datatextnow_id = 'NA';
+  let fecha_po = null;
+
+  if (tienePo) {
+    const sugerido = esNaActual ? '' : actual;
+    const nuevo = prompt('Número de PO de DataTextNow (ej. 310006877):', sugerido);
+    if (nuevo === null) return;
+    datatextnow_id = nuevo.trim();
+    if (!datatextnow_id) {
+      Toast.error('El número de PO no puede quedar vacío (usa Cancelar en el primer paso para marcar NA)');
+      return;
+    }
+    const fechaSug = formatearFechaPoInput(fechaActual) || new Date().toISOString().slice(0, 10);
+    const fechaIn = prompt('Fecha del PO en DataTextNow (YYYY-MM-DD):', fechaSug);
+    if (fechaIn === null) return;
+    fecha_po = (fechaIn || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_po)) {
+      Toast.error('La fecha debe tener formato YYYY-MM-DD');
+      return;
+    }
+  }
 
   try {
-    const updated = await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, {
-      datatextnow_id: nuevo.trim() || null
-    });
-    Toast.success('PO de DataTextNow actualizado');
+    const payload = { datatextnow_id };
+    if (fecha_po) payload.fecha_po = fecha_po;
+    const updated = await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, payload);
+    Toast.success(datatextnow_id === 'NA' ? 'PO marcado como NA' : 'PO de DataTextNow actualizado');
     ocActual = updated;
     renderDetalle(updated);
   } catch (err) {
@@ -354,6 +523,8 @@ function renderDetalle(oc) {
       ${mostrarAutorizadoRow ? `
       <tr><td style="padding:6px 0;color:#6b7280">Autorizado por</td>
           <td>${oc.autorizado_por_nombre}</td></tr>` : ''}
+      <tr><td style="padding:6px 0;color:#6b7280">Última modificación</td>
+          <td>${UI.fecha(oc.updated_at || oc.created_at)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Fecha autorización</td>
           <td>${UI.fecha(oc.fecha_autorizacion)}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">PO en DataTextNow</td>
@@ -362,7 +533,8 @@ function renderDetalle(oc) {
             ${Auth.puedeHacer(['contabilidad','admin']) 
               ? (() => {
                   const safe = String(oc.datatextnow_id || '').replace(/'/g, "\\'");
-                  return `<button onclick="editarDataTextNowOC(${oc.id}, '${safe}')" 
+                  const safeFecha = formatearFechaPoInput(oc.fecha_po);
+                  return `<button onclick="editarDataTextNowOC(${oc.id}, '${safe}', '${safeFecha}')" 
                              class="btn btn-sm btn-outline" title="Editar PO" style="margin-left:8px;padding:2px 6px;">
                       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
                         <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -372,6 +544,8 @@ function renderDetalle(oc) {
                 })()
               : ''}
           </td></tr>
+      <tr><td style="padding:6px 0;color:#6b7280">Fecha del PO (DTN)</td>
+          <td>${oc.fecha_po ? fechaPoUi(oc.fecha_po) : (esPoNa(oc.datatextnow_id) ? 'NA (sin PO)' : '—')}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">PDF de Cotización</td>
           <td>
             ${oc.archivo_url 
@@ -379,6 +553,76 @@ function renderDetalle(oc) {
               : '<span class="text-muted">—</span>'}
           </td></tr>
     </table>
+
+    ${(() => {
+      const tieneNotas = !!(oc.notas && String(oc.notas).trim());
+      const puedeEditarNotas = Auth.puedeHacer(['contabilidad', 'admin']);
+      const textoNotas = tieneNotas
+        ? UI.esc(oc.notas)
+        : '<em style="color:#92400e;opacity:.85;">Sin notas de contabilidad todavía. Usa este espacio para informar al solicitante durante el ciclo de la OC.</em>';
+      return `
+    <div id="oc-notas-contabilidad-panel" style="
+      margin-top:16px;
+      border-radius:10px;
+      border:2px solid #f59e0b;
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 55%, #fde68a 100%);
+      box-shadow: 0 2px 10px rgba(245, 158, 11, 0.18);
+      overflow:hidden;
+    ">
+      <div style="
+        display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+        padding:12px 14px;
+        background:rgba(180, 83, 9, 0.08);
+        border-bottom:1px solid rgba(245, 158, 11, 0.35);
+      ">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="
+            display:inline-flex; align-items:center; justify-content:center;
+            width:34px; height:34px; border-radius:8px;
+            background:#b45309; color:#fff; font-size:16px; flex-shrink:0;
+          " title="Notas de contabilidad">📝</span>
+          <div>
+            <div style="font-size:14px; font-weight:800; color:#78350f; letter-spacing:.2px;">
+              Notas de contabilidad
+            </div>
+            <div style="font-size:11px; color:#92400e; margin-top:1px;">
+              Visibles durante todo el ciclo de la OC · editables por Contabilidad
+            </div>
+          </div>
+        </div>
+        ${puedeEditarNotas ? `
+        <button type="button" class="btn btn-sm"
+                style="background:#b45309; color:#fff; border:none; font-weight:600; padding:6px 12px;"
+                onclick="mostrarEditorNotasContabilidad(${oc.id})">
+          ✎ Editar notas
+        </button>` : ''}
+      </div>
+
+      <div id="oc-notas-vista" style="padding:14px 16px;">
+        <div id="oc-notas-contabilidad-texto" style="
+          white-space:pre-wrap; line-height:1.55; font-size:14px; color:#451a03;
+          min-height:2.2em;
+          ${tieneNotas ? 'font-weight:500;' : ''}
+        ">${textoNotas}</div>
+      </div>
+
+      <div id="oc-notas-editor" style="display:none; padding:14px 16px;">
+        <label style="display:block; font-size:12px; font-weight:700; color:#78350f; margin-bottom:6px;">
+          Escribe o actualiza las notas para el solicitante
+        </label>
+        <textarea id="oc-notas-textarea" class="form-control" rows="5"
+          style="font-size:14px; line-height:1.5; border:1px solid #f59e0b; background:#fffef7;"
+          placeholder="Ej. En espera de factura del proveedor, PO capturado en DTN, etc."></textarea>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="cancelarEditorNotasContabilidad()">Cancelar</button>
+          <button type="button" class="btn btn-sm" id="oc-notas-btn-guardar"
+                  style="background:#b45309; color:#fff; border:none; font-weight:600;"
+                  onclick="guardarNotasContabilidadOC(${oc.id})">Guardar notas</button>
+        </div>
+      </div>
+    </div>`;
+    })()}
+
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
       <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Descripción del requerimiento</div>
       <p style="margin:0;line-height:1.6;font-size:13px">${oc.descripcion}</p>
@@ -659,7 +903,7 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
 
   const mapRec = {};
   (itemsRecepcion || []).forEach(it => {
-    mapRec[it.item_key] = parseFloat(it.cantidad_recibida) || 0;
+    mapRec[it.item_key] = cantidadRecepcion(it.cantidad_recibida);
   });
 
   contenedor.innerHTML = `
@@ -676,7 +920,7 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
       </thead>
       <tbody>
         ${itemsResumen.map(it => {
-          const pendiente = Math.max(0, parseFloat(it.pendiente) || 0);
+          const pendiente = Math.max(0, cantidadRecepcion(it.pendiente) || parseFloat(it.pendiente) || 0);
           const prefill = mapRec[it.item_key] != null
             ? mapRec[it.item_key]
             : (recepcionEditandoId ? 0 : pendiente);
@@ -687,25 +931,34 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
             ? `<strong>${it.codigo}</strong> — ${it.descripcion}`
             : it.descripcion;
           const pendColor = pendiente > 0 ? 'color:#854d0e;font-weight:600' : 'color:#22c55e;font-weight:600';
+          const fmt = (n) => {
+            const v = parseFloat(n) || 0;
+            return v.toLocaleString('es-MX', { maximumFractionDigits: 3 });
+          };
           return `
             <tr class="rec-item-row" data-item-key="${it.item_key}" data-pendiente="${pendiente}" style="border-top:1px solid #e5e7eb;">
               <td style="padding:6px 8px; text-align:center;">
                 <input type="checkbox" class="rec-item-check" ${checked ? 'checked' : ''}>
               </td>
               <td style="padding:6px 8px;">${desc}<div class="text-muted" style="font-size:10px;">${it.unidad || 'pieza'}</div></td>
-              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums;">${parseFloat(it.cantidad_solicitada || 0).toLocaleString('es-MX')}</td>
-              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; color:#6b7280;">${parseFloat(it.cantidad_recibida || 0).toLocaleString('es-MX')}</td>
-              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; ${pendColor}">${pendiente.toLocaleString('es-MX')}</td>
+              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums;">${fmt(it.cantidad_solicitada)}</td>
+              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; color:#6b7280;">${fmt(it.cantidad_recibida)}</td>
+              <td style="padding:6px 8px; text-align:right; font-variant-numeric:tabular-nums; ${pendColor}">${fmt(pendiente)}</td>
               <td style="padding:6px 8px; text-align:right;">
                 <input type="number" class="form-control form-control-sm rec-item-cantidad"
-                       min="0" step="0.01" value="${prefill > 0 ? prefill : ''}"
+                       min="0" step="any" inputmode="decimal"
+                       value="${prefill > 0 ? prefill : ''}"
                        placeholder="0" style="width:84px; text-align:right;"
+                       title="Puedes escribir decimales (ej. 0.5). Flechas del teclado: ±1"
                        oninput="recalcEstadoAuto()">
               </td>
             </tr>`;
         }).join('')}
       </tbody>
-    </table>`;
+    </table>
+    <div class="text-muted" style="font-size:11px; padding:6px 8px 2px;">Puedes capturar decimales (ej. 0.5). Con flechas del teclado sube/baja de 1 en 1.</div>`;
+
+  contenedor.querySelectorAll('.rec-item-cantidad').forEach(adjuntarStepEnteroFlechas);
 
   contenedor.querySelectorAll('.rec-item-check').forEach(chk => {
     chk.addEventListener('change', () => {
@@ -718,7 +971,7 @@ function renderLineasRecepcionModal(itemsResumen, itemsRecepcion = []) {
       } else {
         input.disabled = false;
         if (!input.value) {
-          const pend = parseFloat(row.dataset.pendiente || 0);
+          const pend = parseFloat(row.dataset.pendiente) || 0;
           input.value = pend > 0 ? pend : '';
         }
       }
@@ -735,7 +988,7 @@ function recolectarItemsRecepcionFormulario() {
     const check = row.querySelector('.rec-item-check');
     if (!check?.checked) return;
 
-    const cantidad = parseFloat(row.querySelector('.rec-item-cantidad')?.value) || 0;
+    const cantidad = cantidadRecepcion(row.querySelector('.rec-item-cantidad')?.value);
     if (cantidad <= 0) return;
 
     const key = row.dataset.itemKey;
@@ -1101,8 +1354,8 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
   for (const row of document.querySelectorAll('#rec-items-list .rec-item-row')) {
     const chk = row.querySelector('.rec-item-check');
     if (!chk?.checked) continue;
-    const cantidad = parseFloat(row.querySelector('.rec-item-cantidad')?.value || 0);
-    const pendiente = parseFloat(row.dataset.pendiente || 0);
+    const cantidad = cantidadRecepcion(row.querySelector('.rec-item-cantidad')?.value);
+    const pendiente = cantidadRecepcion(row.dataset.pendiente) || parseFloat(row.dataset.pendiente) || 0;
     if (cantidad > pendiente + 0.0001) {
       return Toast.error(
         `La cantidad ingresada (${cantidad}) supera el pendiente actual (${pendiente}) en uno de los ítems.`
@@ -1215,6 +1468,14 @@ async function abrirEditarItemProveedor(catalogoId, descripcion, proveedorActual
 window.abrirRecepcion = abrirRecepcion;
 window.cerrarModalRecepcion = cerrarModalRecepcion;
 window.editarRecepcion = editarRecepcion;
+window.editarDataTextNowOC = editarDataTextNowOC;
+window.editarNotasContabilidadOC = editarNotasContabilidadOC;
+window.mostrarEditorNotasContabilidad = mostrarEditorNotasContabilidad;
+window.cancelarEditorNotasContabilidad = cancelarEditorNotasContabilidad;
+window.guardarNotasContabilidadOC = guardarNotasContabilidadOC;
+window.exportarOrdenesExcel = exportarOrdenesExcel;
+window.cargarOrdenes = cargarOrdenes;
+window.volverLista = volverLista;
 window.eliminarRecepcion = eliminarRecepcion;
 window.abrirEditarItemProveedor = abrirEditarItemProveedor;
 

@@ -89,17 +89,14 @@
     </div>
     <form id="form-area" onsubmit="submitArea(event)">
       <div style="padding:16px 24px;">
-        <div class="form-group" id="campo-area-id-wrap">
-          <label class="form-label">ID del área
-            <span style="font-size:10.5px;color:var(--muted);font-weight:400;">(ej: LOGISTICA)</span>
-          </label>
-          <input type="text" id="area-id" class="form-control" placeholder="LOGISTICA"
-                 style="text-transform:uppercase;"
-                 oninput="this.value=this.value.toUpperCase().replace(/\s+/g,'_')">
-        </div>
+        <input type="hidden" id="area-id" value="">
         <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Nombre visible *</label>
-          <input type="text" id="area-label" class="form-control" placeholder="Logística" required>
+          <label class="form-label">Nombre del área *
+            <span style="font-size:10.5px;color:var(--muted);font-weight:400;">(ID = nombre visible)</span>
+          </label>
+          <input type="text" id="area-label" class="form-control" placeholder="ADMINISTRACIÓN" required
+                 style="text-transform:uppercase;"
+                 oninput="this.value=this.value.toUpperCase()">
         </div>
       </div>
       <div class="modal-footer">

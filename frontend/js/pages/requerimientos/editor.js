@@ -97,6 +97,10 @@ async function abrirEditorRequerimiento(req = null, opts = {}) {
   if (typeof cargarAreasEnForm === 'function') {
     await cargarAreasEnForm();
   }
+  // Unidades estandarizadas para ítems nuevos (combo)
+  if (typeof window.cargarUnidadesMedidaReq === 'function') {
+    await window.cargarUnidadesMedidaReq().catch(() => {});
+  }
 
   if (req && req.id) {
     editandoId = req.id;
@@ -287,6 +291,15 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     return;
   }
 
+  const maxItems = window.MAX_ITEMS_POR_REQ || 15;
+  const totalLineas = (window.requerimientoItemsSeleccionados || []).length
+    + (window.requerimientoItemsLibres || []).length;
+  if (totalLineas > maxItems) {
+    Toast.error(`Máximo ${maxItems} ítems por requerimiento. Tienes ${totalLineas}. Crea otro REQ para el resto.`);
+    btn.disabled = false;
+    return;
+  }
+
   const area = document.getElementById('req-area').value;
   const departamento = document.getElementById('req-departamento').value;
 
@@ -342,7 +355,10 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       ReqDraft.clear();
       UI.cerrarModal('modal-req');
       if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
-      Toast.success(`Requerimiento ${resultado.consecutivo} creado (borrador)`);
+      const label = resultado.consecutivo
+        ? `Requerimiento ${resultado.consecutivo} creado (borrador)`
+        : 'Borrador creado (el consecutivo se asigna al enviar a revisión)';
+      Toast.success(label);
       abrirDetalle(resultado.id);
     }
   } catch (err) {

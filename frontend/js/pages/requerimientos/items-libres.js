@@ -1,5 +1,48 @@
 // ── ÍTEMS LIBRES — flujo inline (sin modal separado) ─────────
 
+let _unidadesMedidaReq = null;
+
+/** Carga unidades estandarizadas y rellena el combo de ítem nuevo. */
+async function cargarUnidadesMedidaReq(selected = '') {
+  const sel = document.getElementById('libre-unidad');
+  if (!sel || sel.tagName !== 'SELECT') return;
+
+  if (!_unidadesMedidaReq) {
+    try {
+      _unidadesMedidaReq = await Api.get('/unidades-medida?soloActivas=true') || [];
+    } catch {
+      _unidadesMedidaReq = [];
+    }
+  }
+
+  const val = selected || sel.value || '';
+  const esc = (typeof UI !== 'undefined' && UI.esc)
+    ? (s) => UI.esc(s)
+    : (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+  const opts = ['<option value="">— Unidad —</option>'];
+  _unidadesMedidaReq.forEach((u) => {
+    const cod = u.codigo || u.nombre || '';
+    const label = u.codigo && u.nombre && u.codigo !== u.nombre
+      ? `${u.codigo} — ${u.nombre}`
+      : (u.nombre || u.codigo);
+    opts.push(`<option value="${esc(cod)}">${esc(label)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+
+  if (val) {
+    if (![...sel.options].some((o) => o.value === val)) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = val;
+      sel.appendChild(o);
+    }
+    sel.value = val;
+  }
+}
+
+window.cargarUnidadesMedidaReq = cargarUnidadesMedidaReq;
+
 function limpiarReferenciaLibreForm() {
   const linkInput = document.getElementById('libre-link');
   const fileInput = document.getElementById('libre-archivo');
@@ -51,6 +94,7 @@ function sincronizarListas() {
 
 // ── Mostrar / ocultar el panel inline de ítem libre ───────────
 window.mostrarLibreInline = function() {
+  cargarUnidadesMedidaReq().catch(() => {});
   if (typeof window.seleccionarModoItems === 'function') {
     window.seleccionarModoItems('libre');
   } else {
@@ -72,7 +116,10 @@ window.ocultarLibreInline = function(silencioso = false) {
     const unidEl = document.getElementById('libre-unidad');
     if (descEl) descEl.value = '';
     if (cantEl) cantEl.value = '1';
-    if (unidEl) unidEl.value = '';
+    if (unidEl) {
+      unidEl.value = '';
+      if (unidEl.tagName === 'SELECT') cargarUnidadesMedidaReq('').catch(() => {});
+    }
     limpiarReferenciaLibreForm();
   }
 };
@@ -147,12 +194,20 @@ window.agregarItemLibre = async function() {
 
   const desc   = document.getElementById('libre-descripcion')?.value.trim();
   let cant     = parseFloat(document.getElementById('libre-cantidad')?.value) || 1;
-  const unidad = document.getElementById('libre-unidad')?.value.trim() || '';
+  const unidad = (document.getElementById('libre-unidad')?.value || '').trim() || '';
   cant = Math.max(1, Math.round(cant));
 
   if (!desc || desc.length < 3) {
     Toast.error('La descripción debe tener al menos 3 caracteres');
     document.getElementById('libre-descripcion')?.focus();
+    return;
+  }
+  // Unidad opcional pero, si se captura, viene del catálogo estandarizado (combo)
+
+  const maxItems = window.MAX_ITEMS_POR_REQ || 15;
+  const nLibres = (window.requerimientoItemsLibres || []).length;
+  if (nLibres >= maxItems) {
+    Toast.error(`Máximo ${maxItems} ítems por requerimiento. Crea otro REQ para agregar más.`);
     return;
   }
 

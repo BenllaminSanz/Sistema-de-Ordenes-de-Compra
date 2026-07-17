@@ -102,20 +102,29 @@ async function cambiarEstado(req, res) {
 }
 
 /**
- * Importa elementos al catálogo desde Excel.
- * Columnas esperadas (en orden):
- * 0: No de proveedor (num_proveedor)
- * 1: Proveedor (nombre, se usa solo para referencia)
+ * Columnas del Excel de catálogo (ida/vuelta):
+ * 0: No de proveedor
+ * 1: Proveedor (nombre; solo referencia / export)
  * 2: Numero de Parte → codigo
  * 3: Descripción
  * 4: UOM → unidad
  * 5: Costo unitario → costo_referencia
  * 6: Moneda
+ * 7+: columnas extra del Excel externo → en export se dejan en blanco si no existen en sistema
  *
- * Si el codigo ya existe → se omite.
- * Se resuelve el proveedor_id a partir del num_proveedor (normalizado).
- * Tipo se fuerza a 'PARTES' (el archivo es CATALOGO PARTES).
+ * Upsert por código de ítem: si existe, actualiza campos; si no, inserta.
+ * Tipo se fuerza a 'PARTES' en import (archivo de catálogo de partes).
  */
+const EXCEL_HEADERS = [
+  'No de proveedor',
+  'Proveedor',
+  'Numero de Parte',
+  'Descripción',
+  'UOM',
+  'Costo unitario',
+  'Moneda',
+];
+
 async function importarExcel(req, res) {
   try {
     if (!req.file) {
@@ -124,64 +133,74 @@ async function importarExcel(req, res) {
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
     if (!rows.length) {
       return res.status(400).json({ mensaje: 'El archivo Excel está vacío' });
     }
 
     let nuevos = 0;
+    let actualizados = 0;
     let omitidos = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      if (!row || row.length < 5) {
+      if (!row || !Array.isArray(row)) {
         omitidos++;
         continue;
       }
 
       // Saltar encabezado
-      if (i === 0 && typeof row[0] === 'string' && /proveedor|no de/i.test(row[0])) {
+      if (i === 0 && typeof row[0] === 'string' && /proveedor|no de|numero de parte/i.test(String(row[0]))) {
         continue;
       }
 
       const rawNumProv = row[0];
-      const numeroParte = row[2] ? String(row[2]).trim() : '';
-      const descripcion = row[3] ? String(row[3]).trim() : '';
-      const uom = row[4] ? String(row[4]).trim() : '';
-      const costo = row[5] != null ? parseFloat(row[5]) : null;
-      const moneda = row[6] ? String(row[6]).trim().toUpperCase() : 'MXN';
+      const numeroParte = row[2] != null && row[2] !== '' ? String(row[2]).trim() : '';
+      const descripcion = row[3] != null && row[3] !== '' ? String(row[3]).trim() : '';
+      const uom = row[4] != null && row[4] !== '' ? String(row[4]).trim() : '';
+      const costo = row[5] != null && row[5] !== '' ? parseFloat(row[5]) : null;
+      const moneda = row[6] != null && row[6] !== '' ? String(row[6]).trim().toUpperCase() : 'MXN';
 
       if (!numeroParte || !descripcion) {
         omitidos++;
         continue;
       }
 
-      // Buscar proveedor por num_proveedor
       const prov = await obtenerPorNumProveedor(rawNumProv);
       const proveedor_id = prov ? prov.id : null;
+      const payload = {
+        tipo: 'PARTES',
+        codigo: numeroParte,
+        descripcion,
+        unidad: uom || null,
+        costo_referencia: costo != null && !isNaN(costo) ? costo : null,
+        moneda: ['MXN', 'USD'].includes(moneda) ? moneda : 'MXN',
+        proveedor_id,
+        activo: 1,
+      };
 
-      // Verificar si el código ya existe
-      const existentes = await CatalogoModel.listar({ busqueda: numeroParte });
-      const yaExiste = existentes.some(item => item.codigo === numeroParte);
-      if (yaExiste) {
-        omitidos++;
-        continue;
-      }
-
-      // Insertar como PARTES (el archivo es de partes)
       try {
-        await CatalogoModel.crear({
-          tipo: 'PARTES',
-          codigo: numeroParte,
-          descripcion,
-          unidad: uom || null,
-          costo_referencia: isNaN(costo) ? null : costo,
-          moneda: ['MXN', 'USD'].includes(moneda) ? moneda : 'MXN',
-          proveedor_id,
-          activo: 1
-        });
-        nuevos++;
+        const existente = await CatalogoModel.obtenerPorCodigo(numeroParte);
+        if (existente) {
+          await CatalogoModel.actualizar(existente.id, {
+            tipo: payload.tipo,
+            codigo: payload.codigo,
+            descripcion: payload.descripcion,
+            unidad: payload.unidad,
+            costo_referencia: payload.costo_referencia,
+            moneda: payload.moneda,
+            proveedor_id: payload.proveedor_id,
+          });
+          // Reactivar si estaba desactivado (actualización de catálogo)
+          if (!existente.activo) {
+            await CatalogoModel.cambiarEstado(existente.id, true);
+          }
+          actualizados++;
+        } else {
+          await CatalogoModel.crear(payload);
+          nuevos++;
+        }
       } catch (insErr) {
         if (insErr.code === 'ER_DUP_ENTRY') {
           omitidos++;
@@ -192,10 +211,11 @@ async function importarExcel(req, res) {
     }
 
     res.json({
-      mensaje: `Carga correcta. Se importaron ${nuevos} elementos nuevos al catálogo.`,
+      mensaje: `Carga correcta. Nuevos: ${nuevos}, actualizados: ${actualizados}, omitidos: ${omitidos}.`,
       nuevos,
+      actualizados,
       omitidos,
-      total_filas: rows.length
+      total_filas: rows.length,
     });
   } catch (err) {
     logger.error('[importarExcel catalogo]', err);
@@ -206,4 +226,67 @@ async function importarExcel(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, cambiarEstado, importarExcel };
+/**
+ * Exporta el catálogo con el mismo formato de carga.
+ * Columnas del sistema se llenan; columnas extra no existen en sistema → en blanco.
+ */
+async function exportarExcel(req, res) {
+  try {
+    const items = await CatalogoModel.listar({
+      tipo: req.query.tipo || null,
+      busqueda: req.query.busqueda || null,
+      proveedor_id: req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null,
+      soloActivos: req.query.soloActivos === 'true',
+    });
+
+    const data = [
+      [...EXCEL_HEADERS],
+      ...items.map((it) => [
+        it.proveedor_num || '',
+        it.proveedor_nombre || '',
+        it.codigo || '',
+        it.descripcion || '',
+        it.unidad || '',
+        it.costo_referencia != null ? Number(it.costo_referencia) : '',
+        it.moneda || 'MXN',
+      ]),
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Catalogo');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="catalogo_${fecha}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    logger.error('[exportarExcel catalogo]', err);
+    res.status(500).json({ mensaje: 'Error al exportar el catálogo' });
+  }
+}
+
+async function eliminar(req, res) {
+  try {
+    const result = await CatalogoModel.eliminarDesactivado(req.params.id);
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ mensaje: result.mensaje });
+    }
+    res.json({ mensaje: result.mensaje });
+  } catch (err) {
+    logger.error('[eliminar catalogo]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+export {
+  listar,
+  obtener,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  importarExcel,
+  exportarExcel,
+};

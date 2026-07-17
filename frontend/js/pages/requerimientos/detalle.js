@@ -122,9 +122,10 @@ function getPrintStyles() {
     .print-firmas {
       display: flex;
       justify-content: space-between;
-      gap: 10px;
-      margin-top: 10px;
-      padding-top: 4px;
+      gap: 14px;
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid #e5e7eb;
       page-break-inside: avoid;
     }
     .print-firma-col {
@@ -134,7 +135,7 @@ function getPrintStyles() {
     }
     .print-firma-linea {
       border-top: 1px solid #000;
-      margin: 0 6px 4px;
+      margin: 28px 6px 6px;
       height: 1px;
     }
     .print-firma-label {
@@ -306,13 +307,13 @@ function volverLista() {
 
 function renderDetalle(req) {
   document.getElementById('detalle-titulo').textContent =
-    `${req.consecutivo} — ${req.tipo}`;
+    `${req.consecutivo || 'Borrador (sin consecutivo)'} — ${req.tipo}`;
 
   document.getElementById('detalle-info').innerHTML = `
     <div class="card-title">Información del requerimiento</div>
     <table style="width:100%;border-collapse:collapse">
       <tr><td style="padding:6px 0;color:#6b7280;width:140px">Consecutivo</td>
-          <td class="fw-600">${req.consecutivo}</td></tr>
+          <td class="fw-600">${req.consecutivo || '<span class="text-muted">Provisional — se asigna al enviar a revisión</span>'}</td></tr>
       ${req.titulo_solicitud ? `<tr><td style="padding:6px 0;color:#6b7280">Título</td><td class="fw-600">${UI.esc(req.titulo_solicitud)}</td></tr>` : ''}
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${req.tipo}</td></tr>
@@ -384,7 +385,7 @@ function renderDetalle(req) {
 
     ${req.notas_rechazo ? `
     <div style="margin-top:12px;background:#FCEBEB;border-radius:7px;padding:12px">
-      <div style="font-size:12px;font-weight:600;color:#A32D2D;margin-bottom:4px">Nota de rechazo</div>
+      <div style="font-size:12px;font-weight:600;color:#A32D2D;margin-bottom:4px">Nota</div>
       <p style="margin:0;font-size:13px;color:#791F1F">${req.notas_rechazo}</p>
     </div>` : ''}`;
 
@@ -431,6 +432,7 @@ function renderDetalle(req) {
       if (action === 'imprimirRequerimiento') imprimirRequerimiento();
       if (action === 'editarRequerimientoActual') editarRequerimientoActual();
       if (action === 'generarOC') generarOC();
+      if (action === 'eliminarBorradorReq') eliminarBorradorReq();
     });
 
     window.delegate(accionesPanel, 'button[data-estado]', 'click', (e, btn) => {
@@ -453,8 +455,13 @@ function renderAcciones(req) {
     acciones.push({ label:'✏️ Editar', accion:'editarRequerimientoActual', clase:'btn-outline' });
     acciones.push({ label:'📤 Enviar a revisión', estado:'en_revision', clase:'btn-primary' });
   }
+  // Eliminar solo en borrador (aún no enviado formalmente a revisión)
+  if (req.estado === 'borrador' && (esDueno || ['contabilidad', 'admin'].includes(u?.rol))) {
+    acciones.push({ label:'🗑️ Eliminar borrador', accion:'eliminarBorradorReq', clase:'btn-danger' });
+  }
 
   if (['contabilidad','admin'].includes(u.rol)) {
+    // Flujo: Revisión → Aprobar/Rechazar → Cotizar (si aplica) → Autorizar/Generar OC
     if (req.estado === 'en_revision') {
       acciones.push({ label:'Aprobar',    estado:'aprobado',   clase:'btn-success' });
       acciones.push({ label:'Incompleto', estado:'incompleto', clase:'btn-outline' });
@@ -522,10 +529,14 @@ async function prepararCambioEstado(estado, label) {
   document.getElementById('btn-confirmar-estado').onclick = async () => {
     const notas = document.getElementById('estado-notas').value;
     try {
-      await Api.patch(`/requerimientos/${requerimientoActual.id}/estado`,
+      const actualizado = await Api.patch(`/requerimientos/${requerimientoActual.id}/estado`,
         { estado: estadoPendiente, notas });
       UI.cerrarModal('modal-estado');
-      Toast.success('Estado actualizado');
+      if (estadoPendiente === 'en_revision' && actualizado?.consecutivo) {
+        Toast.success(`Enviado a revisión. Consecutivo: ${actualizado.consecutivo}`);
+      } else {
+        Toast.success('Estado actualizado');
+      }
       if (estadoPendiente === 'aprobado' && avisoEl?.style.display === 'block') {
         Toast.warning('Recuerda adjuntar el PDF de la cotización seleccionada cuando lo tengas disponible.', 7000);
       }
@@ -616,6 +627,8 @@ async function imprimirRequerimiento() {
         <div class="print-firma-nombre">Jefe Inmediato</div>
       </div>
     </div>`;
+
+  // (Espacio de firmas reforzado en CSS: más separación de la tabla de ítems)
 
   const ventana = window.open('', '_blank', 'width=800,height=600');
   ventana.document.write(`
@@ -777,6 +790,25 @@ async function obtenerItemsSinCodigoCatalogo(cotizacionId) {
   }
 }
 
+async function eliminarBorradorReq() {
+  if (!requerimientoActual || requerimientoActual.estado !== 'borrador') {
+    return Toast.error('Solo se pueden eliminar requerimientos en borrador');
+  }
+  const etiqueta = requerimientoActual.consecutivo
+    || requerimientoActual.titulo_solicitud
+    || `#${requerimientoActual.id}`;
+  if (!confirm(`¿Eliminar el borrador "${etiqueta}"?\n\nEsta acción no se puede deshacer.`)) return;
+
+  try {
+    await Api.delete(`/requerimientos/${requerimientoActual.id}`);
+    Toast.success('Borrador eliminado');
+    volverLista();
+    if (typeof cargarRequerimientos === 'function') cargarRequerimientos(1);
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo eliminar el borrador');
+  }
+}
+
 async function generarOC() {
   let cotizacion_id = null;
   let cotSeleccionada = null;
@@ -820,11 +852,29 @@ async function generarOC() {
   await intentarGenerarOC({ cotizacion_id, items_codigo_catalogo: null });
 }
 
-async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo }) {
+async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo, datatextnow_id, fecha_po }) {
+  // Si aún no se capturó el PO, abrir modal y guardar el resto del payload
+  if (datatextnow_id === undefined) {
+    _generarOcPendiente = {
+      cotizacion_id,
+      items_codigo_catalogo: items_codigo_catalogo || null,
+    };
+    // Cierra el modal de Nº ítem si estaba abierto; sigue el de PO
+    const modalNro = document.getElementById('modal-completar-nro-item-oc');
+    if (modalNro) {
+      modalNro.classList.remove('show');
+      modalNro.style.display = '';
+    }
+    abrirModalPoGenerarOC();
+    return;
+  }
+
   const body = {
     requerimiento_id: requerimientoActual.id,
     cotizacion_id,
+    datatextnow_id,
   };
+  if (fecha_po) body.fecha_po = fecha_po;
   if (Array.isArray(items_codigo_catalogo) && items_codigo_catalogo.length > 0) {
     body.items_codigo_catalogo = items_codigo_catalogo;
   }
@@ -832,17 +882,19 @@ async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo }) {
   try {
     const oc = await Api.post('/ordenes-compra', body);
     cerrarModalCompletarNroItemOC();
+    cerrarModalPoGenerarOC();
     Toast.success(`OC generada: ${oc.numero_oc}`);
     setTimeout(() => { window.location.href = `ordenes.html?id=${oc.id}`; }, 1200);
   } catch (err) {
     if (esErrorFaltanCodigosCatalogo(err)) {
+      cerrarModalPoGenerarOC();
       let itemsFaltantes = err?.data?.items || err?.items;
       if (!Array.isArray(itemsFaltantes) || !itemsFaltantes.length) {
         itemsFaltantes = await obtenerItemsSinCodigoCatalogo(cotizacion_id);
       }
 
       if (Array.isArray(itemsFaltantes) && itemsFaltantes.length) {
-        _generarOcPendiente = { cotizacion_id };
+        _generarOcPendiente = { cotizacion_id, items_codigo_catalogo: null };
         abrirModalCompletarNroItemOC(itemsFaltantes, err.mensaje);
         return;
       }
@@ -855,6 +907,85 @@ async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo }) {
     }
   }
 }
+
+function abrirModalPoGenerarOC() {
+  const modal = document.getElementById('modal-po-generar-oc');
+  if (!modal) {
+    Toast.error('No se encontró el formulario de PO. Recarga la página e intenta de nuevo.');
+    return;
+  }
+  const radioNo = modal.querySelector('input[name="po-oc-tiene"][value="no"]');
+  if (radioNo) radioNo.checked = true;
+  const num = document.getElementById('po-oc-numero');
+  const fecha = document.getElementById('po-oc-fecha');
+  if (num) num.value = '';
+  if (fecha) fecha.value = '';
+  toggleCamposPoGenerarOC();
+  modal.classList.add('show');
+  modal.style.display = 'flex';
+}
+
+function cerrarModalPoGenerarOC() {
+  const modal = document.getElementById('modal-po-generar-oc');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = '';
+  }
+}
+
+function toggleCamposPoGenerarOC() {
+  const tiene = document.querySelector('input[name="po-oc-tiene"]:checked')?.value === 'si';
+  const box = document.getElementById('po-oc-campos-numero');
+  if (box) box.style.display = tiene ? 'block' : 'none';
+}
+
+async function confirmarPoYGenerarOC() {
+  if (!_generarOcPendiente) {
+    Toast.error('No hay generación de OC pendiente. Intenta de nuevo.');
+    return;
+  }
+
+  const tiene = document.querySelector('input[name="po-oc-tiene"]:checked')?.value === 'si';
+  let datatextnow_id = 'NA';
+  let fecha_po = null;
+
+  if (tiene) {
+    datatextnow_id = (document.getElementById('po-oc-numero')?.value || '').trim();
+    fecha_po = (document.getElementById('po-oc-fecha')?.value || '').trim();
+    if (!datatextnow_id) {
+      Toast.error('Ingresa el número de PO de DataTextNow');
+      return;
+    }
+    if (!fecha_po) {
+      Toast.error('Ingresa la fecha del PO en DataTextNow');
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-confirmar-po-generar-oc');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generando OC…';
+  }
+
+  try {
+    await intentarGenerarOC({
+      cotizacion_id: _generarOcPendiente.cotizacion_id,
+      items_codigo_catalogo: _generarOcPendiente.items_codigo_catalogo,
+      datatextnow_id,
+      fecha_po,
+    });
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Generar OC';
+    }
+  }
+}
+
+window.cerrarModalPoGenerarOC = cerrarModalPoGenerarOC;
+window.toggleCamposPoGenerarOC = toggleCamposPoGenerarOC;
+window.confirmarPoYGenerarOC = confirmarPoYGenerarOC;
 
 function abrirModalCompletarNroItemOC(items, mensaje) {
   const modal = document.getElementById('modal-completar-nro-item-oc');
@@ -928,6 +1059,7 @@ async function confirmarCompletarNroItemYGenerarOC() {
   }
 
   try {
+    // Tras completar Nº ítem, sigue el modal de PO
     await intentarGenerarOC({
       cotizacion_id: _generarOcPendiente.cotizacion_id,
       items_codigo_catalogo,
@@ -935,7 +1067,7 @@ async function confirmarCompletarNroItemYGenerarOC() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Guardar y generar OC';
+      btn.textContent = 'Guardar y continuar';
     }
   }
 }

@@ -23,7 +23,10 @@
               <a href="catalogo-proveedores.html" class="catalog-view-tab">Por proveedor</a>
             </nav>
           </div>
-          <div class="page-header-actions" id="admin-actions" style="display:none">
+          <div class="page-header-actions" id="admin-actions" style="display:none; flex-wrap:wrap; gap:6px;">
+            <button class="btn btn-outline btn-sm" onclick="exportarCatalogoExcel()" title="Descargar con el mismo formato de carga">
+              ↓ Descargar Excel
+            </button>
             <button class="btn btn-outline btn-sm"
                     onclick="document.getElementById('input-excel-catalogo').click()">
               <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
@@ -32,6 +35,9 @@
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
               Cargar Excel
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="abrirModalUnidades()">
+              Unidades de medida
             </button>
             <button class="btn btn-primary btn-sm" onclick="abrirModalCatalogo()">
               + Nuevo elemento
@@ -69,6 +75,9 @@
             <input type="checkbox" id="chk-activos" checked onchange="cargarCatalogo()">
             Solo activos
           </label>
+          <button type="button" class="btn btn-outline btn-sm" onclick="limpiarFiltrosYRecargar()" title="Quitar búsqueda y filtros">
+            Limpiar filtros
+          </button>
           <span id="cat-contador" class="filter-count"></span>
         </div>
 
@@ -133,8 +142,11 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">Unidad <span class="text-muted">(opcional)</span></label>
-        <input type="text" id="cat-unidad" class="form-control" placeholder="Ej: pza, kg, hr, servicio">
+        <label class="form-label">Unidad de medida <span class="text-muted">(opcional)</span></label>
+        <select id="cat-unidad" class="form-control">
+          <option value="">— Seleccionar unidad —</option>
+        </select>
+        <small class="text-muted" style="font-size:11px;">Catálogo estandarizado. Gestiona unidades con el botón «Unidades de medida».</small>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -167,6 +179,34 @@
         <button type="submit" class="btn btn-primary" id="btn-guardar-catalogo">Guardar</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Modal: Unidades de medida -->
+<div class="modal-backdrop" id="modal-unidades" style="display:none;">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Unidades de medida</h3>
+      <button class="modal-close" onclick="cerrarModalUnidades()">×</button>
+    </div>
+    <form id="form-unidad" onsubmit="guardarUnidadMedida(event)" style="margin-bottom:14px;">
+      <input type="hidden" id="unidad-id" value="">
+      <div style="display:grid; grid-template-columns:1fr 1.4fr auto; gap:8px; align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Código *</label>
+          <input type="text" id="unidad-codigo" class="form-control" required placeholder="Ej. pza, kg">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Nombre *</label>
+          <input type="text" id="unidad-nombre" class="form-control" required placeholder="Ej. Pieza">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="height:38px;">Guardar</button>
+      </div>
+    </form>
+    <div id="lista-unidades-admin"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="cerrarModalUnidades()">Cerrar</button>
+    </div>
   </div>
 </div>
 

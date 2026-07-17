@@ -73,21 +73,35 @@ export async function listarDepartamentosPlanos() {
   return out;
 }
 
+/** Comparación de área: id y label visibles son el mismo nombre (mayúsculas). */
+function normalizarClaveArea(valor) {
+  return String(valor || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // quita acentos solo para comparar
+}
+
 export async function validarAreaDepartamento(areaId, departamentoNombre) {
   if (!areaId || !departamentoNombre) {
     return { ok: false, mensaje: 'Área y departamento son requeridos' };
   }
 
-  const areaNorm = String(areaId).trim().toUpperCase();
+  const areaKey = normalizarClaveArea(areaId);
   const deptoNorm = String(departamentoNombre).trim().toUpperCase();
   const areas = await obtenerAreas();
-  const area = areas.find(a => a.id === areaNorm);
+  // Coincidir por id o label (ahora id = nombre visible)
+  const area = areas.find(
+    (a) => normalizarClaveArea(a.id) === areaKey || normalizarClaveArea(a.label) === areaKey
+  );
 
   if (!area) {
-    return { ok: false, mensaje: `El área "${areaNorm}" no existe en el catálogo` };
+    return { ok: false, mensaje: `El área "${String(areaId).trim()}" no existe en el catálogo` };
   }
 
-  const depto = (area.departamentos || []).find(d => d.nombre === deptoNorm);
+  const depto = (area.departamentos || []).find(
+    (d) => String(d.nombre).trim().toUpperCase() === deptoNorm
+  );
   if (!depto) {
     return {
       ok: false,

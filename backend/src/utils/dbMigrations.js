@@ -83,5 +83,76 @@ export async function runDbMigrations() {
   await addColumnIfMissing('cotizacion_items', 'catalogo_id', `${catFk} NULL AFTER codigo_catalogo`);
   await addColumnIfMissing('requerimiento_items_libres', 'catalogo_asignado_id', `${catFk} NULL`);
 
+  // Fecha manual del PO en DataTextNow (distinta de created_at / fecha_autorizacion del sistema)
+  await addColumnIfMissing(
+    'ordenes_compra',
+    'fecha_po',
+    "DATE NULL COMMENT 'Fecha del PO en DataTextNow (captura manual al crear/editar OC)' AFTER datatextnow_id"
+  );
+
+  await ensureUnidadesMedidaTable();
+
   logger.info('[migrate] Migraciones aplicadas');
+}
+
+async function ensureUnidadesMedidaTable() {
+  if (!(await tableExists('unidades_medida'))) {
+    await pool.query(`
+      CREATE TABLE unidades_medida (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        codigo VARCHAR(30) NOT NULL,
+        nombre VARCHAR(80) NOT NULL,
+        activo TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_unidad_codigo (codigo)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    logger.info('[migrate] Tabla unidades_medida creada');
+  }
+
+  // Semilla base + valores ya usados en catálogo
+  const seeds = [
+    ['pza', 'Pieza'],
+    ['pieza', 'Pieza'],
+    ['EA', 'Each / Unidad'],
+    ['kg', 'Kilogramo'],
+    ['g', 'Gramo'],
+    ['lt', 'Litro'],
+    ['m', 'Metro'],
+    ['m2', 'Metro cuadrado'],
+    ['hr', 'Hora'],
+    ['servicio', 'Servicio'],
+    ['lote', 'Lote'],
+    ['caja', 'Caja'],
+    ['par', 'Par'],
+    ['juego', 'Juego'],
+    ['gal', 'Galón'],
+  ];
+
+  for (const [codigo, nombre] of seeds) {
+    await pool.query(
+      `INSERT IGNORE INTO unidades_medida (codigo, nombre, activo) VALUES (?, ?, 1)`,
+      [codigo, nombre]
+    );
+  }
+
+  // Incorporar unidades distintas ya presentes en el catálogo
+  try {
+    const [rows] = await pool.query(`
+      SELECT DISTINCT TRIM(unidad) AS u
+      FROM catalogo
+      WHERE unidad IS NOT NULL AND TRIM(unidad) <> ''
+    `);
+    for (const row of rows) {
+      const u = String(row.u || '').trim();
+      if (!u) continue;
+      await pool.query(
+        `INSERT IGNORE INTO unidades_medida (codigo, nombre, activo) VALUES (?, ?, 1)`,
+        [u, u]
+      );
+    }
+  } catch (_) {
+    /* catálogo puede no existir aún */
+  }
 }

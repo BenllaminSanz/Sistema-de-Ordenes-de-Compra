@@ -381,7 +381,7 @@ export const deseleccionarCotizacion = async (req, res) => {
   }
 };
 
-// Subir archivo PDF real a una cotización (handler puro)
+// Subir archivo de respaldo a una cotización (PDF, Word, Excel, imágenes, etc.)
 export const subirArchivoCotizacion = async (req, res) => {
   try {
     const { id } = req.params;
@@ -389,7 +389,7 @@ export const subirArchivoCotizacion = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'No se recibió ningún archivo PDF'
+        message: 'No se recibió ningún archivo'
       });
     }
 
@@ -401,14 +401,15 @@ export const subirArchivoCotizacion = async (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) {}
       return res.status(400).json({
         success: false,
-        message: 'No se pudo guardar el PDF (la cotización podría no existir).'
+        message: 'No se pudo guardar el archivo (la cotización podría no existir).'
       });
     }
 
     res.json({
       success: true,
-      message: 'PDF subido correctamente',
-      archivo_url: archivoUrl
+      message: 'Archivo subido correctamente',
+      archivo_url: archivoUrl,
+      nombre_original: req.file.originalname || null,
     });
   } catch (error) {
     logger.error('Error al subir archivo de cotización:', error);
@@ -423,7 +424,7 @@ export const subirArchivoCotizacion = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Error al subir el archivo PDF'
+      message: 'Error al subir el archivo'
     });
   }
 };
@@ -440,16 +441,23 @@ export const enviarCorreoCotizacion = async (req, res) => {
   try {
     const { id } = req.params;
     const cotId = parseInt(id, 10);
+    // Idioma del cuerpo del correo: es | en (default es)
+    const idiomaRaw = (req.body?.idioma || req.query?.idioma || 'es').toString().toLowerCase();
+    const idioma = idiomaRaw.startsWith('en') ? 'en' : 'es';
 
     if (!cotId) {
       return res.status(400).json({ success: false, mensaje: 'ID de cotización inválido' });
     }
 
-    const result = await enviarSolicitudDeCotizacion(cotId);
+    const result = await enviarSolicitudDeCotizacion(cotId, { idioma });
 
     if (result.success) {
       await Cotizacion.marcarComoEnviadaPorCorreo(cotId);
-      return res.json({ success: true, message: 'Solicitud de cotización enviada al proveedor' });
+      return res.json({
+        success: true,
+        message: 'Solicitud de cotización enviada al proveedor',
+        idioma,
+      });
     } else if (result.reason === 'no_requiere_segun_condicion') {
       return res.status(400).json({
         success: false,

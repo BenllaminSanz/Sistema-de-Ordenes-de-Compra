@@ -56,9 +56,16 @@ async function registrarHistorialOc(conn, ocId, estadoAnterior, estadoNuevo, usu
   );
 }
 
+/** Normaliza cantidad de recepción (permite decimales). */
+function aCantidadRecepcion(valor) {
+  const n = parseFloat(valor);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 1000) / 1000;
+}
+
 async function insertarItemsRecepcion(conn, recepcionId, items = []) {
   for (const item of items) {
-    const recibida = parseFloat(item.cantidad_recibida) || 0;
+    const recibida = aCantidadRecepcion(item.cantidad_recibida);
     if (recibida <= 0) continue;
     await conn.query(
       `INSERT INTO recepcion_items
@@ -122,7 +129,7 @@ function construirResumenItemsOc(oc, acumulado) {
         ? `lib-${it.id}`
         : `cat-${it.id || idx}`;
     const solicitada = parseFloat(it.cantidad) || 0;
-    const recibida = acumulado[key] || 0;
+    const recibida = parseFloat(acumulado[key]) || 0;
     return {
       item_key: key,
       codigo: it.codigo || null,
@@ -156,17 +163,17 @@ async function validarItemsRecepcion(conn, orden_compra_id, items = [], { exclui
 
   let tieneCantidad = false;
   for (const item of items) {
-    const recibida = parseFloat(item.cantidad_recibida) || 0;
+    const recibida = aCantidadRecepcion(item.cantidad_recibida);
     if (recibida <= 0) continue;
     tieneCantidad = true;
 
-    const pendiente = mapPendiente[item.item_key];
-    if (pendiente == null) {
+    if (mapPendiente[item.item_key] == null) {
       throw {
         status: 422,
         mensaje: `El ítem "${item.descripcion || item.item_key}" no corresponde a esta OC.`,
       };
     }
+    const pendiente = Math.max(0, parseFloat(mapPendiente[item.item_key]) || 0);
     if (recibida > pendiente + 0.0001) {
       const etiqueta = mapDesc[item.item_key] || item.descripcion || item.codigo || item.item_key;
       throw {

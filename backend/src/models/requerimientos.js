@@ -150,7 +150,13 @@ async function obtenerPorId(id) {
     req.departamento_codigo = valDepto.departamento.codigo;
   } else if (req.area && req.departamento) {
     const areas = await obtenerAreas();
-    const area = areas.find(a => a.id === String(req.area).trim().toUpperCase());
+    const areaKey = String(req.area || '').trim().toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const area = areas.find((a) => {
+      const idKey = String(a.id || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const labKey = String(a.label || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return idKey === areaKey || labKey === areaKey;
+    });
     if (area) {
       const deptoNorm = String(req.departamento).trim().toUpperCase();
       const depto = (area.departamentos || []).find(
@@ -195,14 +201,36 @@ async function obtenerPorId(id) {
  * locks de InnoDB, no indica datos corruptos). Reintentar la transacción completa
  * resuelve el conflicto sin generar consecutivos duplicados ni fallar la petición.
  */
+/** Máximo de líneas/ítems por requerimiento (impresión y operación). */
+const MAX_ITEMS_POR_REQ = 15;
+
+function contarItemsPayload(datos) {
+  const nCat = Array.isArray(datos.items) ? datos.items.filter((i) => i?.catalogo_id && (i.cantidad || 0) > 0).length : 0;
+  const nLib = Array.isArray(datos.items_libres) ? datos.items_libres.filter((i) => i?.descripcion && (i.cantidad || 0) > 0).length : 0;
+  return nCat + nLib;
+}
+
+function assertLimiteItems(datos) {
+  const total = contarItemsPayload(datos);
+  if (total > MAX_ITEMS_POR_REQ) {
+    throw {
+      status: 422,
+      mensaje: `Máximo ${MAX_ITEMS_POR_REQ} ítems por requerimiento. Tienes ${total}. Crea otro REQ para el resto.`,
+    };
+  }
+}
+
 async function crear(datos, solicitante_id, intento = 1) {
   const MAX_INTENTOS = 6;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const consecutivo = await obtenerSiguienteConsecutivo(conn, datos.tipo);
-  
+    assertLimiteItems(datos);
+
+    // El consecutivo formal se asigna al enviar a revisión (no en borrador)
+    const consecutivo = null;
+
     const tieneLibresEnDatos = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
     const requiereCotEnBD = tieneLibresEnDatos ? 1 : (datos.requiere_cotizacion ? 1 : 0);
 
@@ -315,6 +343,13 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
     if (!['borrador', 'incompleto'].includes(actual.estado)) {
       await conn.rollback();
       return 0;
+    }
+
+    if (Array.isArray(items) || Array.isArray(itemsLibres)) {
+      assertLimiteItems({
+        items: Array.isArray(items) ? items : [],
+        items_libres: Array.isArray(itemsLibres) ? itemsLibres : [],
+      });
     }
 
     // 1. Actualizar campos escalares (si hay)
@@ -430,7 +465,7 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
     await conn.beginTransaction();
 
     const [[req]] = await conn.query(
-      'SELECT estado FROM requerimientos WHERE id = ? FOR UPDATE',
+      'SELECT id, estado, tipo, consecutivo FROM requerimientos WHERE id = ? FOR UPDATE',
       [id]
     );
 
@@ -444,18 +479,28 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
       };
     }
 
+    // Asignar consecutivo formal solo al primer envío a revisión
+    let consecutivo = req.consecutivo;
+    if (nuevoEstado === 'en_revision' && !consecutivo) {
+      consecutivo = await obtenerSiguienteConsecutivo(conn, req.tipo);
+    }
+
     await conn.query(
       `UPDATE requerimientos
-       SET estado = ?, notas_rechazo = ?
+       SET estado = ?, notas_rechazo = ?, consecutivo = ?
        WHERE id = ?`,
-      [nuevoEstado, notas, id]
+      [nuevoEstado, notas, consecutivo, id]
     );
+
+    const notasHist = nuevoEstado === 'en_revision' && !req.consecutivo && consecutivo
+      ? `${notas ? notas + ' — ' : ''}Consecutivo asignado: ${consecutivo}`
+      : notas;
 
     await conn.query(
       `INSERT INTO historial_estados
          (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
        VALUES ('requerimiento', ?, ?, ?, ?, ?)`,
-      [id, req.estado, nuevoEstado, usuarioId, notas]
+      [id, req.estado, nuevoEstado, usuarioId, notasHist]
     );
 
     await conn.commit();
@@ -469,13 +514,48 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
 
 /**
  * Eliminar un requerimiento solo si está en estado 'borrador'.
+ * options.solicitante_id: si se indica, solo el dueño puede borrar.
+ * options.rol: admin/contabilidad pueden borrar cualquier borrador.
  */
-async function eliminar(id) {
-  const [result] = await pool.query(
-    "DELETE FROM requerimientos WHERE id = ? AND estado = 'borrador'",
+async function eliminar(id, { solicitante_id = null, rol = null } = {}) {
+  const [[req]] = await pool.query(
+    'SELECT id, estado, solicitante_id, consecutivo FROM requerimientos WHERE id = ?',
     [id]
   );
-  return result.affectedRows;
+  if (!req) return 0;
+  if (req.estado !== 'borrador') {
+    throw {
+      status: 422,
+      mensaje: 'Solo se pueden eliminar requerimientos en estado borrador (aún no enviados a revisión).',
+    };
+  }
+  if (rol !== 'admin' && rol !== 'contabilidad') {
+    if (!solicitante_id || req.solicitante_id !== solicitante_id) {
+      throw { status: 403, mensaje: 'Solo el solicitante puede eliminar su propio borrador' };
+    }
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM requerimiento_items WHERE requerimiento_id = ?', [id]);
+    await conn.query('DELETE FROM requerimiento_items_libres WHERE requerimiento_id = ?', [id]);
+    await conn.query(
+      `DELETE FROM historial_estados WHERE entidad_tipo = 'requerimiento' AND entidad_id = ?`,
+      [id]
+    );
+    const [result] = await conn.query(
+      "DELETE FROM requerimientos WHERE id = ? AND estado = 'borrador'",
+      [id]
+    );
+    await conn.commit();
+    return result.affectedRows;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 async function asignarCatalogoAItemLibre(requerimientoId, libreId, catalogoId) {
@@ -499,4 +579,13 @@ async function asignarCatalogoAItemLibre(requerimientoId, libreId, catalogoId) {
   );
 }
 
-export { listar, obtenerPorId, crear, actualizar, cambiarEstado, eliminar, asignarCatalogoAItemLibre };
+export {
+  listar,
+  obtenerPorId,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  asignarCatalogoAItemLibre,
+  MAX_ITEMS_POR_REQ,
+};

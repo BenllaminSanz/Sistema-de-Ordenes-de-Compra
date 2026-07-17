@@ -56,8 +56,13 @@ async function listar(filtros = {}) {
     params.push(tipo);
   }
 
+  // Sin PO real de DTN: vacío/NULL o marcado explícitamente como NA
   if (sin_po === 'true' || sin_po === true || sin_po === '1') {
-    where.push("(oc.datatextnow_id IS NULL OR TRIM(oc.datatextnow_id) = '')");
+    where.push(`(
+      oc.datatextnow_id IS NULL
+      OR TRIM(oc.datatextnow_id) = ''
+      OR UPPER(TRIM(oc.datatextnow_id)) = 'NA'
+    )`);
   }
 
   if (busqueda) {
@@ -94,8 +99,8 @@ async function listar(filtros = {}) {
   const [rows] = await pool.query(
     `SELECT
        oc.id, oc.numero_oc, oc.estado,
-       oc.fecha_autorizacion, oc.datatextnow_id,
-       oc.created_at,
+       oc.fecha_autorizacion, oc.datatextnow_id, oc.fecha_po,
+       oc.created_at, oc.updated_at, oc.notas,
        r.consecutivo, r.tipo, r.notas AS descripcion, r.solicitante_id,
        u.nombre AS autorizado_por_nombre,
        sol.nombre AS solicitante_nombre,
@@ -122,7 +127,7 @@ async function listar(filtros = {}) {
      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
      ${whereClause}
      ORDER BY ${soloActivas
-       ? '(oc.datatextnow_id IS NULL OR oc.datatextnow_id = \'\') DESC, oc.created_at ASC'
+       ? `(oc.datatextnow_id IS NULL OR TRIM(oc.datatextnow_id) = '' OR UPPER(TRIM(oc.datatextnow_id)) = 'NA') DESC, oc.created_at ASC`
        : 'oc.created_at DESC'}
      LIMIT ? OFFSET ?`,
     [...params, Number(limite), Number(offset)]
@@ -223,13 +228,51 @@ async function obtenerPorId(id) {
 }
 
 /**
- * Crea una OC. itemsCodigoCatalogo: [{ id, codigo_catalogo }] opcional (modal de Nº ítem).
- * Formaliza catálogo al final de la misma transacción.
+ * Normaliza PO al crear/editar OC.
+ * - 'NA' (sin PO en DTN): datatextnow_id = 'NA', fecha_po = null
+ * - Con PO: número obligatorio + fecha_po obligatoria
  */
-async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = null, itemsCodigoCatalogo = null) {
+function normalizarPoYFecha({ datatextnow_id, fecha_po, requerido = true } = {}) {
+  const raw = datatextnow_id == null ? '' : String(datatextnow_id).trim();
+  if (!raw) {
+    if (requerido) {
+      throw { status: 400, mensaje: 'Debes indicar el PO de DataTextNow o marcar NA si no tiene PO' };
+    }
+    return { datatextnow_id: null, fecha_po: null };
+  }
+
+  const esNa = raw.toUpperCase() === 'NA';
+  if (esNa) {
+    return { datatextnow_id: 'NA', fecha_po: null };
+  }
+
+  let fecha = fecha_po == null || fecha_po === '' ? null : String(fecha_po).trim();
+  if (!fecha) {
+    throw { status: 400, mensaje: 'La fecha del PO (DataTextNow) es obligatoria cuando se registra un número de PO' };
+  }
+  // Aceptar YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    throw { status: 400, mensaje: 'fecha_po debe tener formato YYYY-MM-DD' };
+  }
+  return { datatextnow_id: raw, fecha_po: fecha };
+}
+
+/**
+ * Crea una OC. itemsCodigoCatalogo: [{ id, codigo_catalogo }] opcional (modal de Nº ítem).
+ * poDatos: { datatextnow_id, fecha_po } — PO obligatorio al crear (o 'NA').
+ * Formaliza catálogo al final de la misma transacción.
+ * Al generar la OC el requerimiento pasa a estado 'cerrado'.
+ */
+async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = null, itemsCodigoCatalogo = null, poDatos = null) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
+    const po = normalizarPoYFecha({
+      datatextnow_id: poDatos?.datatextnow_id,
+      fecha_po: poDatos?.fecha_po,
+      requerido: true,
+    });
 
     if (cotizacion_id && Array.isArray(itemsCodigoCatalogo) && itemsCodigoCatalogo.length > 0) {
       await aplicarCodigosCatalogoItems(cotizacion_id, itemsCodigoCatalogo, conn);
@@ -267,29 +310,62 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
     const [result] = await conn.query(
       `INSERT INTO ordenes_compra
          (numero_oc, requerimiento_id, cotizacion_id, proveedor_id, monto_total, moneda,
-          autorizado_por, estado, fecha_autorizacion, notas)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'generada', NOW(), ?)`,
-      [numero_oc, requerimiento_id, cotizacion_id || null, proveedor_id, monto_total, moneda, autorizado_por, notas]
+          autorizado_por, estado, fecha_autorizacion, datatextnow_id, fecha_po, notas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'generada', NOW(), ?, ?, ?)`,
+      [
+        numero_oc,
+        requerimiento_id,
+        cotizacion_id || null,
+        proveedor_id,
+        monto_total,
+        moneda,
+        autorizado_por,
+        po.datatextnow_id,
+        po.fecha_po,
+        notas,
+      ]
     );
     const ocId = result.insertId;
 
-    await conn.query(
-      `UPDATE requerimientos SET estado = 'aprobado'
-       WHERE id = ? AND estado != 'aprobado'`,
+    // Cerrar el REQ al generar la OC (bug: antes se dejaba en 'aprobado')
+    const [[reqPrev]] = await conn.query(
+      'SELECT id, estado FROM requerimientos WHERE id = ? FOR UPDATE',
       [requerimiento_id]
     );
+    if (!reqPrev) {
+      throw { status: 404, mensaje: 'Requerimiento no encontrado' };
+    }
 
     await conn.query(
-      `UPDATE requerimientos SET orden_compra_id = ?
+      `UPDATE requerimientos
+       SET estado = 'cerrado', orden_compra_id = ?
        WHERE id = ?`,
       [ocId, requerimiento_id]
     );
 
+    if (reqPrev.estado !== 'cerrado') {
+      await conn.query(
+        `INSERT INTO historial_estados
+           (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
+         VALUES ('requerimiento', ?, ?, 'cerrado', ?, ?)`,
+        [
+          requerimiento_id,
+          reqPrev.estado,
+          autorizado_por,
+          `REQ cerrado al generar OC ${numero_oc}`,
+        ]
+      );
+    }
+
+    const notaHistOc = po.datatextnow_id === 'NA'
+      ? 'OC generada (PO = NA)'
+      : `OC generada (PO DTN ${po.datatextnow_id}${po.fecha_po ? `, fecha PO ${po.fecha_po}` : ''})`;
+
     await conn.query(
       `INSERT INTO historial_estados
          (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
-       VALUES ('orden_compra', ?, NULL, 'generada', ?, 'OC generada')`,
-      [ocId, autorizado_por]
+       VALUES ('orden_compra', ?, NULL, 'generada', ?, ?)`,
+      [ocId, autorizado_por, notaHistOc]
     );
 
     if (cotizacion_id) {
@@ -365,12 +441,47 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
 }
 
 /**
- * Actualiza el número de PO / Order code proveniente de DataTextNow (de los reportes Excel).
+ * Actualiza el número de PO / Order code de DataTextNow y su fecha manual.
+ * Acepta 'NA' (sin PO) o número + fecha_po.
+ * Si se envía PO numérico sin fecha_po, se conserva la fecha ya registrada (si existe).
  */
-async function actualizarDatatextnow(id, datatextnow_id) {
+async function actualizarDatatextnow(id, datatextnow_id, fecha_po = undefined) {
+  const raw = datatextnow_id == null ? '' : String(datatextnow_id).trim();
+  if (!raw) {
+    throw { status: 400, mensaje: 'Debes indicar el PO de DataTextNow o marcar NA si no tiene PO' };
+  }
+
+  let poId = raw;
+  let fecha = null;
+
+  if (raw.toUpperCase() === 'NA') {
+    poId = 'NA';
+    fecha = null;
+  } else {
+    poId = raw;
+    if (fecha_po != null && fecha_po !== '') {
+      fecha = String(fecha_po).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        throw { status: 400, mensaje: 'fecha_po debe tener formato YYYY-MM-DD' };
+      }
+    } else {
+      const [[oc]] = await pool.query(
+        'SELECT fecha_po FROM ordenes_compra WHERE id = ?',
+        [id]
+      );
+      if (oc?.fecha_po) {
+        fecha = oc.fecha_po instanceof Date
+          ? oc.fecha_po.toISOString().slice(0, 10)
+          : String(oc.fecha_po).slice(0, 10);
+      } else {
+        throw { status: 400, mensaje: 'La fecha del PO es obligatoria cuando se registra un número de PO' };
+      }
+    }
+  }
+
   const [r] = await pool.query(
-    'UPDATE ordenes_compra SET datatextnow_id = ? WHERE id = ?',
-    [datatextnow_id, id]
+    'UPDATE ordenes_compra SET datatextnow_id = ?, fecha_po = ? WHERE id = ?',
+    [poId, fecha, id]
   );
   return r.affectedRows;
 }
@@ -431,4 +542,24 @@ async function actualizarItemCatalogo(ocId, catalogoId, { proveedor_id, costo_re
   }
 }
 
-export { listar, obtenerPorId, crear, cambiarEstado, actualizarDatatextnow, actualizarItemCatalogo };
+/**
+ * Actualiza notas de contabilidad de la OC (editables durante todo el ciclo).
+ */
+async function actualizarNotas(id, notas) {
+  const texto = notas == null ? null : String(notas);
+  const [r] = await pool.query(
+    'UPDATE ordenes_compra SET notas = ? WHERE id = ?',
+    [texto, id]
+  );
+  return r.affectedRows;
+}
+
+export {
+  listar,
+  obtenerPorId,
+  crear,
+  cambiarEstado,
+  actualizarDatatextnow,
+  actualizarItemCatalogo,
+  actualizarNotas,
+};

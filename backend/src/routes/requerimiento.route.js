@@ -123,9 +123,10 @@ router.patch(
   cambiarEstado
 );
 
+// Borrador: solicitante (propio), contabilidad o admin
 router.delete(
   '/:id',
-  autorizar('admin'),
+  autorizar('solicitante', 'contabilidad', 'admin'),
   eliminar
 );
 

@@ -344,23 +344,18 @@ function renderSidebar() {
              0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
         Requerimientos
       </a>
-      <a href="catalogo.html">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-             viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-        Catálogo
-      </a>
-
-      <!-- Órdenes de Compra es visible para todos los roles:
-           - Admin y Contabilidad: ven todas las OCs.
-           - Solicitantes: ven solo las OCs generadas a partir de sus propios requerimientos aprobados
-             (el backend filtra automáticamente por solicitante_id del requerimiento). -->
+      <!-- Orden menú: REQ → OC → Catálogo → Proveedores -->
       <a href="ordenes.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
              viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5
              9z"/></svg>
         Órdenes de Compra
       </a>
-
+      <a href="catalogo.html">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+             viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+        Catálogo
+      </a>
       ${esContabilidad ? `
       <a href="proveedores.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"

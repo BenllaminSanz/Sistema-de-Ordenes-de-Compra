@@ -36,8 +36,9 @@ async function cargarCotizaciones(reqId) {
             <th>Proveedor</th>
             <th class="text-end">Monto Total</th>
             <th>Estado</th>
+            <th>Correo</th>
             <th>Fecha Envio</th>
-            <th>PDF</th>
+            <th>Adjunto</th>
             <th class="text-center">Acción</th>
           </tr>
         </thead>
@@ -51,6 +52,12 @@ async function cargarCotizaciones(reqId) {
             ? `<span class="badge bg-secondary">${c.estado}</span>`
             : `<span class="badge bg-warning">Pendiente</span>`);
 
+      const correoEnviado = !!(c.email_sent_at);
+      const correoBadge = correoEnviado
+        ? `<span class="badge" style="background:#166534;color:#fff;" title="Enviado: ${UI.fecha(c.email_sent_at)}">✉ Enviado</span>
+           <div class="text-muted" style="font-size:10px;margin-top:2px;">${UI.fecha(c.email_sent_at)}</div>`
+        : `<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;" title="Aún no se ha enviado el correo de cotización">○ Sin enviar</span>`;
+
       const tieneItems = c.items && c.items.length > 0;
       const desgloseBtn = tieneItems
         ? `<button class="btn btn-sm btn-link p-0 ms-2" data-cot-action="toggle-desglose" data-cot-id="${c.id}" title="Ver desglose de conceptos">▼ Desglose</button>`
@@ -62,6 +69,15 @@ async function cargarCotizaciones(reqId) {
       const esServicioParaCot = (reqParaCot.tipo || '').toUpperCase() === 'SERVICIOS';
       const mostrarBotonEnviar = esGestor && (esLibresParaCot || esServicioParaCot);
 
+      const nombreArchivo = c.archivo_url
+        ? (String(c.archivo_url).split('/').pop() || 'Archivo')
+        : '';
+      const adjuntoHtml = c.archivo_url
+        ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline" title="Ver adjunto">📎 Ver</a>
+           <div class="text-muted" style="font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${UI.esc(nombreArchivo)}">${UI.esc(nombreArchivo)}</div>`
+        : `<span class="text-muted small">Sin archivo</span>
+           <span class="text-warning small" style="display:block;font-size:10px;">Se recomienda adjuntar</span>`;
+
       html += `
         <tr data-cot-id="${c.id}">
           <td><strong>${UI.labelProveedor(c) || 'Sin proveedor'}</strong></td>
@@ -70,19 +86,15 @@ async function cargarCotizaciones(reqId) {
             ${desgloseBtn}
           </td>
           <td>${estado}</td>
+          <td>${correoBadge}</td>
           <td class="text-muted">${c.fecha_envio ? UI.fecha(c.fecha_envio) : '—'}</td>
-          <td>
-            ${c.archivo_url
-              ? `<a href="${c.archivo_url}" target="_blank" class="btn btn-sm btn-outline" title="Ver PDF adjunto">📄 Ver PDF</a>`
-              : `<span class="text-muted small">Sin PDF</span>
-                 <span class="text-warning small" style="display:block;font-size:10px;">Se recomienda adjuntar</span>`}
-          </td>
+          <td>${adjuntoHtml}</td>
           <td class="text-center">
             ${c.seleccionada !== 1 && esGestor ? `
               <div class="d-flex gap-1 justify-content-center flex-wrap" style="font-size:0.75rem;">
                 <button class="btn btn-success btn-sm px-1 py-0" data-cot-action="seleccionar" data-cot-id="${c.id}" title="Seleccionar esta cotización">✓</button>
                 <button class="btn btn-outline btn-sm px-1 py-0" data-cot-action="editar" data-cot-id="${c.id}" title="Editar cotización">✎</button>
-                <button class="btn btn-warning btn-sm px-1 py-0" data-cot-action="adjuntar-pdf" data-cot-id="${c.id}" title="Adjuntar PDF (opcional, recomendado)">📎</button>
+                <button class="btn btn-warning btn-sm px-1 py-0" data-cot-action="adjuntar-pdf" data-cot-id="${c.id}" title="Adjuntar archivo (PDF, Word, Excel…)">📎</button>
                 ${mostrarBotonEnviar ? `<button class="btn btn-primary btn-sm px-1 py-0" data-cot-action="enviar-correo" data-cot-id="${c.id}" data-cot-reenviar="${c.email_sent_at ? '1' : '0'}" title="${c.email_sent_at ? 'Reenviar solicitud por correo' : 'Enviar solicitud por correo'}">✉</button>` : ''}
                 <button class="btn btn-danger btn-sm px-1 py-0" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar cotización">×</button>
               </div>`
@@ -93,8 +105,8 @@ async function cargarCotizaciones(reqId) {
                   ${esGestor ? `
                     <button class="btn btn-warning btn-sm px-1 py-0"
                             data-cot-action="adjuntar-pdf" data-cot-id="${c.id}"
-                            title="Adjuntar PDF (opcional, recomendado)">
-                      📎 ${c.archivo_url ? 'Cambiar PDF' : 'Adjuntar PDF'}
+                            title="Adjuntar archivo (PDF, Word, Excel…)">
+                      📎 ${c.archivo_url ? 'Cambiar archivo' : 'Adjuntar'}
                     </button>` : ''}
                   ${esGestor ? `
                     <button class="btn btn-danger btn-sm px-1 py-0"
@@ -263,14 +275,26 @@ async function deseleccionarCotizacion(cotizacionId, requerimientoId) {
 
 async function enviarCorreoCotizacion(cotizacionId, esReenvio = false) {
   if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para enviar correos de cotización');
-  const msg = esReenvio
-    ? '¿Reenviar la solicitud de cotización por correo a este proveedor?'
-    : '¿Enviar ahora la solicitud de cotización por correo a este proveedor?';
-  if (!confirm(msg)) return;
+
+  const accion = esReenvio ? 'Reenviar' : 'Enviar';
+  // 1 = Español, 2 = Inglés, cancel = abortar
+  const eleccion = prompt(
+    `${accion} solicitud de cotización al proveedor.\n\n`
+    + 'Idioma del correo:\n'
+    + '  1 = Español\n'
+    + '  2 = English\n\n'
+    + 'Escribe 1 o 2:',
+    '1'
+  );
+  if (eleccion === null) return;
+  const idioma = String(eleccion).trim().startsWith('2') ? 'en' : 'es';
 
   try {
-    await Api.post(`/cotizaciones/${cotizacionId}/enviar`);
-    Toast.success(esReenvio ? 'Solicitud de cotización reenviada por correo' : 'Solicitud de cotización enviada por correo');
+    await Api.post(`/cotizaciones/${cotizacionId}/enviar`, { idioma });
+    Toast.success(
+      (esReenvio ? 'Cotización reenviada' : 'Cotización enviada')
+      + (idioma === 'en' ? ' (English)' : ' (Español)')
+    );
     await cargarCotizaciones(requerimientoActual.id);
   } catch (err) {
     Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
@@ -278,7 +302,7 @@ async function enviarCorreoCotizacion(cotizacionId, esReenvio = false) {
 }
 
 async function adjuntarPdfACotizacion(cotizacionId) {
-  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para adjuntar PDFs a cotizaciones');
+  if (!puedeGestionarCotizaciones()) return Toast.error('No tienes permisos para adjuntar archivos a cotizaciones');
   cotizacionParaPdfId = cotizacionId;
 
   document.getElementById('pdf-file-input').value  = '';
@@ -287,6 +311,11 @@ async function adjuntarPdfACotizacion(cotizacionId) {
   document.getElementById('pdf-upload-progress').style.display = 'none';
 
   cambiarTabPdf('subir');
+  const modal = document.getElementById('modal-adjuntar-pdf');
+  if (modal) {
+    const title = modal.querySelector('.modal-title');
+    if (title) title.textContent = 'Adjuntar archivo a la cotización';
+  }
   document.getElementById('modal-adjuntar-pdf').style.display = 'flex';
 }
 
@@ -326,18 +355,14 @@ async function guardarPdfCotizacion() {
     if (seccionSubirVisible) {
       const fileInput = document.getElementById('pdf-file-input');
       if (!fileInput.files.length) {
-        errorDiv.textContent = 'Por favor selecciona un archivo PDF';
-        errorDiv.style.display = 'block';
-        return;
-      }
-      if (fileInput.files[0].type !== 'application/pdf') {
-        errorDiv.textContent = 'Solo se permiten archivos PDF';
+        errorDiv.textContent = 'Por favor selecciona un archivo (PDF, Word, Excel, imagen…)';
         errorDiv.style.display = 'block';
         return;
       }
 
       const formData = new FormData();
-      formData.append('pdf', fileInput.files[0]);
+      // Backend acepta "archivo" o "pdf" (compat)
+      formData.append('archivo', fileInput.files[0]);
 
       const progressContainer = document.getElementById('pdf-upload-progress');
       const progressBar       = document.getElementById('pdf-progress-bar');
@@ -368,7 +393,7 @@ async function guardarPdfCotizacion() {
         throw { mensaje: data.message || data.mensaje || 'Error al subir el archivo' };
       }
 
-      Toast.success('PDF subido correctamente');
+      Toast.success('Archivo subido correctamente');
       cerrarModalAdjuntarPdf();
       cargarCotizaciones(requerimientoActual.id);
 
@@ -381,13 +406,13 @@ async function guardarPdfCotizacion() {
       }
 
       await Api.put(`/cotizaciones/${cotizacionParaPdfId}`, { archivo_url: urlInput });
-      Toast.success('URL del PDF guardada correctamente');
+      Toast.success('URL del archivo guardada correctamente');
       cerrarModalAdjuntarPdf();
       cargarCotizaciones(requerimientoActual.id);
     }
 
   } catch (err) {
-    errorDiv.textContent = err.mensaje || err.message || 'Error al guardar el PDF';
+    errorDiv.textContent = err.mensaje || err.message || 'Error al guardar el archivo';
     errorDiv.style.display = 'block';
   }
 }

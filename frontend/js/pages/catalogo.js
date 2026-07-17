@@ -6,8 +6,72 @@ let esAdminCatalogo = false;
 let puedeSolicitarReq = false;
 let proveedoresCache = [];
 let _catalogoData   = [];   // cache para filtrado client-side
+let _unidadesMedida = [];
 
-document.addEventListener('DOMContentLoaded', () => {
+const CAT_FILTROS_KEY = 'oc_catalogo_filtros';
+
+function guardarFiltrosCatalogo() {
+  try {
+    const estado = {
+      busqueda: document.getElementById('busqueda')?.value || '',
+      tipo: document.getElementById('filtro-tipo')?.value || '',
+      proveedor_id: document.getElementById('filtro-proveedor-id')?.value || '',
+      proveedor_label: document.getElementById('filtro-proveedor-busqueda')?.value || '',
+      soloActivos: document.getElementById('chk-activos')?.checked ?? true,
+    };
+    sessionStorage.setItem(CAT_FILTROS_KEY, JSON.stringify(estado));
+  } catch (_) { /* ignore */ }
+}
+
+function limpiarFiltrosCatalogoUI() {
+  const busq = document.getElementById('busqueda');
+  const tipo = document.getElementById('filtro-tipo');
+  const chk = document.getElementById('chk-activos');
+  const hid = document.getElementById('filtro-proveedor-id');
+  const inp = document.getElementById('filtro-proveedor-busqueda');
+  if (busq) busq.value = '';
+  if (tipo) tipo.value = '';
+  if (chk) chk.checked = true;
+  if (hid) hid.value = '';
+  if (inp) inp.value = '';
+  try { sessionStorage.removeItem(CAT_FILTROS_KEY); } catch (_) { /* ignore */ }
+}
+
+function restaurarFiltrosCatalogo() {
+  try {
+    const raw = sessionStorage.getItem(CAT_FILTROS_KEY);
+    if (!raw) return;
+    const f = JSON.parse(raw);
+    const busq = document.getElementById('busqueda');
+    const tipo = document.getElementById('filtro-tipo');
+    const chk = document.getElementById('chk-activos');
+    if (busq && f.busqueda != null) busq.value = f.busqueda;
+    if (tipo && f.tipo != null) tipo.value = f.tipo;
+    if (chk && typeof f.soloActivos === 'boolean') chk.checked = f.soloActivos;
+    // Solo restaurar proveedor si hay id numérico válido
+    const pid = f.proveedor_id != null && String(f.proveedor_id).trim() !== ''
+      ? String(f.proveedor_id).trim()
+      : '';
+    if (pid && /^\d+$/.test(pid)) {
+      const hid = document.getElementById('filtro-proveedor-id');
+      const inp = document.getElementById('filtro-proveedor-busqueda');
+      if (hid) hid.value = pid;
+      if (inp) {
+        const p = ProveedorBusqueda.obtenerPorId(pid);
+        inp.value = p ? UI.labelProveedor(p) : (f.proveedor_label || '');
+      }
+    }
+  } catch (_) { /* ignore */ }
+}
+
+function hayFiltrosCatalogoActivos() {
+  const q = (document.getElementById('busqueda')?.value || '').trim();
+  const tipo = document.getElementById('filtro-tipo')?.value || '';
+  const prov = document.getElementById('filtro-proveedor-id')?.value || '';
+  return !!(q || tipo || prov);
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   Auth.requiereAuth();
   renderSidebar();
   renderTopbar('Catálogo');
@@ -22,28 +86,76 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   CarritoReq.load();
-  CarritoReq.onChange(() => renderTablaCatalogo(_getCatalogoFiltradoActual()));
+  // No re-renderizar la tabla si aún no hay datos cargados (evita lista vacía fantasma)
+  CarritoReq.onChange(() => {
+    if (_catalogoData.length) {
+      renderTablaCatalogo(_getCatalogoFiltradoActual(), _catalogoData.length);
+    }
+    actualizarBarraCarritoReq();
+  });
   actualizarBarraCarritoReq();
 
   initProveedorBusquedaModalCatalogo();
-  ProveedorBusqueda.init({
+  await ProveedorBusqueda.init({
     inputId: 'filtro-proveedor-busqueda',
     hiddenId: 'filtro-proveedor-id',
     datalistId: 'filtro-proveedores-list',
     placeholder: 'Proveedor (código o nombre)…',
-    onChange: () => filtrarCatalogo(),
+    onChange: () => {
+      // Solo refiltrar si ya hay catálogo cargado
+      if (!_catalogoData.length) return;
+      guardarFiltrosCatalogo();
+      filtrarCatalogo();
+    },
   });
-  cargarCatalogo();
+
+  restaurarFiltrosCatalogo();
+  await cargarUnidadesMedida();
+  await cargarCatalogo({ preservarFiltros: true });
 });
 
-// Carga desde API y guarda en cache
-async function cargarCatalogo() {
+async function cargarUnidadesMedida() {
+  try {
+    _unidadesMedida = await Api.get('/unidades-medida?soloActivas=true') || [];
+  } catch {
+    _unidadesMedida = [];
+  }
+  rellenarSelectUnidades();
+}
+
+function rellenarSelectUnidades(selected = '') {
+  const sel = document.getElementById('cat-unidad');
+  if (!sel || sel.tagName !== 'SELECT') return;
+  const val = selected || sel.value || '';
+  const opts = ['<option value="">— Seleccionar unidad —</option>'];
+  _unidadesMedida.forEach((u) => {
+    const cod = u.codigo || u.nombre;
+    const label = u.codigo && u.nombre && u.codigo !== u.nombre
+      ? `${u.codigo} — ${u.nombre}`
+      : (u.nombre || u.codigo);
+    opts.push(`<option value="${UI.esc(cod)}">${UI.esc(label)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if (val) {
+    // Si el valor actual no está en la lista (legacy), agregarlo temporalmente
+    if (![...sel.options].some((o) => o.value === val)) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = val;
+      sel.appendChild(o);
+    }
+    sel.value = val;
+  }
+}
+
+// Carga desde API y guarda en cache (mantiene filtros de búsqueda)
+async function cargarCatalogo({ preservarFiltros = true } = {}) {
   const contenedor = document.getElementById('tabla-catalogo');
   UI.spinner(contenedor);
 
-  // Limpiar búsqueda al recargar
-  const inputBusq = document.getElementById('busqueda');
-  if (inputBusq) inputBusq.value = '';
+  if (preservarFiltros) {
+    guardarFiltrosCatalogo();
+  }
 
   const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
   const params = new URLSearchParams();
@@ -51,23 +163,50 @@ async function cargarCatalogo() {
 
   try {
     const items = await Api.get(`/catalogo?${params.toString()}`);
-    _catalogoData = items || [];
-    renderTablaCatalogo(_catalogoData);
+    // Aceptar array directo o { datos: [] } por si el backend envuelve la respuesta
+    _catalogoData = Array.isArray(items)
+      ? items
+      : (Array.isArray(items?.datos) ? items.datos : []);
+
+    // Si el proveedor restaurado no aparece en los datos, quitar ese filtro
+    const provId = document.getElementById('filtro-proveedor-id')?.value || '';
+    if (provId && _catalogoData.length) {
+      const existe = _catalogoData.some((i) => String(i.proveedor_id) === String(provId));
+      if (!existe) {
+        const hid = document.getElementById('filtro-proveedor-id');
+        const inp = document.getElementById('filtro-proveedor-busqueda');
+        if (hid) hid.value = '';
+        if (inp) inp.value = '';
+      }
+    }
+
+    filtrarCatalogo();
+
+    // Si hay datos pero el filtro deja la lista en 0, limpiar filtros automáticamente una vez
+    if (_catalogoData.length > 0 && _getCatalogoFiltradoActual().length === 0 && hayFiltrosCatalogoActivos()) {
+      console.warn('[catálogo] Filtros sin resultados; se limpian para mostrar el catálogo.');
+      limpiarFiltrosCatalogoUI();
+      filtrarCatalogo();
+      Toast.info('Se limpiaron filtros de búsqueda que no devolvían resultados.');
+    }
   } catch (err) {
     console.error('Error cargando catálogo:', err);
+    _catalogoData = [];
     UI.empty(contenedor, 'Error al cargar el catálogo');
-    Toast.error('No se pudo cargar el catálogo');
+    Toast.error(err.mensaje || 'No se pudo cargar el catálogo');
   }
 }
 
 function _getCatalogoFiltradoActual() {
+  if (!Array.isArray(_catalogoData) || !_catalogoData.length) return [];
+
   const q         = (document.getElementById('busqueda')?.value ?? '').trim().toLowerCase();
   const tipo      = document.getElementById('filtro-tipo')?.value || '';
-  const proveedor = document.getElementById('filtro-proveedor-id')?.value || '';
+  const proveedor = (document.getElementById('filtro-proveedor-id')?.value || '').trim();
 
   return _catalogoData.filter(item => {
     const matchTipo = !tipo || item.tipo === tipo;
-    const matchProv = !proveedor || String(item.proveedor_id) === String(proveedor);
+    const matchProv = !proveedor || String(item.proveedor_id ?? '') === String(proveedor);
     const matchQ    = !q ||
       (item.codigo           || '').toLowerCase().includes(q) ||
       (item.descripcion      || '').toLowerCase().includes(q) ||
@@ -83,8 +222,14 @@ function filtrarCatalogo(termino) {
     const input = document.getElementById('busqueda');
     if (input && input.value !== termino) input.value = termino;
   }
+  guardarFiltrosCatalogo();
   const filtrados = _getCatalogoFiltradoActual();
   renderTablaCatalogo(filtrados, _catalogoData.length);
+}
+
+function limpiarFiltrosYRecargar() {
+  limpiarFiltrosCatalogoUI();
+  cargarCatalogo({ preservarFiltros: false });
 }
 
 function renderTablaCatalogo(items, totalOriginal = null) {
@@ -99,9 +244,19 @@ function renderTablaCatalogo(items, totalOriginal = null) {
   }
 
   if (!items.length) {
-    UI.empty(contenedor, totalOriginal !== null
-      ? 'Sin resultados para esa búsqueda'
-      : 'No hay elementos en el catálogo');
+    if (totalOriginal != null && totalOriginal > 0) {
+      contenedor.innerHTML = `
+        <div class="empty-state" style="padding:28px;text-align:center;">
+          <p style="margin:0 0 10px;color:#64748b;">Sin resultados para los filtros actuales
+            <span style="display:block;font-size:12px;margin-top:4px;">(${totalOriginal} ítems cargados en total)</span>
+          </p>
+          <button type="button" class="btn btn-outline btn-sm" onclick="limpiarFiltrosYRecargar()">
+            Limpiar filtros y ver todo
+          </button>
+        </div>`;
+    } else {
+      UI.empty(contenedor, 'No hay elementos en el catálogo');
+    }
     return;
   }
 
@@ -142,6 +297,11 @@ function renderTablaCatalogo(items, totalOriginal = null) {
             ? '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'
             : '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:-1px;"><path d="M20 6L9 17l-5-5"/></svg>'}
         </button>
+        ${!item.activo ? `
+        <button class="btn btn-sm btn-outline" onclick="eliminarCatalogoDesactivado(${item.id}, '${String(item.codigo || '').replace(/'/g, "\\'")}')"
+                title="Eliminar definitivamente (solo desactivados)" style="padding:2px 6px;color:#b91c1c;border-color:#fca5a5;">
+          🗑
+        </button>` : ''}
       </div>` : '';
 
     const yaEnCarrito = puedeSolicitarReq && item.activo && CarritoReq.tiene(item.id);
@@ -326,7 +486,7 @@ function abrirModalCatalogo(item = null) {
     document.getElementById('cat-descripcion').value = item.descripcion || '';
     document.getElementById('cat-costo').value = item.costo_referencia || '';
     document.getElementById('cat-moneda').value = item.moneda || 'MXN';
-    document.getElementById('cat-unidad').value = item.unidad || '';
+    rellenarSelectUnidades(item.unidad || '');
     ProveedorBusqueda.establecer(
       document.getElementById('cat-proveedor-busqueda'),
       document.getElementById('cat-proveedor-id'),
@@ -335,6 +495,7 @@ function abrirModalCatalogo(item = null) {
   } else {
     titulo.textContent = 'Nuevo elemento del catálogo';
     document.getElementById('cat-moneda').value = 'MXN';
+    rellenarSelectUnidades('');
     ProveedorBusqueda.limpiar(
       document.getElementById('cat-proveedor-busqueda'),
       document.getElementById('cat-proveedor-id')
@@ -397,7 +558,8 @@ async function guardarCatalogo(e) {
   const descripcion = document.getElementById('cat-descripcion').value.trim();
   const costoStr = document.getElementById('cat-costo').value;
   const moneda = document.getElementById('cat-moneda').value || 'MXN';
-  const unidad = document.getElementById('cat-unidad').value.trim() || null;
+  const unidadEl = document.getElementById('cat-unidad');
+  const unidad = (unidadEl?.value || '').trim() || null;
   const provInput  = document.getElementById('cat-proveedor-busqueda');
   const provHidden = document.getElementById('cat-proveedor-id');
   ProveedorBusqueda.resolver(provInput, provHidden);
@@ -459,7 +621,8 @@ async function guardarCatalogo(e) {
     }
 
     cerrarModalCatalogo();
-    cargarCatalogo();
+    // Mantiene filtros de búsqueda al regresar a la lista
+    await cargarCatalogo({ preservarFiltros: true });
   } catch (err) {
     const mensaje = err.mensaje || 'Error al guardar el elemento';
 
@@ -491,9 +654,25 @@ async function cambiarEstadoCatalogo(id, nuevoEstado) {
   try {
     await Api.patch(`/catalogo/${id}/estado`, { activo: nuevoEstado });
     Toast.success(`Elemento ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`);
-    cargarCatalogo();
+    await cargarCatalogo({ preservarFiltros: true });
   } catch (err) {
     Toast.error(err.mensaje || 'Error al cambiar el estado');
+  }
+}
+
+async function eliminarCatalogoDesactivado(id, codigo) {
+  if (!confirm(
+    `¿Eliminar definitivamente el ítem desactivado "${codigo || id}"?\n\n`
+    + 'Solo se borra del catálogo si no tiene registros relacionados (REQ/OC). '
+    + 'Los históricos no se eliminan.'
+  )) return;
+
+  try {
+    const data = await Api.delete(`/catalogo/${id}`);
+    Toast.success(data.mensaje || 'Ítem eliminado');
+    await cargarCatalogo({ preservarFiltros: true });
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo eliminar el ítem');
   }
 }
 
@@ -508,23 +687,177 @@ async function cargarCatalogoDesdeExcel(input) {
   }
 
   try {
-    Toast.info('Procesando archivo Excel del catálogo...');
+    Toast.info('Procesando archivo Excel del catálogo (alta y actualización por código)…');
 
     const data = await Api.uploadFile('/catalogo/import', file, 'excel');
 
-    Toast.success(data.mensaje || `Carga correcta. Se importaron ${data.nuevos || 0} elementos.`);
-    cargarCatalogo();
+    Toast.success(
+      data.mensaje
+      || `Carga correcta. Nuevos: ${data.nuevos || 0}, actualizados: ${data.actualizados || 0}.`
+    );
+    await cargarUnidadesMedida();
+    await cargarCatalogo({ preservarFiltros: true });
   } catch (err) {
     Toast.error(err.mensaje || 'Error al cargar el archivo Excel');
   }
 }
 
+async function exportarCatalogoExcel() {
+  if (!esAdminCatalogo) {
+    Toast.error('No tienes permisos para exportar el catálogo');
+    return;
+  }
+  try {
+    const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
+    const qs = soloActivos ? '?soloActivos=true' : '';
+    Toast.info('Generando Excel del catálogo…');
+    // Descarga con token: usa fetch directo por blob
+    const token = Auth.getToken();
+    const res = await fetch(`${API_BASE}/catalogo/export${qs}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      let msg = 'Error al exportar';
+      try { const j = await res.json(); msg = j.mensaje || msg; } catch (_) {}
+      throw { mensaje: msg };
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `catalogo_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    Toast.success('Excel descargado (mismo formato de carga)');
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al exportar el catálogo');
+  }
+}
+
+async function abrirModalUnidades() {
+  if (!esAdminCatalogo) return;
+  await cargarUnidadesMedidaAdmin();
+  const modal = document.getElementById('modal-unidades');
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+  }
+}
+
+function cerrarModalUnidades() {
+  const modal = document.getElementById('modal-unidades');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+  }
+}
+
+async function cargarUnidadesMedidaAdmin() {
+  const cont = document.getElementById('lista-unidades-admin');
+  if (!cont) return;
+  UI.spinner(cont);
+  try {
+    const todas = await Api.get('/unidades-medida?soloActivas=false') || [];
+    _unidadesMedida = todas.filter((u) => u.activo);
+    rellenarSelectUnidades();
+    if (!todas.length) {
+      UI.empty(cont, 'No hay unidades registradas');
+      return;
+    }
+    cont.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${todas.map((u) => `
+              <tr>
+                <td class="fw-600">${UI.esc(u.codigo)}</td>
+                <td>${UI.esc(u.nombre)}</td>
+                <td>${u.activo ? '<span class="badge badge-aprobado">Activa</span>' : '<span class="badge badge-rechazado">Inactiva</span>'}</td>
+                <td>
+                  <button type="button" class="btn btn-sm btn-outline" style="padding:2px 6px;"
+                    onclick="editarUnidadMedida(${u.id}, '${String(u.codigo).replace(/'/g, "\\'")}', '${String(u.nombre).replace(/'/g, "\\'")}', ${u.activo ? 1 : 0})">✎</button>
+                  ${u.activo ? `<button type="button" class="btn btn-sm btn-outline" style="padding:2px 6px;"
+                    onclick="desactivarUnidadMedida(${u.id})">Desactivar</button>` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    UI.empty(cont, 'Error al cargar unidades');
+    Toast.error(err.mensaje || 'Error al cargar unidades');
+  }
+}
+
+async function guardarUnidadMedida(e) {
+  e.preventDefault();
+  const id = document.getElementById('unidad-id')?.value;
+  const codigo = document.getElementById('unidad-codigo')?.value?.trim();
+  const nombre = document.getElementById('unidad-nombre')?.value?.trim();
+  if (!codigo || !nombre) {
+    Toast.error('Código y nombre son obligatorios');
+    return;
+  }
+  try {
+    if (id) {
+      await Api.put(`/unidades-medida/${id}`, { codigo, nombre, activo: true });
+      Toast.success('Unidad actualizada');
+    } else {
+      await Api.post('/unidades-medida', { codigo, nombre });
+      Toast.success('Unidad creada');
+    }
+    document.getElementById('form-unidad')?.reset();
+    const hid = document.getElementById('unidad-id');
+    if (hid) hid.value = '';
+    await cargarUnidadesMedidaAdmin();
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar unidad');
+  }
+}
+
+function editarUnidadMedida(id, codigo, nombre, activo) {
+  const hid = document.getElementById('unidad-id');
+  const c = document.getElementById('unidad-codigo');
+  const n = document.getElementById('unidad-nombre');
+  if (hid) hid.value = id;
+  if (c) c.value = codigo;
+  if (n) n.value = nombre;
+  if (c) c.focus();
+}
+
+async function desactivarUnidadMedida(id) {
+  if (!confirm('¿Desactivar esta unidad de medida?')) return;
+  try {
+    await Api.delete(`/unidades-medida/${id}`);
+    Toast.success('Unidad desactivada');
+    await cargarUnidadesMedidaAdmin();
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al desactivar');
+  }
+}
+
 window.cargarCatalogoDesdeExcel = cargarCatalogoDesdeExcel;
+window.exportarCatalogoExcel = exportarCatalogoExcel;
+window.eliminarCatalogoDesactivado = eliminarCatalogoDesactivado;
+window.abrirModalUnidades = abrirModalUnidades;
+window.cerrarModalUnidades = cerrarModalUnidades;
+window.guardarUnidadMedida = guardarUnidadMedida;
+window.editarUnidadMedida = editarUnidadMedida;
+window.desactivarUnidadMedida = desactivarUnidadMedida;
 
 // Exponer funciones útiles
+// Ojo: en scripts clásicos (no module), function cargarCatalogo ya es window.cargarCatalogo.
+// NO reasignar con () => cargarCatalogo(...) — provoca recursión infinita.
 window.cargarCatalogo              = cargarCatalogo;
 window.filtrarCatalogo             = filtrarCatalogo;
+window.limpiarFiltrosYRecargar     = limpiarFiltrosYRecargar;
 window.abrirModalCatalogo          = abrirModalCatalogo;
+window.editarCatalogo              = editarCatalogo;
+window.cambiarEstadoCatalogo       = cambiarEstadoCatalogo;
+window.cerrarModalCatalogo         = cerrarModalCatalogo;
+window.guardarCatalogo             = guardarCatalogo;
 window.agregarItemCatalogoAlCarrito = agregarItemCatalogoAlCarrito;
 window.actualizarBarraCarritoReq   = actualizarBarraCarritoReq;
 window.toggleDetalleCarritoReq     = toggleDetalleCarritoReq;

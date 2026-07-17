@@ -52,7 +52,7 @@ export async function getHistorial(req, res) {
 // ── GET /api/areas/:id/departamentos/:nombre/uso ──────────────
 export async function getUsoDepartamento(req, res) {
   try {
-    const areaId = req.params.id;
+    const areaId = decodeURIComponent(req.params.id);
     const nombre = decodeURIComponent(req.params.nombre);
     const total = await contarUsoDepartamento(areaId, nombre);
     return res.json({ area_id: areaId, departamento: nombre, requerimientos: total });
@@ -66,16 +66,16 @@ export async function getUsoDepartamento(req, res) {
 export async function crearArea(req, res) {
   try {
     let { id, label } = req.body;
-    if (!id || !label) {
-      return res.status(400).json({ mensaje: 'id y label son requeridos' });
+    // El nombre visible es la fuente de verdad: id = label
+    label = String(label || id || '').trim().toUpperCase();
+    if (!label) {
+      return res.status(400).json({ mensaje: 'El nombre del área es requerido' });
     }
-
-    id = String(id).trim().toUpperCase().replace(/\s+/g, '_');
-    label = String(label).trim();
+    id = label;
 
     const data = await cargarConfig();
-    if (data.areas.some(a => a.id === id)) {
-      return res.status(409).json({ mensaje: `Ya existe un área con id "${id}"` });
+    if (data.areas.some(a => a.id === id || a.label === label)) {
+      return res.status(409).json({ mensaje: `Ya existe un área "${label}"` });
     }
 
     const nueva = { id, label, departamentos: [] };
@@ -98,22 +98,41 @@ export async function crearArea(req, res) {
 // ── PUT /api/areas/:id ──────────────────────────────────────────
 export async function actualizarArea(req, res) {
   try {
-    const id = req.params.id;
+    const idAnterior = decodeURIComponent(req.params.id);
     const { label } = req.body;
     if (!label) return res.status(400).json({ mensaje: 'label es requerido' });
 
     const data = await cargarConfig();
-    const area = data.areas.find(a => a.id === id);
-    if (!area) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
+    const area = data.areas.find(a => a.id === idAnterior);
+    if (!area) return res.status(404).json({ mensaje: `Área "${idAnterior}" no encontrada` });
 
     const labelAnterior = area.label;
-    area.label = String(label).trim();
+    const labelNuevo = String(label).trim().toUpperCase();
+    // Mantener id = nombre visible
+    const idNuevo = labelNuevo;
+
+    if (idNuevo !== idAnterior && data.areas.some(a => a.id === idNuevo && a !== area)) {
+      return res.status(409).json({ mensaje: `Ya existe un área "${idNuevo}"` });
+    }
+
+    area.label = labelNuevo;
+    area.id = idNuevo;
     await guardarConfig(data);
+
+    // Actualizar REQs que tenían el id anterior
+    if (idNuevo !== idAnterior) {
+      await pool.query('UPDATE requerimientos SET area = ? WHERE area = ?', [idNuevo, idAnterior]);
+    }
 
     await registrarHistorial({
       usuario: req.usuario,
       accion: 'area_actualizada',
-      detalle: { area_id: id, label_anterior: labelAnterior, label_nuevo: area.label },
+      detalle: {
+        area_id: idNuevo,
+        area_id_anterior: idAnterior,
+        label_anterior: labelAnterior,
+        label_nuevo: labelNuevo,
+      },
     });
 
     return res.json({ mensaje: 'Área actualizada', area });
@@ -126,7 +145,7 @@ export async function actualizarArea(req, res) {
 // ── DELETE /api/areas/:id ─────────────────────────────────────
 export async function eliminarArea(req, res) {
   try {
-    const id = req.params.id;
+    const id = decodeURIComponent(req.params.id);
     const data = await cargarConfig();
     const idx = data.areas.findIndex(a => a.id === id);
     if (idx === -1) return res.status(404).json({ mensaje: `Área "${id}" no encontrada` });
@@ -161,7 +180,7 @@ export async function eliminarArea(req, res) {
 // ── POST /api/areas/:id/departamentos ─────────────────────────
 export async function crearDepartamento(req, res) {
   try {
-    const id = req.params.id;
+    const id = decodeURIComponent(req.params.id);
     let { nombre, codigo } = req.body;
     if (!nombre) return res.status(400).json({ mensaje: 'nombre es requerido' });
 
@@ -205,7 +224,7 @@ export async function crearDepartamento(req, res) {
 // ── PUT /api/areas/:id/departamentos/:nombre ──────────────────
 export async function actualizarDepartamento(req, res) {
   try {
-    const id = req.params.id;
+    const id = decodeURIComponent(req.params.id);
     const nombreActual = decodeURIComponent(req.params.nombre);
     const { nombre: nuevoNombre, codigo } = req.body;
     if (!nuevoNombre) return res.status(400).json({ mensaje: 'nombre es requerido' });
@@ -271,7 +290,7 @@ export async function actualizarDepartamento(req, res) {
 // ── DELETE /api/areas/:id/departamentos/:nombre ───────────────
 export async function eliminarDepartamento(req, res) {
   try {
-    const id = req.params.id;
+    const id = decodeURIComponent(req.params.id);
     const nombre = decodeURIComponent(req.params.nombre);
 
     const data = await cargarConfig();

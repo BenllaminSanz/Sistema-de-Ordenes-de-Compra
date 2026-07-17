@@ -23,6 +23,12 @@
               <h2 class="page-title">Órdenes de Compra</h2>
               <p class="page-subtitle" id="oc-subtitle"></p>
             </div>
+            <div class="page-header-actions" id="oc-admin-actions" style="display:none;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="exportarOrdenesExcel()"
+                      title="Exportar listado de OC a Excel (respeta filtros actuales)">
+                ↓ Exportar Excel
+              </button>
+            </div>
           </div>
 
           <div class="filters-bar">
@@ -52,7 +58,7 @@
             </select>
             <label class="chk-label" style="white-space:nowrap">
               <input type="checkbox" id="fil-sin-po" onchange="cargarOrdenes(1)">
-              Sin PO DataTextNow
+              Sin PO / NA
             </label>
             <button class="btn btn-outline btn-sm" onclick="cargarOrdenes(1)">Filtrar</button>
           </div>
@@ -125,7 +131,7 @@
       <h3 class="modal-title" id="modal-recepcion-titulo">Registrar recepción</h3>
       <button class="modal-close" onclick="cerrarModalRecepcion()">×</button>
     </div>
-    <form id="form-recepcion">
+    <form id="form-recepcion" novalidate>
       <input type="hidden" id="rec-id" value="">
       <div class="form-group">
         <label class="form-label">Ítems recibidos en esta entrega</label>

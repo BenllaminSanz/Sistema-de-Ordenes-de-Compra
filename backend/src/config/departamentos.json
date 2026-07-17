@@ -1,20 +1,16 @@
 {
-  "version": 1,
+  "version": 2,
   "areas": [
     {
-      "id": "ADMINISTRACION",
-      "label": "ADMINISTRACION",
+      "id": "ADMINISTRACIÓN",
+      "label": "ADMINISTRACIÓN",
       "departamentos": [
         {
-          "nombre": "MATERIAL DE OFICINA",
+          "nombre": "MATERIAL DE OFICINA-55500",
           "codigo": "00001"
         },
         {
-          "nombre": "EDIFICIOS",
-          "codigo": "00003"
-        },
-        {
-          "nombre": "SUMINISTROS Y EQUIPOS DE COMPUTO",
+          "nombre": "SUMINISTROS Y EQUIPOS DE COMPUTO-55560",
           "codigo": "00020"
         },
         {
@@ -22,7 +18,7 @@
           "codigo": "00030"
         },
         {
-          "nombre": "MEDICAMENTOS",
+          "nombre": "MEDICAMENTOS-52430",
           "codigo": "00035"
         },
         {
@@ -34,16 +30,8 @@
           "codigo": "00040"
         },
         {
-          "nombre": "SERVICIOS DE COCINA",
-          "codigo": "00041"
-        },
-        {
           "nombre": "MATERIAL DE LIMPIEZA",
           "codigo": "2460"
-        },
-        {
-          "nombre": "REPARACIÓN DE MONTACARGAS",
-          "codigo": "2465"
         },
         {
           "nombre": "RENTA DE ALMACEN",
@@ -62,7 +50,7 @@
           "codigo": "ADM03"
         },
         {
-          "nombre": "ENFERMERÍA",
+          "nombre": "SERVICIO MEDICO",
           "codigo": "ADM04"
         },
         {
@@ -70,19 +58,19 @@
           "codigo": "ADM05"
         },
         {
-          "nombre": "APERTURA-OE",
-          "codigo": "10000"
+          "nombre": "ARTICULOS DE PROTECCIÓN Y SEGURIDAD",
+          "codigo": "00006"
+        },
+        {
+          "nombre": "SERVICIOS A EQUIPO DE COMPUTO-55565",
+          "codigo": "00020S"
         }
       ]
     },
     {
-      "id": "PRODUCCION",
-      "label": "Producción",
+      "id": "ALMACEN",
+      "label": "ALMACEN",
       "departamentos": [
-        {
-          "nombre": "ARTÍCULOS DE SEGURIDAD",
-          "codigo": "00006"
-        },
         {
           "nombre": "MATERIAL DE EMPAQUE",
           "codigo": "00007"
@@ -92,42 +80,22 @@
           "codigo": "00008"
         },
         {
-          "nombre": "LABORATORIO",
-          "codigo": "00009"
-        },
-        {
-          "nombre": "SISTEMA CONTRA INCENDIO",
-          "codigo": "00010"
-        },
-        {
-          "nombre": "PROYECTO",
-          "codigo": "00012"
-        },
-        {
-          "nombre": "CHILLER",
-          "codigo": "00013"
-        },
-        {
-          "nombre": "HVAC",
-          "codigo": "00014"
-        },
-        {
-          "nombre": "AIRE COMPRIMIDO",
-          "codigo": "00022"
-        },
-        {
           "nombre": "TUBOS / CONOS",
           "codigo": "00023"
         },
         {
-          "nombre": "RECOLECCIÓN DE RESIDUOS",
-          "codigo": "00034"
+          "nombre": "MONTACARGAS",
+          "codigo": "2465"
+        },
+        {
+          "nombre": "GASTOS ALMACEN",
+          "codigo": "ADM06"
         }
       ]
     },
     {
-      "id": "OE",
-      "label": "OE (Open End)",
+      "id": "PRODUCCIÓN",
+      "label": "PRODUCCIÓN",
       "departamentos": [
         {
           "nombre": "APERTURA-OE",
@@ -146,15 +114,13 @@
           "codigo": "3070"
         },
         {
-          "nombre": "MANTENIMIENTO-OE",
-          "codigo": "3420"
-        }
-      ]
-    },
-    {
-      "id": "POLYCOTTON",
-      "label": "Polycotton",
-      "departamentos": [
+          "nombre": "LABORATORIO",
+          "codigo": "00009"
+        },
+        {
+          "nombre": "PROYECTO",
+          "codigo": "00012"
+        },
         {
           "nombre": "APERTURA-POLYCOTTON",
           "codigo": "4000"
@@ -171,16 +137,6 @@
           "nombre": "HILATURA-POLYCOTTON",
           "codigo": "4070"
         },
-        {
-          "nombre": "MANTENIMIENTO-POLYCOTTON",
-          "codigo": "4420"
-        }
-      ]
-    },
-    {
-      "id": "RS",
-      "label": "RS (Ring Spinning)",
-      "departamentos": [
         {
           "nombre": "APERTURA-RS",
           "codigo": "5000"
@@ -206,14 +162,14 @@
           "codigo": "5080"
         },
         {
-          "nombre": "MANTENIMIENTO-RS",
-          "codigo": "5420"
+          "nombre": "XORELLA",
+          "codigo": "ADM07"
         }
       ]
     },
     {
       "id": "FLETES",
-      "label": "Fletes",
+      "label": "FLETES",
       "departamentos": [
         {
           "nombre": "FLETE POR RETORNO DE INSUMOS",
@@ -242,16 +198,44 @@
       ]
     },
     {
-      "id": "OTROS",
-      "label": "Otros",
+      "id": "MANTENIMIENTO",
+      "label": "MANTENIMIENTO",
       "departamentos": [
         {
-          "nombre": "XORELLA",
-          "codigo": "OTR01"
+          "nombre": "EDIFICIO",
+          "codigo": "00003"
         },
         {
-          "nombre": "RECLAIM",
-          "codigo": "OTR02"
+          "nombre": "SISTEMA CONTRA INCENDIO",
+          "codigo": "00010"
+        },
+        {
+          "nombre": "CHILLER",
+          "codigo": "00013"
+        },
+        {
+          "nombre": "HVAC",
+          "codigo": "00014"
+        },
+        {
+          "nombre": "AIRE COMPRIMIDO",
+          "codigo": "00022"
+        },
+        {
+          "nombre": "RECOLECCIÓN DE RESIDUOS",
+          "codigo": "00034"
+        },
+        {
+          "nombre": "SERVICIOS DE COCINA",
+          "codigo": "00041"
+        },
+        {
+          "nombre": "MANTENIMIENTO-OE",
+          "codigo": "3420"
+        },
+        {
+          "nombre": "MANTENIMIENTO-POLYCOTTON",
+          "codigo": "4420"
         }
       ]
     }

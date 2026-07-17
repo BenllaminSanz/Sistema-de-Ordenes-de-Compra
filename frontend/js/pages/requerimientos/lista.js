@@ -33,7 +33,7 @@ async function cargarRequerimientos(pagina) {
           <tbody>
             ${datos.map(r => `
             <tr>
-              <td class="fw-600">${r.consecutivo}</td>
+              <td class="fw-600">${r.consecutivo || '<span class="text-muted" title="Se asigna al enviar a revisión">—</span>'}</td>
               <td>${r.tipo}</td>
               <td>${r.area || '—'}</td>
               <td>${r.departamento || '—'}</td>

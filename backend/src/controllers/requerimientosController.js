@@ -136,6 +136,14 @@ async function crear(req, res) {
       }
     }
 
+    const totalItems = (tieneItemsEstructurados ? items.length : 0)
+      + (tieneItemsLibres ? items_libres.length : 0);
+    if (totalItems > 15) {
+      return res.status(422).json({
+        mensaje: `Máximo 15 ítems por requerimiento. Tienes ${totalItems}. Crea otro REQ para el resto.`,
+      });
+    }
+
     const id = await _crear(
       { 
         titulo_solicitud, 
@@ -153,6 +161,7 @@ async function crear(req, res) {
     const nuevo = await obtenerPorId(id);
     res.status(201).json(nuevo);
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
     logger.error('Error al crear requerimiento', {
       error: err.message, 
       stack: err.stack,
@@ -198,6 +207,14 @@ async function actualizar(req, res) {
       if (!valProv.ok) {
         return res.status(422).json({ mensaje: valProv.mensaje });
       }
+    }
+
+    const totalItemsUpd = (tieneItemsEstructurados ? items.length : 0)
+      + (tieneItemsLibres ? items_libres.length : 0);
+    if ((items !== undefined || items_libres !== undefined) && totalItemsUpd > 15) {
+      return res.status(422).json({
+        mensaje: `Máximo 15 ítems por requerimiento. Tienes ${totalItemsUpd}. Crea otro REQ para el resto.`,
+      });
     }
 
     // Forzar requiere_cotizacion=true cuando se usan items_libres (libres siempre requieren cotización)
@@ -250,6 +267,7 @@ async function actualizar(req, res) {
     const actualizado = await obtenerPorId(req.params.id);
     res.json(actualizado);
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
     logger.error('[actualizar requerimiento]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -328,7 +346,10 @@ async function cambiarEstado(req, res) {
 // ─── DELETE /requerimientos/:id ───────────────────────────────────────────────
 async function eliminar(req, res) {
   try {
-    const afectados = await _eliminar(req.params.id);
+    const afectados = await _eliminar(req.params.id, {
+      solicitante_id: req.usuario.id,
+      rol: req.usuario.rol,
+    });
 
     if (afectados === 0) {
       return res.status(404).json({
@@ -338,6 +359,7 @@ async function eliminar(req, res) {
 
     res.status(204).send();
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
     logger.error('Error al eliminar requerimiento', { 
       error: err.message, 
       stack: err.stack,

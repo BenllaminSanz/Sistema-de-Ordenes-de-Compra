@@ -4,97 +4,114 @@ import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 
 /**
- * Genera el "Reporte de Órdenes de Compra" (estilo POS HILOS básico)
- * Solo accesible por contabilidad y admin.
- * Soporta filtros: anual, mensual, semanal.
+ * Genera el "Reporte de Órdenes de Compra".
+ * - Con periodo (anual/mensual/semanal): filtros por fecha
+ * - Con libre=1: exporta según filtros de listado (estado, tipo_req, busqueda, sin_po)
  */
 export async function generarReporteOrdenesCompra(req, res) {
   try {
-    const { tipo = 'anual', anio, mes, semana } = req.query;
+    const {
+      anio,
+      mes,
+      semana,
+      estado,
+      busqueda,
+      sin_po,
+      tipo_req,
+    } = req.query;
 
-    // Construir filtros de fecha basados en fecha_autorizacion
     const filtros = {};
     const now = new Date();
-
     const year = parseInt(anio) || now.getFullYear();
+    const exportLibre = req.query.libre === '1' || req.query.libre === 'true';
 
-    if (tipo === 'anual') {
-      filtros.fecha_desde = `${year}-01-01`;
-      filtros.fecha_hasta = `${year}-12-31`;
-    } else if (tipo === 'mensual') {
-      const month = parseInt(mes) || (now.getMonth() + 1);
-      const start = new Date(year, month - 1, 1);
-      const end = new Date(year, month, 0);
-      filtros.fecha_desde = start.toISOString().split('T')[0];
-      filtros.fecha_hasta = end.toISOString().split('T')[0];
-    } else if (tipo === 'semanal') {
-      const week = parseInt(semana) || 1;
-      // Aproximación simple de semana (ISO week no es trivial, usamos rango aproximado)
-      const start = new Date(year, 0, 1 + (week - 1) * 7);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 6);
-      filtros.fecha_desde = start.toISOString().split('T')[0];
-      filtros.fecha_hasta = end.toISOString().split('T')[0];
+    const periodoEfectivo = ['anual', 'mensual', 'semanal'].includes(String(req.query.periodo || req.query.tipo))
+      ? String(req.query.periodo || req.query.tipo)
+      : 'anual';
+
+    if (!exportLibre) {
+      if (periodoEfectivo === 'anual') {
+        filtros.fecha_desde = `${year}-01-01`;
+        filtros.fecha_hasta = `${year}-12-31`;
+      } else if (periodoEfectivo === 'mensual') {
+        const month = parseInt(mes) || (now.getMonth() + 1);
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
+        filtros.fecha_desde = start.toISOString().split('T')[0];
+        filtros.fecha_hasta = end.toISOString().split('T')[0];
+      } else if (periodoEfectivo === 'semanal') {
+        const week = parseInt(semana) || 1;
+        const start = new Date(year, 0, 1 + (week - 1) * 7);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        filtros.fecha_desde = start.toISOString().split('T')[0];
+        filtros.fecha_hasta = end.toISOString().split('T')[0];
+      }
     }
 
-    // Obtener datos (usamos el modelo existente + filtros de fecha si aplica)
+    if (estado) filtros.estado = estado;
+    if (busqueda) filtros.busqueda = busqueda;
+    if (sin_po) filtros.sin_po = sin_po;
+    if (tipo_req) filtros.tipo = tipo_req;
+    else if (req.query.tipo && !['anual', 'mensual', 'semanal'].includes(String(req.query.tipo))) {
+      filtros.tipo = req.query.tipo;
+    }
+
     const { datos: ocs } = await Ordenes.listar({
       ...filtros,
-      limite: 5000 // Suficiente para un reporte
+      limite: 5000,
     });
 
-    // Construir filas para el reporte (columnas inspiradas en POS HILOS básico)
-    const rows = ocs.map(oc => ({
-      'Número OC': oc.numero_oc,
-      'Fecha OC': oc.created_at ? new Date(oc.created_at).toISOString().split('T')[0] : '',
-      'Consecutivo Req': oc.consecutivo || '',
+    const fmtFecha = (v) => {
+      if (!v) return '';
+      if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+      try { return new Date(v).toISOString().split('T')[0]; } catch { return ''; }
+    };
+
+    const rows = ocs.map((oc) => ({
+      'No. OC': oc.numero_oc,
+      'Fecha creación': fmtFecha(oc.created_at),
+      'Últ. modificación': fmtFecha(oc.updated_at),
+      'Consecutivo REQ': oc.consecutivo || '',
       'Tipo': oc.tipo || '',
-      'Proveedor': oc.proveedor_num ? `${oc.proveedor_num} — ${oc.proveedor_nombre || ''}` : (oc.proveedor_nombre || ''),
+      'Solicitante': oc.solicitante_nombre || '',
+      'Proveedor': oc.proveedor_num
+        ? `${oc.proveedor_num} — ${oc.proveedor_nombre || ''}`
+        : (oc.proveedor_nombre || ''),
       'Estado OC': oc.estado,
-      'Fecha Autorización': oc.fecha_autorizacion ? new Date(oc.fecha_autorizacion).toISOString().split('T')[0] : '',
-      'Costo Total': oc.monto_total || 0,
+      'Fecha Autorización': fmtFecha(oc.fecha_autorizacion),
       'PO DataTextNow': oc.datatextnow_id || '',
+      'Fecha PO': fmtFecha(oc.fecha_po),
+      'Monto Total': oc.monto_total != null ? Number(oc.monto_total) : '',
+      'Moneda': oc.moneda || 'MXN',
       'Estado Recepción': oc.estado_recepcion || '',
-      'Fecha Recepción': oc.fecha_recepcion ? new Date(oc.fecha_recepcion).toISOString().split('T')[0] : '',
+      'Fecha Recepción': fmtFecha(oc.fecha_recepcion),
+      'Notas contabilidad': oc.notas || '',
     }));
 
-    // Crear workbook
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
-
-    // Ajustar anchos de columna aproximados
-    const colWidths = [
-      { wch: 15 }, { wch: 12 }, { wch: 16 }, { wch: 12 },
-      { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
-      { wch: 18 }, { wch: 18 }, { wch: 14 }
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+      { wch: 20 }, { wch: 32 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+      { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 30 },
     ];
-    ws['!cols'] = colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, 'Ordenes de Compra');
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Reporte OC');
+    const filename = exportLibre
+      ? `Ordenes_Compra_${new Date().toISOString().slice(0, 10)}.xlsx`
+      : `Reporte_Ordenes_Compra_${periodoEfectivo}_${year}${mes ? '_' + mes : ''}${semana ? '_sem' + semana : ''}.xlsx`;
 
-    // Nombre del archivo
-    const filename = `Reporte_Ordenes_Compra_${tipo}_${year}${mes ? '_' + mes : ''}${semana ? '_sem' + semana : ''}.xlsx`;
-
-    // Enviar como descarga
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
-
   } catch (err) {
     logger.error('[Reporte OC]', err);
     res.status(500).json({ mensaje: 'Error al generar el reporte' });
   }
 }
 
-/**
- * Genera el reporte "STATUS 2025 POS HILOS" estilo consolidado por línea/item.
- * Combina datos internos (Requerimientos + items de Catálogo + OC + Recepciones)
- * con la estructura de los reportes com_data_now.
- * 
- * Columnas principales inspiradas en el Excel STATUS 2025.
- */
 export async function generarReporteStatusPOS(req, res) {
   try {
     const { anio, po, estado } = req.query;

@@ -3,6 +3,9 @@
  * Persiste en sessionStorage entre catálogo ↔ requerimientos.
  */
 const CARRITO_REQ_KEY = 'oc_carrito_req';
+/** Límite de líneas por REQ (impresión y operación). */
+const MAX_ITEMS_POR_REQ = 15;
+window.MAX_ITEMS_POR_REQ = MAX_ITEMS_POR_REQ;
 
 const CarritoReq = {
   _items: [],
@@ -102,6 +105,13 @@ const CarritoReq = {
     const id = item.catalogo_id || item.id;
     if (this.tiene(id)) {
       return { ok: false, mensaje: 'Este ítem ya está en tu solicitud' };
+    }
+
+    if (this._items.length >= MAX_ITEMS_POR_REQ) {
+      return {
+        ok: false,
+        mensaje: `Máximo ${MAX_ITEMS_POR_REQ} ítems por requerimiento. Crea otro REQ para agregar más.`,
+      };
     }
 
     const validacion = this.puedeAgregar(item);

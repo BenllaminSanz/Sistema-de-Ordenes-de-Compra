@@ -98,8 +98,10 @@ function renderAreas() {
       <div class="area-header" onclick="toggleArea('${area.id}')">
         <svg class="area-chevron" width="14" height="14" fill="none" stroke="currentColor"
              stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-        <span class="area-id-badge">${escHtml(area.id)}</span>
-        <span class="area-label">${escHtml(area.label)}</span>
+        <span class="area-label">${escHtml(area.label || area.id)}</span>
+        ${area.id !== area.label
+          ? `<span class="area-id-badge" title="ID interno">${escHtml(area.id)}</span>`
+          : ''}
         <span style="font-size:11px;color:var(--muted);">${area.departamentos.length} depto${area.departamentos.length !== 1 ? 's' : ''}</span>
         <div class="area-actions" onclick="event.stopPropagation()">
           <button class="btn btn-sm btn-outline" title="Editar nombre"
@@ -148,10 +150,9 @@ function abrirModalArea() {
   document.getElementById('modal-area-titulo').textContent = 'Nueva área';
   document.getElementById('area-id').value = '';
   document.getElementById('area-label').value = '';
-  document.getElementById('campo-area-id-wrap').style.display = '';
   document.getElementById('btn-guardar-area').textContent = 'Crear área';
   UI.abrirModal('modal-area');
-  setTimeout(() => document.getElementById('area-id').focus(), 80);
+  setTimeout(() => document.getElementById('area-label').focus(), 80);
 }
 
 function abrirModalEditarArea(id) {
@@ -160,8 +161,7 @@ function abrirModalEditarArea(id) {
   _editandoAreaId = id;
   document.getElementById('modal-area-titulo').textContent = 'Editar área';
   document.getElementById('area-id').value = area.id;
-  document.getElementById('area-label').value = area.label;
-  document.getElementById('campo-area-id-wrap').style.display = 'none';
+  document.getElementById('area-label').value = area.label || area.id;
   document.getElementById('btn-guardar-area').textContent = 'Guardar cambios';
   UI.abrirModal('modal-area');
   setTimeout(() => document.getElementById('area-label').focus(), 80);
@@ -172,16 +172,16 @@ async function submitArea(e) {
   const btn = document.getElementById('btn-guardar-area');
   btn.disabled = true;
   try {
+    const label = document.getElementById('area-label').value.trim().toUpperCase();
+    if (!label) { Toast.error('El nombre del área es requerido'); return; }
+
     if (_editandoAreaId) {
-      await Api.put(`/areas/${_editandoAreaId}`, {
-        label: document.getElementById('area-label').value.trim(),
-      });
-      Toast.success('Área actualizada');
+      // EncodeURIComponent por si el id tiene acentos o espacios
+      await Api.put(`/areas/${encodeURIComponent(_editandoAreaId)}`, { label });
+      Toast.success('Área actualizada (ID = nombre visible)');
     } else {
-      const id = document.getElementById('area-id').value.trim();
-      const label = document.getElementById('area-label').value.trim();
-      if (!id) { Toast.error('El ID es requerido'); return; }
-      await Api.post('/areas', { id, label });
+      // Backend fuerza id = label
+      await Api.post('/areas', { id: label, label });
       Toast.success('Área creada');
     }
     UI.cerrarModal('modal-area');
@@ -197,7 +197,7 @@ async function submitArea(e) {
 async function confirmarEliminarArea(id, label) {
   if (!confirm(`¿Eliminar el área "${label}" y todos sus departamentos?\n\nLos requerimientos existentes conservan su valor.`)) return;
   try {
-    const res = await Api.delete(`/areas/${id}`);
+    const res = await Api.delete(`/areas/${encodeURIComponent(id)}`);
     const extra = res.requerimientos_historicos
       ? `\n${res.requerimientos_historicos} requerimiento(s) históricos conservan esta área.`
       : '';
@@ -243,16 +243,17 @@ async function submitDepto(e) {
   btn.disabled = true;
   try {
     const body = { nombre, codigo };
+    const areaEnc = encodeURIComponent(_editandoDeptoArea);
     if (_editandoDeptoNombre) {
       const encoded = encodeURIComponent(_editandoDeptoNombre);
-      const res = await Api.put(`/areas/${_editandoDeptoArea}/departamentos/${encoded}`, body);
+      const res = await Api.put(`/areas/${areaEnc}/departamentos/${encoded}`, body);
       if (res.requerimientos_historicos > 0) {
         Toast.success(`Actualizado · ${res.requerimientos_historicos} req. conservan el nombre anterior`);
       } else {
         Toast.success('Departamento actualizado');
       }
     } else {
-      await Api.post(`/areas/${_editandoDeptoArea}/departamentos`, body);
+      await Api.post(`/areas/${areaEnc}/departamentos`, body);
       Toast.success('Departamento agregado');
     }
     UI.cerrarModal('modal-depto');
@@ -271,14 +272,15 @@ async function confirmarEliminarDepto(areaId, nombre) {
   let msg = `¿Eliminar el departamento "${nombre}"?\n\nLos requerimientos existentes conservan su valor.`;
   try {
     const encoded = encodeURIComponent(nombre);
-    const uso = await Api.get(`/areas/${areaId}/departamentos/${encoded}/uso`);
+    const areaEnc = encodeURIComponent(areaId);
+    const uso = await Api.get(`/areas/${areaEnc}/departamentos/${encoded}/uso`);
     if (uso.requerimientos > 0) {
       msg = `¿Eliminar "${nombre}"?\n\n${uso.requerimientos} requerimiento(s) históricos usan este departamento y conservarán el valor.`;
     }
   } catch { /* continuar con mensaje base */ }
   if (!confirm(msg)) return;
   try {
-    await Api.delete(`/areas/${areaId}/departamentos/${encodeURIComponent(nombre)}`);
+    await Api.delete(`/areas/${encodeURIComponent(areaId)}/departamentos/${encodeURIComponent(nombre)}`);
     Toast.success('Departamento eliminado');
     await cargarAreas();
     await cargarHistorial();

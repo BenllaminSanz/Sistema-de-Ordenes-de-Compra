@@ -68,9 +68,10 @@ async function validarCierreOrden(conn, ocId, { permitirParcial = true } = {}) {
   if (!po) {
     return {
       ok: false,
-      mensaje: 'No se puede cerrar la OC sin el número de PO de DataTextNow registrado.',
+      mensaje: 'No se puede cerrar la OC sin el número de PO de DataTextNow registrado (o NA si no aplica).',
     };
   }
+  // 'NA' cuenta como PO declarado (sin número DTN); no bloquea el cierre
 
   return { ok: true, po };
 }

@@ -26,11 +26,47 @@ function formatCantidadEmail(cantidad, unidad = '') {
   return String(redondeada);
 }
 
+function textosCotizacion(idioma = 'es') {
+  const es = String(idioma || 'es').toLowerCase().startsWith('en') ? 'en' : 'es';
+
+  if (es === 'en') {
+    return {
+      saludo: 'Dear Supplier:',
+      intro: 'We kindly request your quotation for the items described in this requirement.',
+      descripcion: 'Requirement description:',
+      cantidad: 'Quantity',
+      sinConceptos: '(no detailed items)',
+      cierre1: 'We would appreciate receiving your commercial proposal, lead time and any additional information relevant to the service.',
+      cierre2: 'We look forward to your reply.',
+      firmas: 'Best regards,',
+      equipo: 'Purchasing Team',
+      footer: 'This is an automated email from the Purchase Order System.',
+      subject: (consecutivo) => `Quotation Request - ${consecutivo}`,
+    };
+  }
+
+  return {
+    saludo: 'Estimado proveedor:',
+    intro: 'Por medio de la presente, solicitamos de su apoyo para cotizar los conceptos descritos en el presente requerimiento.',
+    descripcion: 'Descripción del requerimiento:',
+    cantidad: 'Cantidad',
+    sinConceptos: '(sin conceptos detallados)',
+    cierre1: 'Agradeceremos nos comparta su propuesta económica, tiempo de atención y cualquier información adicional relevante para la ejecución del servicio.',
+    cierre2: 'Quedamos atentos a sus comentarios.',
+    firmas: 'Saludos cordiales,',
+    equipo: 'Equipo de Compras',
+    footer: 'Este es un correo automático generado por el Sistema de Órdenes de Compra.',
+    subject: (consecutivo) => `Solicitud de Cotización - ${consecutivo}`,
+  };
+}
+
 /**
- * RFQ al proveedor: conceptos (sin precios), notas y datos de referencia del requerimiento.
+ * RFQ al proveedor: conceptos (sin precios) y notas.
  * Solo para SERVICIOS o requerimientos con ítems libres.
+ * @param {number} cotizacionId
+ * @param {{ idioma?: 'es'|'en' }} [opts]
  */
-export async function enviarSolicitudDeCotizacion(cotizacionId) {
+export async function enviarSolicitudDeCotizacion(cotizacionId, opts = {}) {
   try {
     const cot = await Cotizacion.obtenerPorId(cotizacionId);
     if (!cot) {
@@ -58,6 +94,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       return { success: false, reason: 'no_requiere_segun_condicion' };
     }
 
+    const t = textosCotizacion(opts.idioma);
     const tieneItems = cot.items && cot.items.length > 0;
     const items = tieneItems ? cot.items : [];
 
@@ -68,83 +105,57 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
           return `
             <div style="margin:0 0 14px;">
               <p style="margin:0 0 4px; color:#334155; font-size:15px; line-height:1.55;">${item.descripcion || '—'}</p>
-              <p style="margin:0; color:#334155; font-size:15px;"><strong>Cantidad:</strong> ${qty}${unit}</p>
+              <p style="margin:0; color:#334155; font-size:15px;"><strong>${t.cantidad}:</strong> ${qty}${unit}</p>
             </div>`;
         }).join('')
-      : `<p style="margin:0 0 14px; color:#334155; font-size:15px;">(sin conceptos detallados)</p>`;
+      : `<p style="margin:0 0 14px; color:#334155; font-size:15px;">${t.sinConceptos}</p>`;
 
     const notasCotizacion = (cot.notas || '').trim();
     const notasHtml = notasCotizacion
       ? `<p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 16px; white-space:pre-line;">${notasCotizacion}</p>`
       : '';
 
-    const areaSolicitante = [req.area, req.departamento].filter(Boolean).join(' / ') || '—';
     const consecutivo = req.consecutivo || req.id;
-    const titulo = req.titulo_solicitud || '—';
-    const tipoLabel = req.tipo || '—';
 
+    // Sin bloque "Datos de referencia:" (pedido de operación)
     const html = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; background:#f8fafc; padding: 24px;">
         <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);">
           ${buildEmailBrandingHtml()}
 
           <p style="color:#334155; font-size:15px; margin:0 0 16px;">
-            Estimado proveedor:
+            ${t.saludo}
           </p>
 
           <p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 20px;">
-            Por medio de la presente, solicitamos de su apoyo para cotizar los conceptos descritos en el presente requerimiento.
+            ${t.intro}
           </p>
 
           <p style="color:#1e293b; font-size:15px; font-weight:700; margin:0 0 10px;">
-            Descripción del requerimiento:
+            ${t.descripcion}
           </p>
           ${conceptosHtml}
           ${notasHtml}
 
-          <p style="color:#1e293b; font-size:15px; font-weight:700; margin:20px 0 10px;">
-            Datos de referencia:
-          </p>
-          <div style="background:#f1f5f9; border-radius:6px; padding:16px 18px; margin:0 0 20px;">
-            <table style="width:100%; font-size:14px; color:#1e293b; border-collapse:collapse;">
-              <tr>
-                <td style="padding:4px 0; width:150px; vertical-align:top;"><strong>Requerimiento:</strong></td>
-                <td style="padding:4px 0;">${consecutivo}</td>
-              </tr>
-              <tr>
-                <td style="padding:4px 0; vertical-align:top;"><strong>Título:</strong></td>
-                <td style="padding:4px 0;">${titulo}</td>
-              </tr>
-              <tr>
-                <td style="padding:4px 0; vertical-align:top;"><strong>Tipo:</strong></td>
-                <td style="padding:4px 0;">${tipoLabel}</td>
-              </tr>
-              <tr>
-                <td style="padding:4px 0; vertical-align:top;"><strong>Área solicitante:</strong></td>
-                <td style="padding:4px 0;">${areaSolicitante}</td>
-              </tr>
-            </table>
-          </div>
-
           <p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 12px;">
-            Agradeceremos nos comparta su propuesta económica, tiempo de atención y cualquier información adicional relevante para la ejecución del servicio.
+            ${t.cierre1}
           </p>
 
           <p style="color:#334155; font-size:15px; line-height:1.55; margin:0 0 20px;">
-            Quedamos atentos a sus comentarios.
+            ${t.cierre2}
           </p>
 
           <p style="color:#334155; font-size:15px; margin:0 0 4px;">
-            Saludos cordiales,
+            ${t.firmas}
           </p>
           <p style="color:#334155; font-size:15px; margin:0; line-height:1.55;">
-            <strong>Equipo de Compras</strong><br>
+            <strong>${t.equipo}</strong><br>
             ${EMPRESA_SUBTITULO}
           </p>
         </div>
 
         <p style="text-align:center; color:#94a3b8; font-size:11px; margin-top:16px;">
-          Este es un correo automático generado por el Sistema de Órdenes de Compra.
+          ${t.footer}
         </p>
       </div>
     `;
@@ -153,34 +164,28 @@ export async function enviarSolicitudDeCotizacion(cotizacionId) {
       ? items.map(item => {
           const qty = formatCantidadEmail(item.cantidad, item.unidad);
           const unit = item.unidad ? ` ${item.unidad}` : '';
-          return `${item.descripcion || '—'}\nCantidad: ${qty}${unit}`;
+          return `${item.descripcion || '—'}\n${t.cantidad}: ${qty}${unit}`;
         }).join('\n\n')
-      : '(sin conceptos detallados)';
+      : t.sinConceptos;
 
     const notasTextoPlano = notasCotizacion ? `\n\n${notasCotizacion}` : '';
 
-    const textoPlano = `Estimado proveedor:
+    const textoPlano = `${t.saludo}
 
-Por medio de la presente, solicitamos de su apoyo para cotizar los conceptos descritos en el presente requerimiento.
+${t.intro}
 
-Descripción del requerimiento:
+${t.descripcion}
 ${itemsTextoPlano}${notasTextoPlano}
 
-Datos de referencia:
-Requerimiento: ${consecutivo}
-Título: ${titulo}
-Tipo: ${tipoLabel}
-Área solicitante: ${areaSolicitante}
+${t.cierre1}
 
-Agradeceremos nos comparta su propuesta económica, tiempo de atención y cualquier información adicional relevante para la ejecución del servicio.
+${t.cierre2}
 
-Quedamos atentos a sus comentarios.
-
-Saludos cordiales,
-Equipo de Compras
+${t.firmas}
+${t.equipo}
 ${EMPRESA_SUBTITULO}
 
-Este es un correo automático generado por el Sistema de Órdenes de Compra.`;
+${t.footer}`;
 
     const ccCotizaciones = await obtenerCcCotizaciones();
     if (ccCotizaciones) {
@@ -191,7 +196,7 @@ Este es un correo automático generado por el Sistema de Órdenes de Compra.`;
       to: cot.proveedor_email,
       cc: ccCotizaciones || undefined,
       replyTo: ccCotizaciones || undefined,
-      subject: `Solicitud de Cotización - ${consecutivo}`,
+      subject: t.subject(consecutivo),
       html,
       text: textoPlano,
       attachments: getEmailBrandingAttachments(),

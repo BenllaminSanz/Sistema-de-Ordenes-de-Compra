@@ -7,12 +7,36 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-07-14
+
+Checklist completo: `docs/CHECKLIST-v1.4.0.md`.
+
 ### Añadido
-- Endpoint `/api/health` devuelve `version` (desde `backend/package.json`)
-- Versión visible en sidebar y pantalla de login
-- Script `npm run test:ci` (comprobaciones sin MySQL)
-- GitHub Actions CI en push/PR a `main`
-- Manual de consulta para subir cambios: `docs/MANUAL-GIT-GITHUB.md`
+- PO DTN + `fecha_po` al generar OC (o NA sin PO)
+- Notas de contabilidad editables en OC (panel destacado)
+- Unidades de medida estandarizadas (tabla + CRUD + combos en catálogo e ítems libres de REQ)
+- Export/import Excel de catálogo con upsert por código de ítem
+- Eliminación física de ítems de catálogo desactivados (sin borrar históricos relacionados)
+- Export Excel de órdenes de compra desde el listado
+- Idioma ES/EN al enviar correo de cotización
+- Marcador de correo de cotización enviado / sin enviar
+- Adjuntos de cotización: PDF, Word, Excel e imágenes (no solo PDF)
+- Límite de 15 ítems por REQ; consecutivo solo al enviar a revisión; borrar borrador
+- Checklist de entrega v1.4.0 (`docs/CHECKLIST-v1.4.0.md`)
+
+### Cambiado
+- REQ pasa a **cerrado** al generar OC (corrige bug de estado aprobado)
+- Lista OC: No. OC, fecha PO y última modificación
+- Menú: REQ → OC → Catálogo → Proveedores
+- Áreas: `id` = nombre visible (JSON servidor); migración de REQ históricos
+- Recepción: permite decimales; flechas de teclado ±1
+- Correo RFQ sin bloque “Datos de referencia:”
+- Impresión REQ: más espacio en firmas
+- Filtros de catálogo persistentes al editar ítems
+
+### Corregido
+- Catálogo vacío por filtros residuales / recursión en `cargarCatalogo`
+- Validación HTML que bloqueaba cantidades 0.5 en recepción
 
 ## [1.3.2] — 2026-07-10
 

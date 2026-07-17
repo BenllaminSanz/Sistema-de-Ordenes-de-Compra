@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Multer config específico para PDFs de cotizaciones
+// Multer: adjuntos de cotización (PDF, Word, Excel, imágenes, etc.)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = path.join(__dirname, '../../uploads/cotizaciones');
@@ -16,23 +16,43 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(file.originalname) || '';
     cb(null, `cotizacion-${req.params.id}-${uniqueSuffix}${ext}`);
   }
 });
 
+const EXT_PERMITIDAS = /\.(pdf|doc|docx|xls|xlsx|csv|png|jpe?g|gif|webp|txt|zip|rar|msg|eml)$/i;
+const MIME_PERMITIDOS = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+  'text/plain',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream',
+]);
+
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype === 'application/pdf') {
+  const okExt = EXT_PERMITIDAS.test(file.originalname || '');
+  const okMime = !file.mimetype || MIME_PERMITIDOS.has(file.mimetype) || file.mimetype.startsWith('image/');
+  if (okExt || okMime) {
     cb(null, true);
   } else {
-    cb(new Error('Solo se permiten archivos PDF'), false);
+    cb(new Error('Tipo de archivo no permitido. Use PDF, Word, Excel, imagen u otros documentos de oficina.'), false);
   }
 };
 
-const uploadCotizacionPdf = multer({
+const uploadCotizacionArchivo = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 15 * 1024 * 1024 }
 });
 
 const router = express.Router();
@@ -60,7 +80,24 @@ router.post('/:id/deseleccionar', cotizacionesController.deseleccionarCotizacion
 // Enviar (o re-enviar) manualmente el correo de solicitud de cotización (botón en UI)
 router.post('/:id/enviar', autorizar('contabilidad', 'admin'), cotizacionesController.enviarCorreoCotizacion);
 
-// Subir archivo PDF real a una cotización
-router.post('/:id/archivo', uploadCotizacionPdf.single('pdf'), cotizacionesController.subirArchivoCotizacion);
+// Subir archivo de respaldo (PDF, Word, Excel, etc.) — campo "archivo" o "pdf" (compat)
+router.post(
+  '/:id/archivo',
+  (req, res, next) => {
+    uploadCotizacionArchivo.fields([
+      { name: 'archivo', maxCount: 1 },
+      { name: 'pdf', maxCount: 1 },
+    ])(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ success: false, message: err.message || 'Error al subir archivo' });
+      }
+      // Normalizar a req.file
+      const f = req.files?.archivo?.[0] || req.files?.pdf?.[0] || null;
+      if (f) req.file = f;
+      next();
+    });
+  },
+  cotizacionesController.subirArchivoCotizacion
+);
 
 export default router;
