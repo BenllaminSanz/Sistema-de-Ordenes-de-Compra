@@ -25,8 +25,22 @@
  */
 
 import { createRequire } from 'module';
+import {
+  construirIndiceAreasDeptosSync,
+  resolverAreaDepartamentoVista,
+} from '../config/departamentosStore.js';
+
 const require = createRequire(import.meta.url);
 const XLSX = require('xlsx');
+
+/** Resuelve área/depto del Excel al modelo del catálogo (área padre + depto). */
+function normalizarAreaDeptoImport(areaVal, deptoVal, indice) {
+  const r = resolverAreaDepartamentoVista(areaVal, deptoVal, indice);
+  return {
+    area: r.area || null,
+    departamento: r.departamento || null,
+  };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -206,6 +220,7 @@ function detectarEstadoLegacy(row) {
 }
 
 function parseHojaLegacy(data, filas, meta) {
+  const indice = construirIndiceAreasDeptosSync();
   for (let r = 1; r < data.length; r++) {
     const row = data[r];
     if (!row || !row[0]) continue;
@@ -227,6 +242,10 @@ function parseHojaLegacy(data, filas, meta) {
           ? { reqEstado: 'cerrado', crearOc: true, ocEstado: 'distribuida' }
           : { reqEstado, crearOc: false, ocEstado: null };
 
+    // Columna 3 = Depto (legacy): resolver área padre vía catálogo
+    const deptoExcel = String(row[3] || '').trim() || null;
+    const ad = normalizarAreaDeptoImport(deptoExcel, null, indice);
+
     filas.push({
       filaExcel: r + 1,
       layout: 'legacy',
@@ -235,8 +254,8 @@ function parseHojaLegacy(data, filas, meta) {
       fecha_sol: excelDateToISO(row[1]),
       fecha_po: excelDateToISO(row[9]),
       proveedor: String(row[2] || '').trim(),
-      area: String(row[3] || '').trim() || null,
-      departamento: null,
+      area: ad.area,
+      departamento: ad.departamento,
       titulo: descripcion || consecutivo,
       descripcion,
       notas: notasCombinadas,
@@ -375,6 +394,7 @@ function parseHojaBaseGral(data, filas, meta) {
   const map = resolverMapaBaseGral(data[0] || []);
   if (map.legacy) meta.layoutBaseGral = 'legacy_depto';
   else meta.layoutBaseGral = 'unificado';
+  const indice = construirIndiceAreasDeptosSync();
 
   for (let r = 1; r < data.length; r++) {
     const row = data[r];
@@ -406,6 +426,10 @@ function parseHojaBaseGral(data, filas, meta) {
       map.departamento >= 0
         ? String(cellAt(row, map.departamento) || '').trim() || null
         : null;
+    // Layout legacy BASE GRAL: col "Depto" mapeada a map.area → resolver a área+depto
+    const ad = map.legacy
+      ? normalizarAreaDeptoImport(areaVal, null, indice)
+      : normalizarAreaDeptoImport(areaVal, deptoVal, indice);
 
     if (!consecutivo && !descripcion && !proveedor && (ocRaw === '' || ocRaw == null)) {
       continue;
@@ -462,8 +486,8 @@ function parseHojaBaseGral(data, filas, meta) {
       fecha_sol: excelDateToISO(cellAt(row, map.fechaSol)),
       fecha_po: excelDateToISO(cellAt(row, map.fechaPo)),
       proveedor,
-      area: areaVal,
-      departamento: deptoVal,
+      area: ad.area,
+      departamento: ad.departamento,
       titulo: descripcion || consecutivo,
       descripcion,
       notas: notasParts.join(' | '),
@@ -788,6 +812,7 @@ export function generarExcelBaseGral(filas = [], opts = {}) {
  * Export de requerimientos → layout BASE GRAL unificado (igual que General y OC).
  */
 export function generarExcelRequerimientos(reqs) {
+  const indice = construirIndiceAreasDeptosSync();
   const filas = (reqs || []).map((req) => {
     const statusNotas = (() => {
       const n = String(req.notas || '');
@@ -798,6 +823,8 @@ export function generarExcelRequerimientos(reqs) {
       if (n && n !== (req.titulo_solicitud || '')) return n;
       return '';
     })();
+
+    const ad = resolverAreaDepartamentoVista(req.area, req.departamento, indice);
 
     return {
       orden_compra: req.oc_datatextnow_id || '',
@@ -813,8 +840,8 @@ export function generarExcelRequerimientos(reqs) {
       estado: estadoExcelDesdeSistema({ estado: req.estado, oc_estado: req.oc_estado }),
       req_estado: req.estado,
       oc_estado: req.oc_estado,
-      area: req.area || '',
-      departamento: req.departamento || '',
+      area: ad.area || '',
+      departamento: ad.departamento || '',
       titulo_solicitud: req.titulo_solicitud || '',
       status: statusNotas,
       _fill: fillPorEstadoSistema({ estado: req.estado, oc_estado: req.oc_estado }),

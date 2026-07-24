@@ -6,6 +6,10 @@ import {
   estadoExcelDesdeSistema,
   formatoProveedorBaseGral,
 } from '../utils/excelRequerimientos.js';
+import {
+  construirIndiceAreasDeptos,
+  resolverAreaDepartamentoVista,
+} from '../config/departamentosStore.js';
 
 function extraerStatusNotas(notasReq, notasOc) {
   const n = String(notasReq || notasOc || '');
@@ -15,10 +19,21 @@ function extraerStatusNotas(notasReq, notasOc) {
   return '';
 }
 
+function camposAreaDeptoVista(area, departamento, indice) {
+  const r = resolverAreaDepartamentoVista(area, departamento, indice);
+  return {
+    area: r.area || '',
+    departamento: r.departamento || '',
+    // Compat: "depto" operativo = departamento resuelto
+    depto: r.departamento || r.area || '',
+  };
+}
+
 /**
  * Normaliza una fila de OC (+ REQ) al layout BASE GRAL.
  */
-function filaBaseGralDesdeOc(oc) {
+function filaBaseGralDesdeOc(oc, indice) {
+  const ad = camposAreaDeptoVista(oc.area, oc.departamento, indice);
   return {
     orden_compra: oc.datatextnow_id || '',
     fecha_po: oc.fecha_po || null,
@@ -37,9 +52,7 @@ function filaBaseGralDesdeOc(oc) {
     }),
     req_estado: oc.req_estado,
     oc_estado: oc.estado,
-    area: oc.area || '',
-    departamento: oc.departamento || '',
-    depto: oc.area || oc.departamento || '',
+    ...ad,
     compania: '31',
     tipo_servicio: oc.titulo_solicitud || '',
     status: extraerStatusNotas(oc.notas_req || oc.notas, oc.notas_oc),
@@ -49,7 +62,8 @@ function filaBaseGralDesdeOc(oc) {
 /**
  * Normaliza una fila de REQ (con o sin OC enlazada) al layout BASE GRAL.
  */
-function filaBaseGralDesdeReq(req) {
+function filaBaseGralDesdeReq(req, indice) {
+  const ad = camposAreaDeptoVista(req.area, req.departamento, indice);
   return {
     orden_compra: req.oc_datatextnow_id || '',
     fecha_po: req.oc_fecha_po || null,
@@ -68,9 +82,7 @@ function filaBaseGralDesdeReq(req) {
     }),
     req_estado: req.estado,
     oc_estado: req.oc_estado,
-    area: req.area || '',
-    departamento: req.departamento || '',
-    depto: req.area || req.departamento || '',
+    ...ad,
     compania: '31',
     tipo_servicio: req.titulo_solicitud || '',
     status: extraerStatusNotas(req.notas, null),
@@ -146,6 +158,7 @@ export async function generarReporteOrdenesCompra(req, res) {
       limite: 10000,
     });
 
+    const indice = await construirIndiceAreasDeptos();
     const filas = ocs.map((oc) =>
       filaBaseGralDesdeOc({
         ...oc,
@@ -153,7 +166,7 @@ export async function generarReporteOrdenesCompra(req, res) {
         notas_oc: oc.notas,
         req_estado: oc.req_estado,
         req_created_at: oc.req_created_at || oc.created_at,
-      })
+      }, indice)
     );
 
     const buffer = generarExcelBaseGral(filas);
@@ -281,15 +294,16 @@ export async function generarReporteStatusPOS(req, res) {
 
     // ── 3) Unir: primero OCs del año; luego REQs no cubiertos ───
     const mapa = new Map();
+    const indice = await construirIndiceAreasDeptos();
 
     for (const row of rowsOc) {
-      const fila = filaBaseGralDesdeOc(row);
+      const fila = filaBaseGralDesdeOc(row, indice);
       const key = claveFilaBaseGral(fila, `oc-${row.id}`);
       mapa.set(key, fila);
     }
 
     for (const row of rowsReq) {
-      const fila = filaBaseGralDesdeReq(row);
+      const fila = filaBaseGralDesdeReq(row, indice);
       const key = claveFilaBaseGral(fila, `req-${row.id}`);
       // Si ya hay fila por OC del mismo N°, no duplicar (la de OC tiene más datos de compra)
       if (mapa.has(key)) continue;

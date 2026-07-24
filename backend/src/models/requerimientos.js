@@ -1,5 +1,8 @@
 import pool from '../config/db.js';
-import { validarAreaDepartamento, obtenerAreas } from '../config/departamentosStore.js';
+import {
+  construirIndiceAreasDeptos,
+  aplicarVistaAreaDepto,
+} from '../config/departamentosStore.js';
 import { obtenerSiguienteConsecutivo } from '../utils/consecutivos.js';
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
@@ -7,6 +10,9 @@ import { obtenerSiguienteConsecutivo } from '../utils/consecutivos.js';
 /**
  * Listar requerimientos con filtros opcionales y paginación.
  * filtros: { estado, tipo, solicitante_id, busqueda, pagina, limite }
+ *
+ * Nota: `area`/`departamento` en BD pueden venir del import legacy
+ * (depto guardado en area). Se normalizan a la vista con el catálogo.
  */
 async function listar(filtros = {}) {
   const { estado, area, departamento, tipo, solicitante_id, busqueda, pagina = 1, limite = 20 } = filtros;
@@ -27,8 +33,30 @@ async function listar(filtros = {}) {
       params.push(...estados);
     }
   }
-  if (area)           { where.push('r.area = ?');                       params.push(area); }
-  if (departamento)   { where.push('r.departamento = ?');               params.push(departamento); }
+
+  const indiceVista = await construirIndiceAreasDeptos();
+
+  // Filtros de área/depto conscientes de datos legacy (depto en r.area)
+  if (area) {
+    const aKey = String(area).trim().toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const deptos = indiceVista.deptosDeArea.get(aKey) || [];
+    if (deptos.length) {
+      const placeholders = deptos.map(() => '?').join(',');
+      where.push(
+        `(r.area = ? OR r.departamento IN (${placeholders}) OR r.area IN (${placeholders}))`
+      );
+      params.push(area, ...deptos, ...deptos);
+    } else {
+      where.push('(r.area = ? OR r.departamento = ?)');
+      params.push(area, area);
+    }
+  }
+  if (departamento) {
+    // Legacy: depto a veces vive en r.area
+    where.push('(r.departamento = ? OR r.area = ?)');
+    params.push(departamento, departamento);
+  }
   if (tipo)           { where.push('r.tipo = ?');                       params.push(tipo); }
   if (solicitante_id) { where.push('r.solicitante_id = ?');             params.push(solicitante_id); }
   if (busqueda)       { where.push('(r.consecutivo LIKE ? OR r.notas LIKE ?)');
@@ -62,6 +90,10 @@ async function listar(filtros = {}) {
     `SELECT COUNT(*) AS total FROM requerimientos r ${clausulaWhere}`,
     params
   );
+
+  for (const row of rows) {
+    aplicarVistaAreaDepto(row, indiceVista);
+  }
 
   return { datos: rows, total, pagina: Number(pagina), limite: Number(limite) };
 }
@@ -146,28 +178,9 @@ async function obtenerPorId(id) {
     [id]
   );
 
-  // Intentar obtener código del departamento — primero validación exacta,
-  // luego fallback case-insensitive para datos históricos importados en mayúsculas.
-  const valDepto = await validarAreaDepartamento(req.area, req.departamento);
-  if (valDepto.ok && valDepto.departamento?.codigo) {
-    req.departamento_codigo = valDepto.departamento.codigo;
-  } else if (req.area && req.departamento) {
-    const areas = await obtenerAreas();
-    const areaKey = String(req.area || '').trim().toUpperCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const area = areas.find((a) => {
-      const idKey = String(a.id || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const labKey = String(a.label || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return idKey === areaKey || labKey === areaKey;
-    });
-    if (area) {
-      const deptoNorm = String(req.departamento).trim().toUpperCase();
-      const depto = (area.departamentos || []).find(
-        d => String(d.nombre).trim().toUpperCase() === deptoNorm
-      );
-      if (depto?.codigo) req.departamento_codigo = depto.codigo;
-    }
-  }
+  // Normalizar área/depto para la vista (legacy: depto en campo area, o campos invertidos)
+  const indiceVista = await construirIndiceAreasDeptos();
+  aplicarVistaAreaDepto(req, indiceVista);
 
   const [[cotSel]] = await pool.query(
     `SELECT

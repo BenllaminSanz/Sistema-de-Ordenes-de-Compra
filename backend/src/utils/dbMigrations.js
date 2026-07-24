@@ -99,6 +99,9 @@ export async function runDbMigrations() {
     "VARCHAR(5) NOT NULL DEFAULT 'es' COMMENT 'Idioma del correo RFQ: es o en' AFTER email_sent_at"
   );
 
+  // Email de proveedor opcional (tiendas / compra directa sin RFQ por correo)
+  await ensureProveedorEmailNullable();
+
   // Número de recibo por línea de recepción
   await addColumnIfMissing(
     'recepcion_items',
@@ -107,6 +110,36 @@ export async function runDbMigrations() {
   );
 
   logger.info('[migrate] Migraciones aplicadas');
+}
+
+/**
+ * Permite proveedores sin correo (p. ej. Walmart, tiendas de compra directa).
+ * Si la columna era NOT NULL, la relaja a NULL.
+ */
+async function ensureProveedorEmailNullable() {
+  if (!(await tableExists('proveedores'))) return;
+  if (!(await columnExists('proveedores', 'email'))) return;
+
+  const [rows] = await pool.query(
+    `SELECT IS_NULLABLE, COLUMN_TYPE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'proveedores'
+       AND COLUMN_NAME = 'email'
+     LIMIT 1`
+  );
+  const col = rows[0];
+  if (!col || col.IS_NULLABLE === 'YES') return;
+
+  const type = col.COLUMN_TYPE || 'VARCHAR(255)';
+  const comment = col.COLUMN_COMMENT
+    ? ` COMMENT ${pool.escape(col.COLUMN_COMMENT)}`
+    : " COMMENT 'Opcional: solo se usa para envío de RFQ por correo'";
+
+  await pool.query(
+    `ALTER TABLE proveedores MODIFY COLUMN email ${type} NULL${comment}`
+  );
+  logger.info('[migrate] proveedores.email ahora admite NULL');
 }
 
 async function ensureUnidadesMedidaTable() {

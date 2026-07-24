@@ -171,7 +171,7 @@ async function abrirModalProveedor(id = null) {
       const p = await Api.get(`/proveedores/${id}`);
       document.getElementById('prov-numero').value   = p.num_proveedor || '';
       document.getElementById('prov-nombre').value    = p.nombre;
-      document.getElementById('prov-email').value     = p.email;
+      document.getElementById('prov-email').value     = p.email || '';
       document.getElementById('prov-telefono').value  = p.telefono || '';
       document.getElementById('prov-rfc').value       = p.rfc || '';
       document.getElementById('prov-notas').value = p.notas || '';
@@ -199,10 +199,11 @@ document.getElementById('form-proveedor').addEventListener('submit', async e => 
     return;
   }
 
+  const emailRaw = document.getElementById('prov-email').value.trim();
   const datos = {
     num_proveedor,
     nombre:    document.getElementById('prov-nombre').value,
-    email:     document.getElementById('prov-email').value,
+    email:     emailRaw || null,
     telefono:  document.getElementById('prov-telefono').value || null,
     rfc:       document.getElementById('prov-rfc').value || null,
     notas: document.getElementById('prov-notas').value || null,

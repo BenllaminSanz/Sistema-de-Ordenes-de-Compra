@@ -7,6 +7,26 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-07-24
+
+Correcciones operativas: proveedores sin correo y vista Área/Departamento alineada al catálogo.
+
+### Añadido
+- Proveedores con **correo opcional** (p. ej. tiendas de compra directa: Walmart)
+- Migración automática: `proveedores.email` admite `NULL` al arrancar el backend
+
+### Corregido
+- **Vista Área / Depto** en listados, detalle, dashboard y reportes Excel:
+  - Datos legacy con depto guardado en `area` se muestran con área padre + depto
+  - Campos invertidos se corrigen en la respuesta
+  - Filtros de área/depto contemplan import histórico
+- Import Excel legacy: resuelve área padre desde el catálogo al guardar depto
+
+### Notas de despliegue
+- Migración ligera al arranque (nullable de email de proveedor); no borra datos
+- Conservar en el servidor: `.env`, `backend/uploads/`
+- Reiniciar Node/PM2 tras desplegar para aplicar migración y código
+
 ## [1.6.0] — 2026-07-24
 
 Reportes unificados, moneda EUR y mejoras de UI para operación diaria.

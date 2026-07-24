@@ -24,13 +24,16 @@ async function obtenerPorId(id) {
 }
 
 async function crear(datos) {
+  const email = datos.email != null && String(datos.email).trim()
+    ? String(datos.email).trim().toLowerCase()
+    : null;
   const [result] = await pool.query(
     `INSERT INTO proveedores (num_proveedor, nombre, email, telefono, rfc, notas)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
       normalizarNumProveedor(datos.num_proveedor),
       datos.nombre,
-      datos.email,
+      email,
       datos.telefono || null,
       datos.rfc || null,
       datos.notas || null
@@ -43,7 +46,16 @@ async function actualizar(id, datos) {
   const campos = {};
   ['num_proveedor', 'nombre', 'email', 'telefono', 'rfc', 'notas'].forEach(c => {
     if (datos[c] !== undefined) {
-      campos[c] = c === 'num_proveedor' ? normalizarNumProveedor(datos[c]) : datos[c];
+      if (c === 'num_proveedor') {
+        campos[c] = normalizarNumProveedor(datos[c]);
+      } else if (c === 'email') {
+        const e = datos[c] != null && String(datos[c]).trim()
+          ? String(datos[c]).trim().toLowerCase()
+          : null;
+        campos[c] = e;
+      } else {
+        campos[c] = datos[c];
+      }
     }
   });
   if (!Object.keys(campos).length) return 0;

@@ -274,11 +274,12 @@ function renderTopDepartamentos(s) {
     const meta = abiertos != null
       ? `${abiertos} abiertos · ${d.cerrados != null ? d.cerrados + ' cerrados' : (pct(+d.aprobados, +d.total) + '% con avance')}`
       : `${pct(+d.aprobados, +d.total)}% con avance`;
+    const label = [d.area, d.departamento].filter(Boolean).join(' / ') || d.departamento || '—';
     return `<div class="dist-row">
       <div class="dist-label-row">
         <span style="font-weight:600;font-size:12px;max-width:65%;overflow:hidden;
-                     text-overflow:ellipsis;white-space:nowrap" title="${UI.esc(d.departamento || '')}">
-          ${UI.esc(d.departamento || '—')}
+                     text-overflow:ellipsis;white-space:nowrap" title="${UI.esc(label)}">
+          ${UI.esc(label)}
         </span>
         <span style="font-size:12px">${d.total} req</span>
       </div>
@@ -340,14 +341,16 @@ function renderAging(s) {
           <th>Área / Depto</th>${colSolicitante}<th>Espera</th><th></th>
         </tr></thead>
         <tbody>${rows.map(r => {
-          const depto = r.departamento || r.area || '—';
+          const area = r.area || '';
+          const depto = r.departamento || '';
+          const areaDepto = [area, depto].filter(Boolean).join(' / ') || '—';
           return `
           <tr>
             <td class="fw-600">${r.consecutivo || '—'}</td>
             <td>${r.tipo || '—'}</td>
             <td>${UI.badge(r.estado || 'en_revision')}</td>
             <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                title="${UI.esc(depto)}">${UI.esc(depto)}</td>
+                title="${UI.esc(areaDepto)}">${UI.esc(areaDepto)}</td>
             ${esSolicitante ? '' : `<td>${UI.esc(r.solicitante || '—')}</td>`}
             <td>${badgeDias(r.dias_espera)}</td>
             <td><a href="requerimientos.html?id=${r.id}" class="btn btn-sm btn-outline">Ver</a></td>

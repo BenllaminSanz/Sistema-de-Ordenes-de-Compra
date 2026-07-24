@@ -42,23 +42,32 @@ async function obtener(req, res) {
   }
 }
 
+function normalizarEmail(valor) {
+  if (valor == null) return null;
+  const email = String(valor).trim().toLowerCase();
+  return email || null;
+}
+
 async function crear(req, res) {
   try {
-    const { num_proveedor, nombre, email, telefono, rfc, notas } = req.body;
-    if (!nombre || !email) {
-      return res.status(400).json({ mensaje: 'Nombre y email son requeridos' });
+    const { num_proveedor, nombre, telefono, rfc, notas } = req.body;
+    const email = normalizarEmail(req.body.email);
+    if (!nombre || !String(nombre).trim()) {
+      return res.status(400).json({ mensaje: 'El nombre es requerido' });
     }
 
     const errorNum = validarNumProveedor(num_proveedor, true);
     if (errorNum) return res.status(400).json({ mensaje: errorNum });
 
-    const id = await _crear({ num_proveedor, nombre, email, telefono, rfc, notas });
+    const id = await _crear({ num_proveedor, nombre: String(nombre).trim(), email, telefono, rfc, notas });
     res.status(201).json(await obtenerPorId(id));
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       const campo = String(err.message || '').includes('num_proveedor')
         ? 'número de proveedor'
-        : 'RFC';
+        : String(err.message || '').toLowerCase().includes('email')
+          ? 'email'
+          : 'RFC';
       return res.status(409).json({ mensaje: `Ya existe un proveedor con ese ${campo}` });
     }
     logger.error('[crear proveedor]', err);
@@ -73,14 +82,27 @@ async function actualizar(req, res) {
       if (errorNum) return res.status(400).json({ mensaje: errorNum });
     }
 
-    const afectados = await _actualizar(req.params.id, req.body);
+    const datos = { ...req.body };
+    if (datos.email !== undefined) {
+      datos.email = normalizarEmail(datos.email);
+    }
+    if (datos.nombre !== undefined) {
+      if (!datos.nombre || !String(datos.nombre).trim()) {
+        return res.status(400).json({ mensaje: 'El nombre es requerido' });
+      }
+      datos.nombre = String(datos.nombre).trim();
+    }
+
+    const afectados = await _actualizar(req.params.id, datos);
     if (!afectados) return res.status(404).json({ mensaje: 'Proveedor no encontrado' });
     res.json(await obtenerPorId(req.params.id));
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       const campo = String(err.message || '').includes('num_proveedor')
         ? 'número de proveedor'
-        : 'RFC';
+        : String(err.message || '').toLowerCase().includes('email')
+          ? 'email'
+          : 'RFC';
       return res.status(409).json({ mensaje: `Ya existe un proveedor con ese ${campo}` });
     }
     logger.error('[actualizar proveedor]', err);
@@ -105,7 +127,7 @@ async function cambiarEstado(req, res) {
 
 /**
  * Importa proveedores desde Excel.
- * Columnas esperadas (primeras 3): id/num_proveedor, nombre, correo/email
+ * Columnas esperadas (primeras 3): id/num_proveedor, nombre, correo/email (email opcional)
  * Si el num_proveedor ya existe, se omite.
  */
 async function importarExcel(req, res) {
@@ -156,7 +178,8 @@ async function importarExcel(req, res) {
         omitidos++;
         continue;
       }
-      if (!nombre || !email) {
+      // Nombre obligatorio; email opcional (p. ej. tiendas / compra directa)
+      if (!nombre) {
         omitidos++;
         continue;
       }
@@ -170,7 +193,7 @@ async function importarExcel(req, res) {
       try {
         await pool.query(
           'INSERT INTO proveedores (num_proveedor, nombre, email) VALUES (?, ?, ?)',
-          [num_proveedor, nombre, email]
+          [num_proveedor, nombre, email || null]
         );
         existentes.add(num_proveedor);
         nuevos++;

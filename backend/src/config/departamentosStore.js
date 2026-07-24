@@ -82,6 +82,218 @@ function normalizarClaveArea(valor) {
     .replace(/[\u0300-\u036f]/g, ''); // quita acentos solo para comparar
 }
 
+/** Clave de departamento: mayúsculas + sin acentos (misma base que área). */
+function normalizarClaveDepto(valor) {
+  return normalizarClaveArea(valor);
+}
+
+/**
+ * Construye el índice a partir de un arreglo de áreas (sync).
+ */
+export function construirIndiceDesdeAreas(areas) {
+  const porArea = new Map(); // clave área → { id, label, departamentos[] }
+  const porDepto = new Map(); // clave depto → { area, depto }
+  const deptosDeArea = new Map(); // clave área → string[] nombres depto
+
+  for (const area of areas || []) {
+    const entry = {
+      id: area.id,
+      label: area.label || area.id,
+      departamentos: area.departamentos || [],
+    };
+    const keys = new Set([
+      normalizarClaveArea(area.id),
+      normalizarClaveArea(area.label),
+    ]);
+    for (const k of keys) {
+      if (k) porArea.set(k, entry);
+    }
+
+    const nombresDepto = [];
+    for (const d of area.departamentos || []) {
+      const nombre = String(d.nombre || '').trim();
+      if (!nombre) continue;
+      nombresDepto.push(nombre);
+      const dk = normalizarClaveDepto(nombre);
+      // Si un depto se repite en varias áreas, conservar el primero
+      if (dk && !porDepto.has(dk)) {
+        porDepto.set(dk, { area: entry, depto: d });
+      }
+    }
+    for (const k of keys) {
+      if (k) deptosDeArea.set(k, nombresDepto);
+    }
+  }
+
+  return { porArea, porDepto, deptosDeArea };
+}
+
+/**
+ * Índice en memoria para resolver área↔depto (datos legacy y catálogo).
+ * El import histórico guardó el nombre de depto en `requerimientos.area`
+ * y dejó `departamento` vacío; a veces ambos campos vienen intercambiados.
+ */
+export async function construirIndiceAreasDeptos() {
+  const areas = await obtenerAreas();
+  return construirIndiceDesdeAreas(areas);
+}
+
+/** Versión síncrona (import Excel / scripts). */
+export function construirIndiceAreasDeptosSync() {
+  const data = cargarConfigSync();
+  return construirIndiceDesdeAreas(data.areas || []);
+}
+
+/**
+ * Corrige área/departamento para la vista y reportes.
+ *
+ * Casos:
+ * - Correcto: area = área del catálogo, departamento = depto hijo
+ * - Legacy: solo `area` relleno con nombre de depto → se infiere el área padre
+ * - Invertido: area tiene depto y departamento tiene área → se intercambian
+ * - Solo depto: se infiere el área si está en el catálogo
+ *
+ * @returns {{ area: string|null, departamento: string|null, departamento_codigo: string|null, resuelto: boolean, fuente: string }}
+ */
+export function resolverAreaDepartamentoVista(areaStored, deptoStored, indice) {
+  const aRaw = String(areaStored ?? '').trim() || null;
+  const dRaw = String(deptoStored ?? '').trim() || null;
+  const aKey = aRaw ? normalizarClaveArea(aRaw) : '';
+  const dKey = dRaw ? normalizarClaveDepto(dRaw) : '';
+
+  const empty = {
+    area: aRaw,
+    departamento: dRaw,
+    departamento_codigo: null,
+    resuelto: false,
+    fuente: 'sin_datos',
+  };
+  if (!aRaw && !dRaw) return empty;
+  if (!indice) {
+    return { ...empty, fuente: 'sin_indice' };
+  }
+
+  const { porArea, porDepto } = indice;
+
+  // A) Ambos rellenos y válidos en catálogo
+  if (aRaw && dRaw) {
+    const areaObj = porArea.get(aKey);
+    if (areaObj) {
+      const deptoMatch = (areaObj.departamentos || []).find(
+        (d) => normalizarClaveDepto(d.nombre) === dKey
+      );
+      if (deptoMatch) {
+        return {
+          area: areaObj.label,
+          departamento: deptoMatch.nombre,
+          departamento_codigo: deptoMatch.codigo || null,
+          resuelto: true,
+          fuente: 'catalogo',
+        };
+      }
+    }
+
+    // B) Invertidos: "area" es depto y "departamento" es área
+    const deptoEnArea = porDepto.get(aKey);
+    const areaEnDepto = porArea.get(dKey);
+    if (deptoEnArea && areaEnDepto) {
+      // Preferir el depto localizado por nombre (puede estar en otra área del catálogo)
+      return {
+        area: deptoEnArea.area.label,
+        departamento: deptoEnArea.depto.nombre,
+        departamento_codigo: deptoEnArea.depto.codigo || null,
+        resuelto: true,
+        fuente: 'invertido',
+      };
+    }
+    if (deptoEnArea && !areaObj) {
+      return {
+        area: deptoEnArea.area.label,
+        departamento: deptoEnArea.depto.nombre,
+        departamento_codigo: deptoEnArea.depto.codigo || null,
+        resuelto: true,
+        fuente: 'invertido_parcial',
+      };
+    }
+  }
+
+  // C) Solo "area" (import legacy: depto en columna Area)
+  if (aRaw && !dRaw) {
+    const comoDepto = porDepto.get(aKey);
+    if (comoDepto) {
+      return {
+        area: comoDepto.area.label,
+        departamento: comoDepto.depto.nombre,
+        departamento_codigo: comoDepto.depto.codigo || null,
+        resuelto: true,
+        fuente: 'legacy_depto_en_area',
+      };
+    }
+    const comoArea = porArea.get(aKey);
+    if (comoArea) {
+      return {
+        area: comoArea.label,
+        departamento: null,
+        departamento_codigo: null,
+        resuelto: true,
+        fuente: 'solo_area',
+      };
+    }
+    // Valor desconocido: históricamente venía de "Depto" → mostrar en Departamento
+    return {
+      area: null,
+      departamento: aRaw,
+      departamento_codigo: null,
+      resuelto: false,
+      fuente: 'legacy_desconocido',
+    };
+  }
+
+  // D) Solo departamento
+  if (!aRaw && dRaw) {
+    const comoDepto = porDepto.get(dKey);
+    if (comoDepto) {
+      return {
+        area: comoDepto.area.label,
+        departamento: comoDepto.depto.nombre,
+        departamento_codigo: comoDepto.depto.codigo || null,
+        resuelto: true,
+        fuente: 'solo_depto',
+      };
+    }
+    return {
+      area: null,
+      departamento: dRaw,
+      departamento_codigo: null,
+      resuelto: false,
+      fuente: 'solo_depto_desconocido',
+    };
+  }
+
+  // E) Ambos rellenos pero no casan con catálogo: devolver tal cual
+  return {
+    area: aRaw,
+    departamento: dRaw,
+    departamento_codigo: null,
+    resuelto: false,
+    fuente: 'sin_match',
+  };
+}
+
+/** Aplica resolución de vista sobre un objeto con area/departamento. */
+export function aplicarVistaAreaDepto(row, indice) {
+  if (!row) return row;
+  const r = resolverAreaDepartamentoVista(row.area, row.departamento, indice);
+  row.area = r.area;
+  row.departamento = r.departamento;
+  if (r.departamento_codigo) {
+    row.departamento_codigo = r.departamento_codigo;
+  } else if (row.departamento_codigo == null) {
+    row.departamento_codigo = null;
+  }
+  return row;
+}
+
 export async function validarAreaDepartamento(areaId, departamentoNombre) {
   if (!areaId || !departamentoNombre) {
     return { ok: false, mensaje: 'Área y departamento son requeridos' };

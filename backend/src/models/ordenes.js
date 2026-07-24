@@ -8,6 +8,10 @@ import {
 import { validarCierreOrden } from '../utils/ocCierre.js';
 import { calcularTotalesCatalogoRequerimiento } from '../utils/catalogoItems.js';
 import { siguienteConsecutivoNumerico } from '../utils/consecutivos.js';
+import {
+  construirIndiceAreasDeptos,
+  aplicarVistaAreaDepto,
+} from '../config/departamentosStore.js';
 
 /** Usa el mismo consecutivo numérico del requerimiento de origen. */
 async function generarNumeroOC(conn, requerimiento_id) {
@@ -141,6 +145,11 @@ async function listar(filtros = {}) {
      ${joinsFiltro}
      ${whereClause}`, params
   );
+
+  const indiceVista = await construirIndiceAreasDeptos();
+  for (const row of rows) {
+    aplicarVistaAreaDepto(row, indiceVista);
+  }
 
   return { datos: rows, total, pagina: Number(pagina), limite: Number(limite) };
 }

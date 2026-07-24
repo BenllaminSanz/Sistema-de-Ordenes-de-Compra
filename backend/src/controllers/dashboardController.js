@@ -1,4 +1,8 @@
 import pool from '../config/db.js';
+import {
+  construirIndiceAreasDeptos,
+  aplicarVistaAreaDepto,
+} from '../config/departamentosStore.js';
 
 /**
  * GET /api/dashboard/stats
@@ -10,7 +14,8 @@ import pool from '../config/db.js';
  * - solicitante → solo sus REQ y OC (vía r.solicitante_id)
  *
  * Notas post-carga histórica:
- * - El import BASE GRAL guarda el depto en `requerimientos.area` (departamento suele ir vacío).
+ * - El import BASE GRAL a veces guardó el depto en `requerimientos.area`
+ *   (departamento vacío). La API normaliza con el catálogo al responder.
  * - Ciclo real se calcula con fecha_po / fecha solicitud, no solo created_at (import crea ambos el mismo día).
  */
 function resolverAlcanceDashboard(usuario) {
@@ -186,10 +191,11 @@ export async function getStats(req, res, next) {
 
       // 7. Aging: REQ en_revision / aprobado / incompleto más antiguos
       //    IMPORTANTE: filtrar por r.solicitante_id cuando es solicitante
+      //    area/departamento crudos; se normalizan con catálogo antes de responder
       pool.query(`
         SELECT r.id, r.consecutivo, r.tipo,
                r.solicitante_id,
-               ${deptoExpr} AS departamento,
+               r.departamento,
                r.area,
                u.nombre AS solicitante,
                r.estado,
@@ -256,6 +262,23 @@ export async function getStats(req, res, next) {
 
     ]);
 
+    const indiceVista = await construirIndiceAreasDeptos();
+    const agingNormalizado = (agingReqs[0] || []).map((row) => {
+      aplicarVistaAreaDepto(row, indiceVista);
+      return row;
+    });
+
+    // Top deptos: preferir departamento resuelto del catálogo sobre el alias SQL legacy
+    const topDeptosNormalizados = (topDepartamentos[0] || []).map((row) => {
+      const r = { area: row.departamento, departamento: null };
+      aplicarVistaAreaDepto(r, indiceVista);
+      return {
+        ...row,
+        departamento: r.departamento || r.area || row.departamento,
+        area: r.area || null,
+      };
+    });
+
     res.json({
       anio,
       alcance: esSolicitante ? 'propio' : 'global',
@@ -267,9 +290,9 @@ export async function getStats(req, res, next) {
       estados_oc_hist: estadosOCHist[0],
       gasto_por_tipo: gastoPorTipo[0],
       top_proveedores: topProveedores[0],
-      top_departamentos: topDepartamentos[0],
+      top_departamentos: topDeptosNormalizados,
       ciclo: cicloPromedio[0][0],
-      aging_reqs: agingReqs[0],
+      aging_reqs: agingNormalizado,
       oc_activas_resumen: ocActivasResumen[0],
       oc_sin_recibir: ocSinRecibir[0],
       volumen_mensual: volumenMensual[0],
