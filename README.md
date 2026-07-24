@@ -1,11 +1,17 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.5.0** — Julio 2026
+**Versión 1.6.0** — Julio 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · **Manual al subir cambios:** [docs/MANUAL-GIT-GITHUB.md](./docs/MANUAL-GIT-GITHUB.md)  
-**Presentación v1.5.0:** [docs/PRESENTACION-v1.5.0.md](./docs/PRESENTACION-v1.5.0.md) · [docs/Presentacion-Sistema-OC-v1.5.0.pptx](./docs/Presentacion-Sistema-OC-v1.5.0.pptx)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md)
+
+## Novedades v1.6.0
+
+- Reportes **General / REQ / OC** con layout BASE GRAL unificado (`No. proveedor`, `Area`, `Departamento`)
+- **General (Dashboard)**: REQ + OC del año en un solo Excel
+- Moneda **EUR**; import catálogo layout proveedor (Suessen / PART NUMBER)
+- Botones Excel homologados; listado OC sin columna Requerimiento
 
 ## Novedades v1.5.0
 

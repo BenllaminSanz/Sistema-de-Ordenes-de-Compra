@@ -904,8 +904,7 @@ body.catalogo-con-carrito #main-content {
 }
 #tabla-oc .tabla-oc-listado col.col-po-dtn    { width: 7.25rem; }  /* ref. 310006877 (9 dígitos) */
 #tabla-oc .tabla-oc-listado col.col-fecha-po  { width: 6.5rem; }   /* "17 jul 2026" */
-#tabla-oc .tabla-oc-listado col.col-req       { width: 5.75rem; }
-#tabla-oc .tabla-oc-listado col.col-no-oc     { width: 5.5rem; }
+#tabla-oc .tabla-oc-listado col.col-no-oc     { width: 6.5rem; }   /* 2026P-214 / sufijos A-B-C */
 #tabla-oc .tabla-oc-listado col.col-tipo      { width: 5.75rem; }  /* PARTES / SERVICIOS / FLETES */
 #tabla-oc .tabla-oc-listado col.col-proveedor { width: auto; }     /* resto del ancho */
 #tabla-oc .tabla-oc-listado col.col-monto     { width: 7.25rem; }

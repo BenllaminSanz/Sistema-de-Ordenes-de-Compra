@@ -24,9 +24,14 @@
               <p class="page-subtitle" id="oc-subtitle"></p>
             </div>
             <div class="page-header-actions" id="oc-admin-actions" style="display:none;">
-              <button type="button" class="btn btn-outline btn-sm" onclick="exportarOrdenesExcel()"
-                      title="Exportar listado de OC a Excel (respeta filtros actuales)">
-                ↓ Exportar Excel
+              <button type="button" id="btn-exportar-oc" class="btn btn-outline btn-sm"
+                      onclick="exportarOrdenesExcel(this)"
+                      title="Exportar OC en layout BASE GRAL (respeta filtros actuales)">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Exportar Excel
               </button>
             </div>
           </div>

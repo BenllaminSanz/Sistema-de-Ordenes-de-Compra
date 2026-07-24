@@ -256,20 +256,156 @@ function parseHojaLegacy(data, filas, meta) {
 
 // ── Parse BASE GRAL ───────────────────────────────────────────────────────────
 
+/**
+ * Resuelve índices de columna para BASE GRAL.
+ * - Unificado (export actual): No. proveedor | Proveedor | … | Area | Departamento | …
+ * - Legacy Contabilidad: Proveedor combinado | … | Depto | …
+ */
+function resolverMapaBaseGral(headerRow) {
+  // Defaults = layout unificado (export General / REQ / OC)
+  const map = {
+    po: 0,
+    fechaPo: 1,
+    n: 2,
+    fechaSol: 3,
+    tipo: 4,
+    noProv: 5,
+    proveedor: 6,
+    total: 7,
+    moneda: 8,
+    usuario: 9,
+    estado: 10,
+    area: 11,
+    departamento: 12,
+    compania: 13,
+    tipoServicio: 14,
+    usuario2: 15,
+    status: 16,
+    legacy: false,
+  };
+
+  if (!headerRow || !Array.isArray(headerRow)) return map;
+
+  const cells = headerRow.map(normHeader);
+  const findIdx = (...patterns) => {
+    for (let i = 0; i < cells.length; i++) {
+      for (const p of patterns) {
+        if (p.test(cells[i])) return i;
+      }
+    }
+    return -1;
+  };
+
+  const hasNoProv = cells.some((c) => /no\.?\s*proveedor|num(ero)?\s*proveedor|vendor/.test(c));
+  const hasArea = cells.some((c) => c === 'area' || c === 'área' || c === 'area ');
+  const hasDeptoSolo = cells.some((c) => c === 'depto' || c === 'departamento' || c.includes('depto'));
+  // Layout viejo: sin "No. proveedor" y con columna Depto (no Area+Departamento)
+  const esLegacy =
+    !hasNoProv &&
+    hasDeptoSolo &&
+    !cells.some((c) => c === 'area') &&
+    cells.length <= 16;
+
+  if (esLegacy || (!hasNoProv && cells[5] && !/no\.?\s*proveedor|num/.test(cells[5]))) {
+    // Layout Contabilidad original (15 cols)
+    return {
+      po: 0,
+      fechaPo: 1,
+      n: 2,
+      fechaSol: 3,
+      tipo: 4,
+      noProv: -1,
+      proveedor: 5,
+      total: 6,
+      moneda: 7,
+      usuario: 8,
+      estado: 9,
+      area: 10, // Depto → area al importar (histórico)
+      departamento: -1,
+      compania: 11,
+      tipoServicio: 12,
+      usuario2: 13,
+      status: 14,
+      legacy: true,
+    };
+  }
+
+  // Layout unificado: preferir detección por nombre de encabezado
+  const setIf = (key, ...patterns) => {
+    const i = findIdx(...patterns);
+    if (i >= 0) map[key] = i;
+  };
+  setIf('po', /orden de compra/, /^po$/, /^oc$/);
+  setIf('fechaPo', /^fecha$/, /fecha\s*(de\s*)?po/, /fecha\s*po/);
+  setIf('n', /^n$/, /^n°$/, /^nº$/, /^no\.?$/, /consecutivo/);
+  setIf('fechaSol', /fecha de solicitud/, /fecha\s*sol/);
+  setIf('tipo', /^tipo$/);
+  setIf('noProv', /no\.?\s*proveedor/, /num(ero)?\s*proveedor/, /^vendor/);
+  setIf('proveedor', /^proveedor$/, /nombre\s*proveedor/, /^supplier$/);
+  setIf('total', /^total$/);
+  setIf('moneda', /^moneda$/, /^currency$/);
+  setIf('usuario', /^usuario$/);
+  setIf('estado', /^estado$/);
+  setIf('area', /^area$/, /^área$/);
+  setIf('departamento', /^departamento$/, /^depto$/);
+  setIf('compania', /compania/, /compañia/, /company/);
+  setIf('tipoServicio', /tipo de servicio/, /^descripcion$/, /^description$/);
+  setIf('status', /^status$/, /^estatus$/);
+
+  // Segunda columna Usuario (si hay dos)
+  const usuarioIdxs = cells
+    .map((c, i) => (c === 'usuario' ? i : -1))
+    .filter((i) => i >= 0);
+  if (usuarioIdxs.length >= 2) {
+    map.usuario = usuarioIdxs[0];
+    map.usuario2 = usuarioIdxs[1];
+  }
+
+  return map;
+}
+
+function cellAt(row, idx) {
+  if (idx == null || idx < 0 || !row) return '';
+  const v = row[idx];
+  if (v == null || v === '') return '';
+  return v;
+}
+
 function parseHojaBaseGral(data, filas, meta) {
+  const map = resolverMapaBaseGral(data[0] || []);
+  if (map.legacy) meta.layoutBaseGral = 'legacy_depto';
+  else meta.layoutBaseGral = 'unificado';
+
   for (let r = 1; r < data.length; r++) {
     const row = data[r];
     if (!row) continue;
 
-    const consecutivo = row[2] != null && row[2] !== '' ? String(row[2]).trim() : '';
-    const ocRaw = row[0];
-    const descripcion = String(row[12] || '').trim();
-    const proveedor = String(row[5] || '').trim();
-    const usuario = String(row[8] || '').trim() || String(row[13] || '').trim();
-    const estadoExcel = String(row[9] || '').trim();
-    const statusTxt = String(row[14] || '').trim();
-    const tipoExcel = String(row[4] || '').trim();
-    const depto = String(row[10] || '').trim();
+    const consecutivo =
+      cellAt(row, map.n) != null && cellAt(row, map.n) !== ''
+        ? String(cellAt(row, map.n)).trim()
+        : '';
+    const ocRaw = cellAt(row, map.po);
+    const descripcion = String(cellAt(row, map.tipoServicio) || '').trim();
+    const noProv = map.noProv >= 0 ? String(cellAt(row, map.noProv) || '').trim() : '';
+    const nombreProv = String(cellAt(row, map.proveedor) || '').trim();
+    // Proveedor combinado o "num-nombre"
+    let proveedor = nombreProv;
+    if (noProv && nombreProv && !nombreProv.startsWith(noProv)) {
+      proveedor = `${noProv}-${nombreProv}`;
+    } else if (noProv && !nombreProv) {
+      proveedor = noProv;
+    }
+    const usuario =
+      String(cellAt(row, map.usuario) || '').trim() ||
+      String(cellAt(row, map.usuario2) || '').trim();
+    const estadoExcel = String(cellAt(row, map.estado) || '').trim();
+    const statusTxt = String(cellAt(row, map.status) || '').trim();
+    const tipoExcel = String(cellAt(row, map.tipo) || '').trim();
+    const areaVal = String(cellAt(row, map.area) || '').trim() || null;
+    const deptoVal =
+      map.departamento >= 0
+        ? String(cellAt(row, map.departamento) || '').trim() || null
+        : null;
 
     if (!consecutivo && !descripcion && !proveedor && (ocRaw === '' || ocRaw == null)) {
       continue;
@@ -315,16 +451,19 @@ function parseHojaBaseGral(data, filas, meta) {
       avisos.length ? `Import: ${avisos.join('; ')}` : '',
     ].filter(Boolean);
 
+    const totalRaw = cellAt(row, map.total);
+    const monedaRaw = cellAt(row, map.moneda);
+
     filas.push({
       filaExcel: r + 1,
       layout: 'base_gral',
       consecutivo,
       tipo: detectarTipo(consecutivo, tipoExcel),
-      fecha_sol: excelDateToISO(row[3]),
-      fecha_po: excelDateToISO(row[1]),
+      fecha_sol: excelDateToISO(cellAt(row, map.fechaSol)),
+      fecha_po: excelDateToISO(cellAt(row, map.fechaPo)),
       proveedor,
-      area: depto || null,
-      departamento: null,
+      area: areaVal,
+      departamento: deptoVal,
       titulo: descripcion || consecutivo,
       descripcion,
       notas: notasParts.join(' | '),
@@ -333,8 +472,11 @@ function parseHojaBaseGral(data, filas, meta) {
       oc_numero: po,
       po_na: poNa,
       sin_po: poInfo.sinPo && !poNa,
-      total: row[6] !== '' && row[6] != null ? parseFloat(String(row[6]).replace(',', '')) || null : null,
-      moneda: String(row[7] || '').trim() || null,
+      total:
+        totalRaw !== '' && totalRaw != null
+          ? parseFloat(String(totalRaw).replace(/,/g, '')) || null
+          : null,
+      moneda: String(monedaRaw || '').trim() || null,
       estado_excel: estadoExcel,
       reqEstado: mapEst.reqEstado,
       crearOc,
@@ -444,25 +586,46 @@ export function parseExcelRequerimientos(buffer) {
   };
 }
 
-// ── COLORES / EXPORT (sin cambios de contrato) ────────────────────────────────
+// ── COLORES / EXPORT BASE GRAL ────────────────────────────────────────────────
 
 const FILL_ROSA = { fgColor: { rgb: 'E59EDD' } };
 const FILL_VERDE = { fgColor: { rgb: 'B4E5A2' } };
 const FILL_AMARILLO = { fgColor: { rgb: 'FFFF00' } };
 const FILL_NONE = {};
 
-function fillPorEstado(req) {
-  if (req.estado === 'rechazado') return FILL_AMARILLO;
-  if (req.estado !== 'aprobado' && req.estado !== 'cerrado') return FILL_NONE;
-  if (req.oc_estado === 'cerrada' || req.oc_estado === 'recibida') return FILL_ROSA;
-  if (req.oc_estado) return FILL_VERDE;
-  return FILL_NONE;
-}
+/**
+ * Layout unificado BASE GRAL — General (Dashboard), REQ y OC.
+ * No. proveedor separado; Area + Departamento (reemplaza Centro/Depto).
+ */
+export const HEADERS_BASE_GRAL = [
+  'Orden de compra',
+  'Fecha',
+  'N°',
+  'Fecha de solicitud',
+  'Tipo',
+  'No. proveedor',
+  'Proveedor',
+  'Total',
+  'Moneda',
+  'Usuario',
+  'Estado',
+  'Area',
+  'Departamento',
+  'Compañía',
+  'Tipo de servicio',
+  'Usuario',
+  'Status',
+];
 
-function cellStyle(fill) {
-  if (!fill.fgColor) return {};
-  return { fill: { patternType: 'solid', fgColor: fill.fgColor } };
-}
+/** @deprecated alias — mismo layout unificado */
+export const HEADERS_BASE_GRAL_ANUAL = HEADERS_BASE_GRAL;
+
+const COLS_BASE_GRAL = [
+  { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 },
+  { wch: 12 }, { wch: 36 }, { wch: 12 }, { wch: 8 }, { wch: 22 },
+  { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 44 },
+  { wch: 22 }, { wch: 36 },
+];
 
 const HEADER_STYLE = {
   font: { bold: true, color: { rgb: 'FFFFFF' } },
@@ -470,114 +633,202 @@ const HEADER_STYLE = {
   alignment: { horizontal: 'center' },
 };
 
+function fillPorEstadoSistema({ estado, oc_estado }) {
+  if (estado === 'rechazado' || oc_estado === 'cancelada') return FILL_AMARILLO;
+  if (estado !== 'aprobado' && estado !== 'cerrado') return FILL_NONE;
+  if (oc_estado === 'cerrada' || oc_estado === 'recibida') return FILL_ROSA;
+  if (oc_estado) return FILL_VERDE;
+  return FILL_NONE;
+}
+
+function cellStyle(fill) {
+  if (!fill?.fgColor) return {};
+  return { fill: { patternType: 'solid', fgColor: fill.fgColor } };
+}
+
+/** Formato de fecha dd/mm/yyyy como en el Excel de Contabilidad. */
+export function formatFechaBaseGral(v) {
+  if (!v) return '';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+    const [y, m, d] = v.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 /**
- * Genera Excel de exportación en layout BASE GRAL (PO → Fecha → N°…),
- * alineado al archivo de Contabilidad.
+ * Columna "Estado" del BASE GRAL (etiquetas Contabilidad).
+ * Prioriza estado de OC cuando existe.
  */
-export function generarExcelRequerimientos(reqs) {
+export function estadoExcelDesdeSistema({ estado, oc_estado } = {}) {
+  if (oc_estado === 'cancelada' || estado === 'rechazado') return 'Cancelada';
+  if (oc_estado === 'cerrada') return 'Cerrada';
+  if (oc_estado === 'recibida') return 'Recibida';
+  if (oc_estado === 'distribuida') return 'Distribuida';
+  if (oc_estado === 'en_proceso') return 'En proceso';
+  if (oc_estado === 'generada') return 'Generada';
+  if (oc_estado) {
+    return String(oc_estado).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  }
+  if (estado === 'borrador') return 'Borrador';
+  if (estado === 'en_revision') return 'En revisión';
+  if (estado === 'incompleto') return 'Incompleto';
+  if (estado === 'aprobado') return 'Aprobado';
+  if (estado === 'cerrado') return 'Cerrado';
+  return String(estado || '').trim() || '';
+}
+
+/**
+ * Formatea proveedor como en Contabilidad: "155-RIETER AMERICA LLC"
+ */
+export function formatoProveedorBaseGral(num, nombre) {
+  const n = num != null && String(num).trim() !== '' ? String(num).trim() : '';
+  const name = nombre != null ? String(nombre).trim() : '';
+  if (n && name) return `${n}-${name}`;
+  return name || n || '';
+}
+
+/**
+ * Genera buffer xlsx en layout BASE GRAL unificado (General / REQ / OC).
+ * Una sola hoja Hoja1 con No. proveedor + Area + Departamento.
+ * @param {Array<object>} filas objetos normalizados o filas ya listas
+ * @param {object} [opts]
+ * @param {string} [opts.sheetName='Hoja1']
+ */
+export function generarExcelBaseGral(filas = [], opts = {}) {
+  const sheetName = opts.sheetName || 'Hoja1';
+  const headers = HEADERS_BASE_GRAL;
+
   const wb = XLSX.utils.book_new();
+  const wsData = [headers];
+  const wsStyles = [headers.map(() => HEADER_STYLE)];
 
-  const HEADERS = [
-    'Orden de compra',
-    'Fecha',
-    'N°',
-    'Fecha de solicitud',
-    'Tipo',
-    'Proveedor',
-    'Total',
-    'Moneda',
-    'Usuario',
-    'Estado',
-    'Depto',
-    'Compañía',
-    'Tipo de servicio',
-    'Usuario',
-    'Status',
-  ];
+  for (const f of filas) {
+    const estado = f.estado != null ? f.estado : estadoExcelDesdeSistema({
+      estado: f.req_estado || f.estado_req,
+      oc_estado: f.oc_estado,
+    });
+    const fill = f._fill || fillPorEstadoSistema({
+      estado: f.req_estado || f.estado_req || f.estado_sistema,
+      oc_estado: f.oc_estado,
+    });
+    const style = cellStyle(fill);
+    const usuario = f.usuario || f.solicitante_nombre || '';
+    const total =
+      f.total != null && f.total !== ''
+        ? Number(f.total)
+        : (f.oc_monto_total != null ? Number(f.oc_monto_total) : (f.monto_total != null ? Number(f.monto_total) : ''));
+    const moneda = f.moneda ?? f.oc_moneda ?? '';
+    const tipoServicio = f.tipo_servicio ?? f.titulo_solicitud ?? f.descripcion ?? f.notas ?? '';
+    const status = f.status ?? f.status_texto ?? f.notas_status ?? '';
 
-  const formatDate = (v) => {
-    if (!v) return '';
-    const d = new Date(v);
-    return Number.isNaN(d.getTime())
-      ? ''
-      : d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  const statusText = (req) => {
-    if (req.estado === 'rechazado') return 'RECHAZADO';
-    if (req.estado === 'borrador') return 'BORRADOR';
-    if (req.estado === 'en_revision') return 'EN REVISIÓN';
-    if (req.estado === 'incompleto') return 'INCOMPLETO';
-    if (req.oc_estado === 'cerrada' || req.oc_estado === 'recibida') return 'Cerrada';
-    if (req.oc_estado === 'distribuida') return 'Distribuida';
-    if (req.oc_estado) return 'En proceso';
-    if (req.estado === 'cerrado') return 'Cerrado';
-    if (req.estado === 'aprobado') return 'Aprobado';
-    return String(req.estado || '').toUpperCase();
-  };
-
-  const TIPOS = ['PARTES', 'SERVICIOS', 'FLETES'];
-  let algunaHoja = false;
-
-  for (const tipo of TIPOS) {
-    const reqs_tipo = reqs.filter((r) => (r.tipo || 'SERVICIOS') === tipo);
-    if (!reqs_tipo.length) continue;
-    algunaHoja = true;
-
-    const wsData = [HEADERS];
-    const wsStyles = [HEADERS.map(() => HEADER_STYLE)];
-
-    for (const req of reqs_tipo) {
-      const fill = fillPorEstado(req);
-      const style = cellStyle(fill);
-      const prov =
-        req.proveedor_num && req.proveedor_nombre
-          ? `${req.proveedor_num}-${req.proveedor_nombre}`
-          : req.proveedor_nombre || '';
-
-      const rowData = [
-        req.oc_datatextnow_id || req.oc_numero || '',
-        req.oc_fecha_po ? formatDate(req.oc_fecha_po) : '',
-        req.consecutivo,
-        formatDate(req.created_at),
-        req.tipo || '',
-        prov,
-        req.oc_monto_total != null ? Number(req.oc_monto_total) : '',
-        req.oc_moneda || '',
-        req.solicitante_nombre || '',
-        statusText(req),
-        req.area || req.departamento || '',
-        '31',
-        req.titulo_solicitud || req.notas || '',
-        req.solicitante_nombre || '',
-        req.notas || '',
-      ];
-      wsData.push(rowData);
-      wsStyles.push(rowData.map(() => style));
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let R = range.s.r; R <= range.e.r; R++) {
-      for (let C = range.s.c; C <= range.e.c; C++) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!ws[addr]) continue;
-        ws[addr].s = wsStyles[R]?.[C] || {};
+    const noProv =
+      f.proveedor_num != null && String(f.proveedor_num).trim() !== ''
+        ? String(f.proveedor_num).trim()
+        : '';
+    let nomFinal =
+      f.proveedor_nombre != null && String(f.proveedor_nombre).trim() !== ''
+        ? String(f.proveedor_nombre).trim()
+        : '';
+    let numFinal = noProv;
+    // Si solo vino combinado "155-NOMBRE", intentar separar
+    if (!numFinal && f.proveedor && String(f.proveedor).includes('-')) {
+      const m = String(f.proveedor).match(/^(\d+)\s*-\s*(.+)$/);
+      if (m) {
+        numFinal = m[1];
+        nomFinal = nomFinal || m[2].trim();
       }
     }
-    ws['!cols'] = [
-      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 },
-      { wch: 32 }, { wch: 12 }, { wch: 8 }, { wch: 22 }, { wch: 14 },
-      { wch: 18 }, { wch: 8 }, { wch: 40 }, { wch: 18 }, { wch: 36 },
+    if (!nomFinal && f.proveedor) {
+      nomFinal = String(f.proveedor).replace(/^\d+\s*-\s*/, '').trim();
+    }
+
+    const rowData = [
+      f.orden_compra ?? f.po ?? f.oc_datatextnow_id ?? f.oc_numero ?? '',
+      f.fecha ?? (f.fecha_po ? formatFechaBaseGral(f.fecha_po) : ''),
+      f.n ?? f.consecutivo ?? '',
+      f.fecha_solicitud ?? (f.created_at || f.fecha_sol ? formatFechaBaseGral(f.created_at || f.fecha_sol) : ''),
+      f.tipo || '',
+      numFinal,
+      nomFinal,
+      total,
+      moneda,
+      usuario,
+      estado,
+      f.area ?? '',
+      f.departamento ?? '',
+      f.compania ?? f.compañia ?? '31',
+      tipoServicio,
+      f.usuario2 ?? usuario,
+      status,
     ];
-    XLSX.utils.book_append_sheet(wb, ws, tipo);
+
+    wsData.push(rowData);
+    wsStyles.push(rowData.map(() => style));
   }
 
-  // Si no hay datos, hoja vacía con headers
-  if (!algunaHoja) {
-    const ws = XLSX.utils.aoa_to_sheet([HEADERS]);
-    XLSX.utils.book_append_sheet(wb, ws, 'PARTES');
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws[addr]) continue;
+      ws[addr].s = wsStyles[R]?.[C] || {};
+    }
   }
+  ws['!cols'] = COLS_BASE_GRAL;
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
+}
+
+/**
+ * Export de requerimientos → layout BASE GRAL unificado (igual que General y OC).
+ */
+export function generarExcelRequerimientos(reqs) {
+  const filas = (reqs || []).map((req) => {
+    const statusNotas = (() => {
+      const n = String(req.notas || '');
+      // Si las notas guardan "Status: …" del import, preferir solo esa bitácora
+      const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
+      if (m) return m[1].trim();
+      // Evitar duplicar la descripción completa en Status si ya va en Tipo de servicio
+      if (n && n !== (req.titulo_solicitud || '')) return n;
+      return '';
+    })();
+
+    return {
+      orden_compra: req.oc_datatextnow_id || '',
+      fecha_po: req.oc_fecha_po,
+      consecutivo: req.consecutivo,
+      created_at: req.created_at,
+      tipo: req.tipo || '',
+      proveedor_num: req.proveedor_num,
+      proveedor_nombre: req.proveedor_nombre,
+      oc_monto_total: req.oc_monto_total,
+      oc_moneda: req.oc_moneda || '',
+      solicitante_nombre: req.solicitante_nombre || '',
+      estado: estadoExcelDesdeSistema({ estado: req.estado, oc_estado: req.oc_estado }),
+      req_estado: req.estado,
+      oc_estado: req.oc_estado,
+      area: req.area || '',
+      departamento: req.departamento || '',
+      titulo_solicitud: req.titulo_solicitud || '',
+      status: statusNotas,
+      _fill: fillPorEstadoSistema({ estado: req.estado, oc_estado: req.oc_estado }),
+    };
+  });
+
+  // Orden similar al archivo Contabilidad: por fecha PO / creación, luego N°
+  filas.sort((a, b) => {
+    const fa = a.fecha_po || a.created_at || '';
+    const fb = b.fecha_po || b.created_at || '';
+    const cmp = String(fa).localeCompare(String(fb));
+    if (cmp !== 0) return cmp;
+    return String(a.consecutivo || '').localeCompare(String(b.consecutivo || ''), 'es', { numeric: true });
+  });
+
+  return generarExcelBaseGral(filas);
 }

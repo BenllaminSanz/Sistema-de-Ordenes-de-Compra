@@ -1,10 +1,17 @@
 // ── EXPORT / IMPORT EXCEL ────────────────────────────────────────────────────
 
 async function exportarRequerimientos(btn) {
-  const original = btn.textContent;
-  btn.disabled   = true;
-  btn.textContent = 'Generando…';
+  if (window.ExcelUI?.descargar) {
+    await ExcelUI.descargar('/requerimientos/exportar', {
+      btn,
+      successMsg: 'BASE GRAL de requerimientos descargado',
+      loadingText: 'Generando…',
+    });
+    return;
+  }
+  // Fallback sin ExcelUI
   try {
+    setButtonLoading?.(btn, true, 'Generando…');
     const response = await fetch('/api/requerimientos/exportar', {
       headers: { Authorization: `Bearer ${Auth.getToken()}` },
     });
@@ -12,21 +19,20 @@ async function exportarRequerimientos(btn) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.mensaje || 'Error al exportar');
     }
-    const blob     = await response.blob();
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    const fecha    = new Date().toISOString().slice(0, 10);
-    a.href         = url;
-    a.download     = `Requerimientos-${fecha}.xlsx`;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BASE_GRAL_REQ_${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    a.remove();
     URL.revokeObjectURL(url);
+    Toast?.success?.('Excel descargado');
   } catch (err) {
-    alert('Error al exportar: ' + err.message);
+    Toast?.error?.(err.message) || alert('Error al exportar: ' + err.message);
   } finally {
-    btn.disabled   = false;
-    btn.textContent = original;
+    setButtonLoading?.(btn, false);
   }
 }
 

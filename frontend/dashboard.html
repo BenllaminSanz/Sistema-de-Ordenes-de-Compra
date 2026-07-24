@@ -137,23 +137,8 @@
     .badge-dias-warn { background:#fef9c3; color:#854d0e; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
     .badge-dias-crit { background:#fee2e2; color:#991b1b; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
 
-    /* ── Botón de reporte discreto ────────────────────────────── */
-    .btn-reporte {
-      display: none;   /* visible solo para admin/contab via JS */
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--muted);
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background .15s, color .15s;
-      text-decoration: none;
-    }
-    .btn-reporte:hover { background: var(--bg); color: #0f172a; }
+    /* ── Botón export (oculto hasta validar rol contab/admin) ── */
+    #btn-reporte { display: none; }
 
     /* ── Card sin margen inferior (para columna derecha) ─────── */
     .card-flush { margin-bottom: 0; }
@@ -182,14 +167,14 @@
           <select id="dash-anio" class="form-control"
                   style="width:92px;height:32px;font-size:13px;display:inline-block">
           </select>
-          <!-- Botón reporte — solo visible para contabilidad/admin -->
-          <button id="btn-reporte" class="btn-reporte" title="Descargar reporte STATUS POS HILOS">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <!-- Export BASE GRAL — solo visible para contabilidad/admin -->
+          <button type="button" id="btn-reporte" class="btn btn-outline btn-sm"
+                  title="Exportar BASE GRAL del año: todos los REQ y OC">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
+              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Reporte Excel
+            Exportar Excel
           </button>
         </div>
       </div>

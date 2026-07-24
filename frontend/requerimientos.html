@@ -248,14 +248,24 @@
               <h2 class="page-title">Requerimientos</h2>
             </div>
             <div class="page-header-actions">
-              <button class="btn btn-outline btn-sm" id="btn-exportar"
-                      onclick="exportarRequerimientos(this)" title="Exportar todos los requerimientos a Excel">
-                ↓ Exportar Excel
+              <button type="button" class="btn btn-outline btn-sm" id="btn-exportar"
+                      onclick="exportarRequerimientos(this)"
+                      title="Exportar requerimientos en layout BASE GRAL">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Exportar Excel
               </button>
-              <button class="btn btn-outline btn-sm" id="btn-importar"
-                      onclick="UI.abrirModal('modal-importar-excel')" title="Importar requerimientos desde Excel"
+              <button type="button" class="btn btn-outline btn-sm" id="btn-importar"
+                      onclick="UI.abrirModal('modal-importar-excel')"
+                      title="Cargar requerimientos desde Excel (BASE GRAL)"
                       style="display:none">
-                ↑ Importar Excel
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Cargar Excel
               </button>
               <button class="btn btn-primary btn-sm" id="btn-nuevo"
                       onclick="abrirEditorRequerimiento()">+ Nuevo requerimiento</button>
@@ -341,18 +351,20 @@
 <div class="modal-backdrop" id="modal-importar-excel">
   <div class="modal-box" style="max-width:520px;width:95vw">
     <div class="modal-header">
-      <h3 class="modal-title">Importar requerimientos desde Excel</h3>
+      <h3 class="modal-title">Cargar requerimientos desde Excel</h3>
       <button class="modal-close" onclick="UI.cerrarModal('modal-importar-excel')">×</button>
     </div>
     <div style="padding:20px 24px">
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">
-        Use la plantilla <strong>BASE GRAL</strong> (mismas columnas que el Excel de Contabilidad):
-        <em>Orden de compra, Fecha, N°, Fecha de solicitud, Tipo, Proveedor, Total, Moneda,
-        Usuario, Estado, Depto, Compañía, Tipo de servicio, Status</em>.
+        Use la plantilla <strong>BASE GRAL</strong> (mismo layout que General / REQ / OC):
+        <em>Orden de compra, Fecha, N°, Fecha de solicitud, Tipo, No. proveedor, Proveedor,
+        Total, Moneda, Usuario, Estado, Area, Departamento, Compañía, Tipo de servicio, Status</em>.
+        También se acepta el Excel legado de Contabilidad (Proveedor combinado + Depto).
         Puede ir en una sola hoja (<code>Hoja1</code>) o por tipo.
         <br><br>
         <strong>Solo se agregan REQ que aún no existan</strong> (mismo consecutivo / N° con sufijo A/B/C).
         Los que ya están en el sistema se omiten; no se borran datos.
+        El botón <strong>Exportar Excel</strong> genera el mismo layout para reimportar o compartir con Contabilidad.
       </p>
       <div class="form-group">
         <label class="form-label">Archivo Excel (.xlsx)</label>
@@ -652,6 +664,7 @@
           <select id="cot_moneda" class="form-control">
             <option value="MXN">MXN - Peso Mexicano</option>
             <option value="USD">USD - Dólar Americano</option>
+            <option value="EUR">EUR - Euro</option>
           </select>
         </div>
 

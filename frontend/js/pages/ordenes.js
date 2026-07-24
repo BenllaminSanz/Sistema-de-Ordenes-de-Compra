@@ -228,23 +228,32 @@ if (tablaOC) {
 }
 
 // ── LISTA ─────────────────────────────────────────────────────
-async function exportarOrdenesExcel() {
+async function exportarOrdenesExcel(btn) {
   if (!Auth.puedeHacer(['contabilidad', 'admin'])) {
     return Toast.error('Solo Contabilidad/Admin pueden exportar OCs');
   }
+  const estado   = document.getElementById('fil-estado')?.value || '';
+  const tipo     = document.getElementById('fil-tipo')?.value || '';
+  const sinPo    = document.getElementById('fil-sin-po')?.checked;
+  const busqueda = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
+
+  const qs = new URLSearchParams({ libre: '1' });
+  if (estado) qs.set('estado', estado);
+  if (tipo) qs.set('tipo_req', tipo);
+  if (sinPo) qs.set('sin_po', 'true');
+  if (busqueda) qs.set('busqueda', busqueda);
+
+  const targetBtn = btn || document.getElementById('btn-exportar-oc');
+  if (window.ExcelUI?.descargar) {
+    await ExcelUI.descargar(`/reportes/ordenes-compra?${qs.toString()}`, {
+      btn: targetBtn,
+      successMsg: 'BASE GRAL de OC descargado',
+      loadingText: 'Generando…',
+    });
+    return;
+  }
+  Toast.info('Generando Excel…');
   try {
-    const estado   = document.getElementById('fil-estado')?.value || '';
-    const tipo     = document.getElementById('fil-tipo')?.value || '';
-    const sinPo    = document.getElementById('fil-sin-po')?.checked;
-    const busqueda = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
-
-    const qs = new URLSearchParams({ libre: '1' });
-    if (estado) qs.set('estado', estado);
-    if (tipo) qs.set('tipo_req', tipo);
-    if (sinPo) qs.set('sin_po', 'true');
-    if (busqueda) qs.set('busqueda', busqueda);
-
-    Toast.info('Generando Excel de órdenes de compra…');
     const token = Auth.getToken();
     const res = await fetch(`${API_BASE}/reportes/ordenes-compra?${qs.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -257,7 +266,7 @@ async function exportarOrdenesExcel() {
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `Ordenes_Compra_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.download = `BASE_GRAL_OC_${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -339,7 +348,6 @@ async function cargarOrdenes(pagina) {
           <colgroup>
             <col class="col-po-dtn">
             <col class="col-fecha-po">
-            <col class="col-req">
             <col class="col-no-oc">
             <col class="col-tipo">
             <col class="col-proveedor">
@@ -350,7 +358,7 @@ async function cargarOrdenes(pagina) {
             <col class="col-acciones">
           </colgroup>
           <thead><tr>
-            <th>PO DTN</th><th>Fecha PO</th><th>Requerimiento</th><th>No. OC</th><th>Tipo</th>
+            <th>PO DTN</th><th>Fecha PO</th><th>No. OC</th><th>Tipo</th>
             <th>Proveedor</th><th>Monto</th><th>${columnaHeader}</th>
             <th>Estado</th><th>Últ. modificación</th><th></th>
           </tr></thead>
@@ -366,8 +374,7 @@ async function cargarOrdenes(pagina) {
             <tr>
               <td class="fw-600 col-po-dtn"${poTitle}>${poTxt}</td>
               <td class="text-muted small col-fecha-po">${o.fecha_po ? fechaPoUi(o.fecha_po) : (esPoNa(o.datatextnow_id) ? 'NA' : '—')}</td>
-              <td class="col-req" title="${UI.esc(o.consecutivo || '')}">${o.consecutivo || '—'}</td>
-              <td class="text-muted small col-no-oc" title="${UI.esc(o.numero_oc || '')}">${o.numero_oc || '—'}</td>
+              <td class="fw-600 col-no-oc" title="${UI.esc(o.numero_oc || '')}">${o.numero_oc || '—'}</td>
               <td class="col-tipo">${o.tipo}</td>
               <td class="col-proveedor" title="${UI.esc(provTxt)}">${provTxt}</td>
               <td class="col-monto">${o.monto_total != null

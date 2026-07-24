@@ -98,10 +98,12 @@ async function listar(filtros = {}) {
 
   const [rows] = await pool.query(
     `SELECT
-       oc.id, oc.numero_oc, oc.estado,
+       oc.id, oc.requerimiento_id, oc.numero_oc, oc.estado,
        oc.fecha_autorizacion, oc.datatextnow_id, oc.fecha_po,
        oc.created_at, oc.updated_at, oc.notas,
        r.consecutivo, r.tipo, r.notas AS descripcion, r.solicitante_id,
+       r.titulo_solicitud, r.area, r.departamento, r.estado AS req_estado,
+       r.created_at AS req_created_at,
        u.nombre AS autorizado_por_nombre,
        sol.nombre AS solicitante_nombre,
        p.num_proveedor AS proveedor_num,

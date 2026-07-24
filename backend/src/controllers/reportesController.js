@@ -1,161 +1,96 @@
 import * as Ordenes from '../models/ordenes.js';
-import XLSX from 'xlsx';
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
+import {
+  generarExcelBaseGral,
+  estadoExcelDesdeSistema,
+  formatoProveedorBaseGral,
+} from '../utils/excelRequerimientos.js';
 
-/**
- * Carga ítems de cada OC (cotización / catálogo / libres) y agrega
- * cantidades recibidas + números de recibo por item_key.
- * @returns {Map<number, Array>}
- */
-async function cargarItemsYRecibosPorOc(ocIds) {
-  const result = new Map();
-  if (!ocIds?.length) return result;
-
-  // Metadatos mínimos: cotizacion_id / requerimiento_id por OC
-  const [ocsMeta] = await pool.query(
-    `SELECT id, cotizacion_id, requerimiento_id FROM ordenes_compra WHERE id IN (?)`,
-    [ocIds]
-  );
-  const metaById = new Map(ocsMeta.map((r) => [r.id, r]));
-
-  // Recepción por ítem (múltiples entregas → sumar qty y unir recibos)
-  const [recRows] = await pool.query(
-    `SELECT r.orden_compra_id, ri.item_key,
-            SUM(ri.cantidad_recibida) AS cantidad_recibida,
-            GROUP_CONCAT(
-              DISTINCT NULLIF(TRIM(ri.numero_recibo), '')
-              ORDER BY ri.id SEPARATOR ', '
-            ) AS numeros_recibo
-     FROM recepciones r
-     JOIN recepcion_items ri ON ri.recepcion_id = r.id
-     WHERE r.orden_compra_id IN (?)
-     GROUP BY r.orden_compra_id, ri.item_key`,
-    [ocIds]
-  );
-  const reciboMap = new Map(); // `${ocId}|${item_key}` → { cantidad_recibida, numeros_recibo }
-  for (const row of recRows) {
-    reciboMap.set(`${row.orden_compra_id}|${row.item_key}`, {
-      cantidad_recibida: parseFloat(row.cantidad_recibida) || 0,
-      numeros_recibo: row.numeros_recibo || '',
-    });
-  }
-
-  const cotIds = [...new Set(ocsMeta.map((o) => o.cotizacion_id).filter(Boolean))];
-  const reqIdsSinCot = [
-    ...new Set(
-      ocsMeta.filter((o) => !o.cotizacion_id).map((o) => o.requerimiento_id).filter(Boolean)
-    ),
-  ];
-
-  // Ítems desde cotización
-  const cotItemsByCot = new Map();
-  if (cotIds.length) {
-    const [cotItems] = await pool.query(
-      `SELECT ci.id, ci.cotizacion_id, ci.descripcion, ci.cantidad, ci.unidad,
-              ci.precio_unitario,
-              COALESCE(NULLIF(TRIM(ci.codigo_catalogo), ''), c.codigo) AS codigo
-       FROM cotizacion_items ci
-       LEFT JOIN catalogo c ON c.id = ci.catalogo_id
-       WHERE ci.cotizacion_id IN (?)
-       ORDER BY ci.id ASC`,
-      [cotIds]
-    );
-    for (const it of cotItems) {
-      if (!cotItemsByCot.has(it.cotizacion_id)) cotItemsByCot.set(it.cotizacion_id, []);
-      cotItemsByCot.get(it.cotizacion_id).push({
-        item_key: `cot-${it.id}`,
-        codigo: it.codigo || null,
-        descripcion: it.descripcion || '',
-        unidad: it.unidad || '',
-        cantidad: parseFloat(it.cantidad) || 0,
-        precio_unitario: it.precio_unitario != null ? parseFloat(it.precio_unitario) : null,
-      });
-    }
-  }
-
-  // Ítems catálogo del REQ (sin cotización)
-  const catItemsByReq = new Map();
-  const libItemsByReq = new Map();
-  if (reqIdsSinCot.length) {
-    const [catItems] = await pool.query(
-      `SELECT ri.id, ri.requerimiento_id, ri.cantidad,
-              c.codigo, c.descripcion, c.unidad,
-              c.costo_referencia AS precio_unitario
-       FROM requerimiento_items ri
-       JOIN catalogo c ON c.id = ri.catalogo_id
-       WHERE ri.requerimiento_id IN (?)
-       ORDER BY ri.id ASC`,
-      [reqIdsSinCot]
-    );
-    for (const it of catItems) {
-      if (!catItemsByReq.has(it.requerimiento_id)) catItemsByReq.set(it.requerimiento_id, []);
-      catItemsByReq.get(it.requerimiento_id).push({
-        item_key: `cat-${it.id}`,
-        codigo: it.codigo || null,
-        descripcion: it.descripcion || '',
-        unidad: it.unidad || '',
-        cantidad: parseFloat(it.cantidad) || 0,
-        precio_unitario: it.precio_unitario != null ? parseFloat(it.precio_unitario) : null,
-      });
-    }
-
-    const [libItems] = await pool.query(
-      `SELECT id, requerimiento_id, descripcion, cantidad, unidad
-       FROM requerimiento_items_libres
-       WHERE requerimiento_id IN (?)
-       ORDER BY id ASC`,
-      [reqIdsSinCot]
-    );
-    for (const it of libItems) {
-      if (!libItemsByReq.has(it.requerimiento_id)) libItemsByReq.set(it.requerimiento_id, []);
-      libItemsByReq.get(it.requerimiento_id).push({
-        item_key: `lib-${it.id}`,
-        codigo: null,
-        descripcion: it.descripcion || '',
-        unidad: it.unidad || '',
-        cantidad: parseFloat(it.cantidad) || 0,
-        precio_unitario: null,
-      });
-    }
-  }
-
-  for (const ocId of ocIds) {
-    const meta = metaById.get(ocId);
-    if (!meta) {
-      result.set(ocId, []);
-      continue;
-    }
-
-    let items = [];
-    if (meta.cotizacion_id) {
-      items = cotItemsByCot.get(meta.cotizacion_id) || [];
-    } else {
-      const cat = catItemsByReq.get(meta.requerimiento_id) || [];
-      items = cat.length ? cat : (libItemsByReq.get(meta.requerimiento_id) || []);
-    }
-
-    result.set(
-      ocId,
-      items.map((it) => {
-        const rec = reciboMap.get(`${ocId}|${it.item_key}`) || {};
-        return {
-          ...it,
-          cantidad_recibida: rec.cantidad_recibida || 0,
-          numeros_recibo: rec.numeros_recibo || '',
-        };
-      })
-    );
-  }
-
-  return result;
+function extraerStatusNotas(notasReq, notasOc) {
+  const n = String(notasReq || notasOc || '');
+  const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
+  if (m) return m[1].trim();
+  if (notasOc && String(notasOc).trim()) return String(notasOc).trim();
+  return '';
 }
 
 /**
- * Genera el "Reporte de Órdenes de Compra".
+ * Normaliza una fila de OC (+ REQ) al layout BASE GRAL.
+ */
+function filaBaseGralDesdeOc(oc) {
+  return {
+    orden_compra: oc.datatextnow_id || '',
+    fecha_po: oc.fecha_po || null,
+    consecutivo: oc.consecutivo || oc.numero_oc || '',
+    created_at: oc.req_created_at || oc.created_at || null,
+    tipo: oc.tipo || '',
+    proveedor_num: oc.proveedor_num != null ? oc.proveedor_num : '',
+    proveedor_nombre: oc.proveedor_nombre || '',
+    proveedor: formatoProveedorBaseGral(oc.proveedor_num, oc.proveedor_nombre),
+    total: oc.monto_total != null ? Number(oc.monto_total) : '',
+    moneda: oc.moneda || '',
+    usuario: oc.solicitante_nombre || '',
+    estado: estadoExcelDesdeSistema({
+      estado: oc.req_estado,
+      oc_estado: oc.estado,
+    }),
+    req_estado: oc.req_estado,
+    oc_estado: oc.estado,
+    area: oc.area || '',
+    departamento: oc.departamento || '',
+    depto: oc.area || oc.departamento || '',
+    compania: '31',
+    tipo_servicio: oc.titulo_solicitud || '',
+    status: extraerStatusNotas(oc.notas_req || oc.notas, oc.notas_oc),
+  };
+}
+
+/**
+ * Normaliza una fila de REQ (con o sin OC enlazada) al layout BASE GRAL.
+ */
+function filaBaseGralDesdeReq(req) {
+  return {
+    orden_compra: req.oc_datatextnow_id || '',
+    fecha_po: req.oc_fecha_po || null,
+    consecutivo: req.consecutivo || '',
+    created_at: req.created_at || null,
+    tipo: req.tipo || '',
+    proveedor_num: req.proveedor_num != null ? req.proveedor_num : '',
+    proveedor_nombre: req.proveedor_nombre || '',
+    proveedor: formatoProveedorBaseGral(req.proveedor_num, req.proveedor_nombre),
+    total: req.oc_monto_total != null ? Number(req.oc_monto_total) : '',
+    moneda: req.oc_moneda || '',
+    usuario: req.solicitante_nombre || '',
+    estado: estadoExcelDesdeSistema({
+      estado: req.estado,
+      oc_estado: req.oc_estado,
+    }),
+    req_estado: req.estado,
+    oc_estado: req.oc_estado,
+    area: req.area || '',
+    departamento: req.departamento || '',
+    depto: req.area || req.departamento || '',
+    compania: '31',
+    tipo_servicio: req.titulo_solicitud || '',
+    status: extraerStatusNotas(req.notas, null),
+  };
+}
+
+/** Clave de deduplicación: N° / consecutivo (o id de OC si no hay). */
+function claveFilaBaseGral(fila, fallbackId = '') {
+  const n = String(fila.consecutivo || fila.n || '').trim().toUpperCase();
+  if (n) return `N:${n}`;
+  const po = String(fila.orden_compra || '').trim().toUpperCase();
+  if (po) return `PO:${po}:${fallbackId}`;
+  return `ID:${fallbackId}`;
+}
+
+/**
+ * Genera el reporte de Órdenes de Compra en layout BASE GRAL.
  * - Con periodo (anual/mensual/semanal): filtros por fecha
  * - Con libre=1: exporta según filtros de listado (estado, tipo_req, busqueda, sin_po)
- * - Una fila por ítem de la OC; incluye No. de recibo de recepciones
+ * Una fila por OC (mismo layout que BASE GRAL DE REQ. 23.07.26).
  */
 export async function generarReporteOrdenesCompra(req, res) {
   try {
@@ -208,270 +143,177 @@ export async function generarReporteOrdenesCompra(req, res) {
 
     const { datos: ocs } = await Ordenes.listar({
       ...filtros,
-      limite: 5000,
+      limite: 10000,
     });
 
-    const fmtFecha = (v) => {
-      if (!v) return '';
-      if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
-      try { return new Date(v).toISOString().split('T')[0]; } catch { return ''; }
-    };
+    const filas = ocs.map((oc) =>
+      filaBaseGralDesdeOc({
+        ...oc,
+        notas_req: oc.descripcion || oc.notas_req,
+        notas_oc: oc.notas,
+        req_estado: oc.req_estado,
+        req_created_at: oc.req_created_at || oc.created_at,
+      })
+    );
 
-    // Desglose por ítem + No. de recibo por línea de recepción
-    const ocIds = ocs.map((o) => o.id).filter(Boolean);
-    const itemsPorOc = await cargarItemsYRecibosPorOc(ocIds);
-
-    const rows = [];
-    for (const oc of ocs) {
-      const base = {
-        'No. OC': oc.numero_oc,
-        'Fecha creación': fmtFecha(oc.created_at),
-        'Últ. modificación': fmtFecha(oc.updated_at),
-        'Consecutivo REQ': oc.consecutivo || '',
-        'Tipo': oc.tipo || '',
-        'Solicitante': oc.solicitante_nombre || '',
-        'Proveedor': oc.proveedor_num
-          ? `${oc.proveedor_num} — ${oc.proveedor_nombre || ''}`
-          : (oc.proveedor_nombre || ''),
-        'Estado OC': oc.estado,
-        'Fecha Autorización': fmtFecha(oc.fecha_autorizacion),
-        'PO DataTextNow': oc.datatextnow_id || '',
-        'Fecha PO': fmtFecha(oc.fecha_po),
-        'Monto Total OC': oc.monto_total != null ? Number(oc.monto_total) : '',
-        'Moneda': oc.moneda || 'MXN',
-        'Estado Recepción': oc.estado_recepcion || '',
-        'Fecha Recepción': fmtFecha(oc.fecha_recepcion),
-        'Notas contabilidad': oc.notas || '',
-      };
-
-      const items = itemsPorOc.get(oc.id) || [];
-      if (!items.length) {
-        rows.push({
-          ...base,
-          'Línea': '',
-          'Código ítem': '',
-          'Descripción ítem': '',
-          'Unidad': '',
-          'Cantidad solicitada': '',
-          'Precio unitario': '',
-          'Importe línea': '',
-          'Cantidad recibida': '',
-          'No. de recibo': '',
-        });
-        continue;
-      }
-
-      items.forEach((it, idx) => {
-        const cant = it.cantidad != null ? Number(it.cantidad) : '';
-        const precio = it.precio_unitario != null ? Number(it.precio_unitario) : '';
-        const importe = (cant !== '' && precio !== '' && Number.isFinite(cant) && Number.isFinite(precio))
-          ? Math.round(cant * precio * 100) / 100
-          : '';
-        rows.push({
-          ...base,
-          'Línea': (idx + 1) * 10,
-          'Código ítem': it.codigo || '',
-          'Descripción ítem': it.descripcion || '',
-          'Unidad': it.unidad || '',
-          'Cantidad solicitada': cant,
-          'Precio unitario': precio,
-          'Importe línea': importe,
-          'Cantidad recibida': it.cantidad_recibida != null ? Number(it.cantidad_recibida) : 0,
-          'No. de recibo': it.numeros_recibo || '',
-        });
-      });
-    }
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
-      { wch: 20 }, { wch: 32 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
-      { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 28 },
-      { wch: 6 }, { wch: 14 }, { wch: 40 }, { wch: 8 }, { wch: 12 },
-      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 },
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, 'Ordenes de Compra');
+    const buffer = generarExcelBaseGral(filas);
 
     const filename = exportLibre
-      ? `Ordenes_Compra_${new Date().toISOString().slice(0, 10)}.xlsx`
-      : `Reporte_Ordenes_Compra_${periodoEfectivo}_${year}${mes ? '_' + mes : ''}${semana ? '_sem' + semana : ''}.xlsx`;
+      ? `BASE_GRAL_OC_${new Date().toISOString().slice(0, 10)}.xlsx`
+      : `BASE_GRAL_OC_${periodoEfectivo}_${year}${mes ? '_' + mes : ''}${semana ? '_sem' + semana : ''}.xlsx`;
 
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
   } catch (err) {
-    logger.error('[Reporte OC]', err);
+    logger.error('[Reporte OC BASE GRAL]', err);
     res.status(500).json({ mensaje: 'Error al generar el reporte' });
   }
 }
 
+/**
+ * Dashboard / General: export BASE GRAL del año con REQ + OC.
+ * - Todas las OC del año (fecha PO / autorización / creación)
+ * - Todos los REQ del año (fecha de solicitud / created_at), incluidos sin OC
+ * - Deduplica por N° (consecutivo): si hay OC se prioriza la fila de OC
+ * Mantiene la ruta histórica /status-pos-hilos por compatibilidad de UI.
+ */
 export async function generarReporteStatusPOS(req, res) {
   try {
     const { anio, po, estado } = req.query;
     const year = parseInt(anio) || new Date().getFullYear();
+    const likePo = po ? `%${po}%` : null;
 
-    // Query principal: OC + Requerimiento + Items (catálogo o libres) + Recepción
-    // LEFT JOINs en items/catálogo para incluir OCs de reqs con items_libres o solo notas.
-    // COALESCE en fecha para incluir OCs sin fecha_autorizacion aún (generada/en_proceso).
-    let sql = `
+    // ── 1) OCs del año ──────────────────────────────────────────
+    let sqlOc = `
       SELECT
-        oc.id as oc_id,
+        oc.id,
         oc.numero_oc,
-        oc.datatextnow_id as po_number,
-        oc.fecha_autorizacion as fecha_po,
-        oc.estado as estado_oc,
-        oc.notas as oc_notas,
-        r.id as req_id,
-        r.consecutivo as req_consecutivo,
+        oc.datatextnow_id,
+        oc.fecha_po,
+        oc.fecha_autorizacion,
+        oc.estado,
+        oc.monto_total,
+        oc.moneda,
+        oc.notas AS notas_oc,
+        oc.created_at,
+        r.consecutivo,
         r.tipo,
-        r.notas,
         r.titulo_solicitud,
-        r.requiere_cotizacion,
-        u.nombre as requisitor,
-        COALESCE(ri.cantidad, ril.cantidad, 1) as cantidad_solicitada,
-        COALESCE(c.codigo, ril.descripcion, '—') as numero_de_parte,
-        COALESCE(c.descripcion, ril.descripcion, r.titulo_solicitud) as descripcion,
-        COALESCE(p.nombre, prov_oc.nombre) as proveedor,
-        rec.estado as estado_recepcion,
-        rec.fecha_recepcion,
-        rec.datatextnow_id as recibo_number,
-        rec.notas as rec_notas,
-        COALESCE(c.costo_referencia, 0) as costo_unitario,
-        cot.iva as cot_iva,
-        cot.monto_total as cot_monto_total
+        r.notas AS notas_req,
+        r.area,
+        r.departamento,
+        r.estado AS req_estado,
+        r.created_at AS req_created_at,
+        u.nombre AS solicitante_nombre,
+        p.num_proveedor AS proveedor_num,
+        p.nombre AS proveedor_nombre
       FROM ordenes_compra oc
       JOIN requerimientos r ON r.id = oc.requerimiento_id
-      LEFT JOIN requerimiento_items ri ON ri.requerimiento_id = r.id
-      LEFT JOIN catalogo c ON c.id = ri.catalogo_id
-      LEFT JOIN proveedores p ON p.id = c.proveedor_id
-      LEFT JOIN requerimiento_items_libres ril ON ril.requerimiento_id = r.id AND ri.id IS NULL
       LEFT JOIN usuarios u ON u.id = r.solicitante_id
-      LEFT JOIN proveedores prov_oc ON prov_oc.id = oc.proveedor_id
-      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
-      LEFT JOIN cotizaciones cot ON cot.id = oc.cotizacion_id
-      WHERE 1=1
+      LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+      WHERE YEAR(COALESCE(oc.fecha_po, oc.fecha_autorizacion, oc.created_at)) = ?
     `;
-    const params = [];
+    const paramsOc = [year];
 
-    sql += ` AND YEAR(COALESCE(oc.fecha_autorizacion, oc.created_at)) = ? `;
-    params.push(year);
-    if (po) {
-      sql += ` AND (oc.datatextnow_id LIKE ? OR oc.numero_oc LIKE ?) `;
-      params.push(`%${po}%`, `%${po}%`);
+    if (likePo) {
+      sqlOc += ` AND (oc.datatextnow_id LIKE ? OR oc.numero_oc LIKE ? OR r.consecutivo LIKE ?) `;
+      paramsOc.push(likePo, likePo, likePo);
     }
     if (estado) {
-      sql += ` AND oc.estado = ? `;
-      params.push(estado);
+      sqlOc += ` AND oc.estado = ? `;
+      paramsOc.push(estado);
+    }
+    sqlOc += ` ORDER BY COALESCE(oc.fecha_po, oc.fecha_autorizacion, oc.created_at) ASC, r.consecutivo ASC `;
+
+    // ── 2) REQs del año (con o sin OC) ───────────────────────────
+    // Incluye REQ creados en el año; la OC enlazada (si existe) enriquece la fila.
+    let sqlReq = `
+      SELECT
+        r.id,
+        r.consecutivo,
+        r.tipo,
+        r.titulo_solicitud,
+        r.notas,
+        r.area,
+        r.departamento,
+        r.estado,
+        r.created_at,
+        u.nombre AS solicitante_nombre,
+        oc.id AS oc_id,
+        oc.numero_oc AS oc_numero,
+        oc.estado AS oc_estado,
+        oc.monto_total AS oc_monto_total,
+        oc.moneda AS oc_moneda,
+        oc.datatextnow_id AS oc_datatextnow_id,
+        oc.fecha_po AS oc_fecha_po,
+        p.num_proveedor AS proveedor_num,
+        p.nombre AS proveedor_nombre
+      FROM requerimientos r
+      JOIN usuarios u ON u.id = r.solicitante_id
+      LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
+      LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+      WHERE YEAR(r.created_at) = ?
+    `;
+    const paramsReq = [year];
+
+    if (likePo) {
+      sqlReq += ` AND (
+        r.consecutivo LIKE ?
+        OR oc.datatextnow_id LIKE ?
+        OR oc.numero_oc LIKE ?
+      ) `;
+      paramsReq.push(likePo, likePo, likePo);
+    }
+    if (estado) {
+      // En General, si filtran estado de OC, solo REQs cuya OC coincida (o sin filtro de solo-REQ)
+      sqlReq += ` AND oc.estado = ? `;
+      paramsReq.push(estado);
+    }
+    sqlReq += ` ORDER BY r.created_at ASC, r.consecutivo ASC `;
+
+    const [resOc, resReq] = await Promise.all([
+      pool.query(sqlOc, paramsOc),
+      pool.query(sqlReq, paramsReq),
+    ]);
+    const rowsOc = resOc[0];
+    const rowsReq = resReq[0];
+
+    // ── 3) Unir: primero OCs del año; luego REQs no cubiertos ───
+    const mapa = new Map();
+
+    for (const row of rowsOc) {
+      const fila = filaBaseGralDesdeOc(row);
+      const key = claveFilaBaseGral(fila, `oc-${row.id}`);
+      mapa.set(key, fila);
     }
 
-    sql += ` ORDER BY oc.numero_oc, ri.id, ril.id `;
+    for (const row of rowsReq) {
+      const fila = filaBaseGralDesdeReq(row);
+      const key = claveFilaBaseGral(fila, `req-${row.id}`);
+      // Si ya hay fila por OC del mismo N°, no duplicar (la de OC tiene más datos de compra)
+      if (mapa.has(key)) continue;
+      mapa.set(key, fila);
+    }
 
-    const [rows] = await pool.query(sql, params);
-
-    // Build rows in the format of the STATUS sheet
-    const reportRows = rows.map((row, idx) => {
-      const poLine = row.po_number ? `${row.po_number}/${(idx % 5 + 1) * 10}` : row.numero_oc; // formato aproximado PO/Line
-      const linea = ((idx % 5) + 1) * 10;
-
-      const cantidadSolicitada = parseFloat(row.cantidad_solicitada) || 0;
-      const costoUnit = parseFloat(row.costo_unitario) || 0;
-      const costoTotal = cantidadSolicitada * costoUnit;
-
-      // Use cotizacion data if available for totals/iva
-      const ivaMonto = parseFloat(row.cot_iva) || (costoTotal * 0.16);
-      const flete = 0; // placeholder - pendiente datos de flete
-      const totalConIVA = costoTotal + ivaMonto + flete;
-
-      // Derivar STATUS a partir de OC + Recepción + notas (para coincidir con Excel)
-      let status = 'PENDIENTE';
-      const ocNotasUpper = (row.oc_notas || '').toUpperCase();
-      const recNotasUpper = (row.rec_notas || '').toUpperCase();
-
-      if (row.estado_oc === 'cancelada' || recNotasUpper.includes('CANCELADO') || ocNotasUpper.includes('CANCELADO')) {
-        if (ocNotasUpper.includes('DESABASTO') || recNotasUpper.includes('DESABASTO')) {
-          status = 'CANCELADO POR DESABASTO';
-        } else if (ocNotasUpper.includes('PRECIO') || recNotasUpper.includes('PRECIO')) {
-          status = 'CANCELADO POR CAMBIO DE PRECIO';
-        } else {
-          status = 'CANCELADO';
-        }
-      } else if (row.estado_recepcion === 'entregado_solicitante' || row.estado_oc === 'cerrada') {
-        status = 'RECIBIDO';
-      } else if (row.estado_recepcion === 'recibido_parcial') {
-        status = 'RECIBIDO PARCIAL';
-      } else if (row.estado_oc === 'en_proceso' || row.estado_oc === 'distribuida') {
-        status = 'EN PROCESO';
-      } else if (row.estado_oc === 'generada') {
-        status = 'PENDIENTE';
-      }
-
-      return {
-        'PO Line': poLine,
-        'PO': row.po_number || row.numero_oc,
-        'Fecha de P.O.': row.fecha_po ? new Date(row.fecha_po).toISOString().split('T')[0] : '(sin autorizar)',
-        'wk': '', // no data
-        'Año': row.fecha_po ? new Date(row.fecha_po).getFullYear() : year,
-        'N° Vendor': '', // no direct data
-        'Proveedor': row.proveedor || '',
-        'Centro ': '', 
-        'Requisitor': row.requisitor || '',
-        'Factura': 'PENDIENTE',
-        'Fecha de factura': '',
-        'Transporte': 'PENDIENTE',
-        'Guia Corta': 'PENDIENTE',
-        'Numero de guía': 'PENDIENTE',
-        'línea': linea,
-        'Numero de Parte': row.numero_de_parte,
-        'DESCRIPCION': row.descripcion,
-        'Comments': row.titulo_solicitud || row.notas || row.req_consecutivo || '',
-        'Cantidad Solicitada': cantidadSolicitada,
-        'Cantidad Recibida': row.estado_recepcion ? cantidadSolicitada : 0, // aproximado; mejorar con recepción por ítem
-        'BO': 0,
-        'Costo unitario': costoUnit,
-        'Costo total por linea': costoTotal,
-        'FLETE / tariff': flete,
-        'IVA': ivaMonto,
-        'Total con IVA': totalConIVA,
-        'Moneda': 'MXN',
-        'BUSQUEDA': '',
-        'STATUS': status,
-        'REFERENCIA': row.req_consecutivo || '',
-        'Numero de Recibo ': row.recibo_number || '',
-        'FECHA DE RECEPCIÓN': row.fecha_recepcion ? new Date(row.fecha_recepcion).toISOString().split('T')[0] : '',
-        'VOLUCKOP': '',
-        'CC': '',
-      };
+    const filas = [...mapa.values()].sort((a, b) => {
+      const fa = a.fecha_po || a.created_at || '';
+      const fb = b.fecha_po || b.created_at || '';
+      const cmp = String(fa).localeCompare(String(fb));
+      if (cmp !== 0) return cmp;
+      return String(a.consecutivo || '').localeCompare(String(b.consecutivo || ''), 'es', {
+        numeric: true,
+      });
     });
 
-    // Create Excel
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(reportRows);
-
-    // Basic column widths
-    ws['!cols'] = [
-      { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 4 }, { wch: 6 },
-      { wch: 10 }, { wch: 40 }, { wch: 10 }, { wch: 22 }, { wch: 12 },
-      { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 6 },
-      { wch: 14 }, { wch: 45 }, { wch: 35 }, { wch: 12 }, { wch: 12 },
-      { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
-      { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 16 }, { wch: 12 },
-      { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 6 }, { wch: 6 }
-    ];
-
-    XLSX.utils.book_append_sheet(wb, ws, 'STATUS POS HILOS');
-
-    const filename = `STATUS_${year}_POS_HILOS_${new Date().toISOString().slice(0,10)}.xlsx`;
-
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = generarExcelBaseGral(filas);
+    const filename = `BASE_GRAL_${year}_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
-
   } catch (err) {
-    logger.error('[Reporte STATUS POS HILOS]', err);
-    res.status(500).json({ mensaje: 'Error al generar el reporte STATUS' });
+    logger.error('[Reporte BASE GRAL dashboard]', err);
+    res.status(500).json({ mensaje: 'Error al generar el reporte BASE GRAL' });
   }
 }

@@ -695,11 +695,11 @@ async function cargarCatalogoDesdeExcel(input) {
     return;
   }
 
+  const btn = document.getElementById('btn-cargar-catalogo');
+  if (btn) setButtonLoading(btn, true, 'Importando…');
   try {
-    Toast.info('Procesando archivo Excel del catálogo (alta y actualización por código)…');
-
+    Toast.info('Procesando archivo Excel del catálogo…');
     const data = await Api.uploadFile('/catalogo/import', file, 'excel');
-
     Toast.success(
       data.mensaje
       || `Carga correcta. Nuevos: ${data.nuevos || 0}, actualizados: ${data.actualizados || 0}.`
@@ -708,19 +708,29 @@ async function cargarCatalogoDesdeExcel(input) {
     await cargarCatalogo({ preservarFiltros: true });
   } catch (err) {
     Toast.error(err.mensaje || 'Error al cargar el archivo Excel');
+  } finally {
+    if (btn) setButtonLoading(btn, false);
   }
 }
 
-async function exportarCatalogoExcel() {
+async function exportarCatalogoExcel(btn) {
   if (!esAdminCatalogo) {
     Toast.error('No tienes permisos para exportar el catálogo');
     return;
   }
+  const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
+  const qs = soloActivos ? '?soloActivos=true' : '';
+  const targetBtn = btn || document.getElementById('btn-exportar-catalogo');
+  if (window.ExcelUI?.descargar) {
+    await ExcelUI.descargar(`/catalogo/export${qs}`, {
+      btn: targetBtn,
+      successMsg: 'Catálogo exportado',
+      loadingText: 'Generando…',
+    });
+    return;
+  }
   try {
-    const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
-    const qs = soloActivos ? '?soloActivos=true' : '';
     Toast.info('Generando Excel del catálogo…');
-    // Descarga con token: usa fetch directo por blob
     const token = Auth.getToken();
     const res = await fetch(`${API_BASE}/catalogo/export${qs}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},

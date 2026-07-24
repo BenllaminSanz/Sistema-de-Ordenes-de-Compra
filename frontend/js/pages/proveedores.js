@@ -243,21 +243,19 @@ async function toggleActivo(id, activo) {
 async function cargarProveedoresDesdeExcel(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  // reset input for reuse
   input.value = '';
 
-  const originalText = '📥 Cargar desde Excel';
-
+  const btn = document.getElementById('btn-cargar-proveedores');
+  if (btn) setButtonLoading(btn, true, 'Importando…');
   try {
-    // Show loading feedback via toast or temporary
-    Toast.info('Procesando archivo Excel...');
-
+    Toast.info('Procesando archivo Excel…');
     const data = await Api.uploadFile('/proveedores/import', file, 'excel');
-
     Toast.success(data.mensaje || `Carga correcta. Se importaron ${data.nuevos || 0} proveedores nuevos.`);
     cargarProveedores();
   } catch (err) {
     Toast.error(err.mensaje || 'Error al cargar el archivo Excel');
+  } finally {
+    if (btn) setButtonLoading(btn, false);
   }
 }
 

@@ -24,15 +24,21 @@
             </nav>
           </div>
           <div class="page-header-actions" id="admin-actions" style="display:none; flex-wrap:wrap; gap:6px;">
-            <button class="btn btn-outline btn-sm" onclick="exportarCatalogoExcel()" title="Descargar con el mismo formato de carga">
-              ↓ Descargar Excel
-            </button>
-            <button class="btn btn-outline btn-sm"
-                    onclick="document.getElementById('input-excel-catalogo').click()">
-              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
-                   viewBox="0 0 24 24" style="vertical-align:-1px;margin-right:3px">
+            <button type="button" id="btn-exportar-catalogo" class="btn btn-outline btn-sm"
+                    onclick="exportarCatalogoExcel(this)"
+                    title="Exportar catálogo (mismo formato de carga)">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Exportar Excel
+            </button>
+            <button type="button" id="btn-cargar-catalogo" class="btn btn-outline btn-sm"
+                    onclick="document.getElementById('input-excel-catalogo').click()"
+                    title="Cargar catálogo desde Excel">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
               Cargar Excel
             </button>
@@ -160,6 +166,7 @@
           <select id="cat-moneda" class="form-control">
             <option value="MXN">MXN - Peso Mexicano</option>
             <option value="USD">USD - Dólar Americano</option>
+            <option value="EUR">EUR - Euro</option>
           </select>
         </div>
       </div>

@@ -39,8 +39,8 @@ async function crear(req, res) {
       return res.status(400).json({ mensaje: 'Tipo, código y descripción son obligatorios' });
     }
 
-    if (moneda && !['MXN', 'USD'].includes(moneda)) {
-      return res.status(400).json({ mensaje: 'Moneda inválida. Use MXN o USD' });
+    if (moneda && !['MXN', 'USD', 'EUR'].includes(moneda)) {
+      return res.status(400).json({ mensaje: 'Moneda inválida. Use MXN, USD o EUR' });
     }
 
     const id = await CatalogoModel.crear({
@@ -65,8 +65,8 @@ async function crear(req, res) {
 
 async function actualizar(req, res) {
   try {
-    if (req.body.moneda && !['MXN', 'USD'].includes(req.body.moneda)) {
-      return res.status(400).json({ mensaje: 'Moneda inválida. Use MXN o USD' });
+    if (req.body.moneda && !['MXN', 'USD', 'EUR'].includes(req.body.moneda)) {
+      return res.status(400).json({ mensaje: 'Moneda inválida. Use MXN, USD o EUR' });
     }
 
     const afectados = await CatalogoModel.actualizar(req.params.id, req.body);
@@ -137,7 +137,9 @@ function normHeader(v) {
 
 /**
  * Mapea columnas por nombre de encabezado.
- * Por defecto (sin encabezado o no reconocido): A=0 proveedor, B=1 nombre, C=2 código, D=3 descripción.
+ * Layout Contabilidad (default sin encabezado): A=num prov, B=nombre, C=código, D=desc, E=UOM, F=costo, G=moneda.
+ * Layout proveedor (p.ej. 157 AMERICAN SUESSEN):
+ *   VENDOR_NUMBER | VEN_ITEM (PART NUMBER) | DESCRIPTION | STOCK_UOM | CURRENCY | BASE_COST | …
  */
 function resolverMapaColumnasCatalogo(headerRow) {
   // Índices fijos Excel: A=0 … G=6  →  Código siempre en C (índice 2)
@@ -154,7 +156,7 @@ function resolverMapaColumnasCatalogo(headerRow) {
 
   const cells = headerRow.map(normHeader);
   const esHeader = cells.some((c) =>
-    /proveedor|numero de parte|no\.?\s*de\s*parte|codigo|descripcion|uom|unidad|costo|moneda/.test(c)
+    /proveedor|vendor|numero de parte|no\.?\s*de\s*parte|part\s*number|ven_?item|codigo|descripcion|description|uom|unidad|stock_?uom|costo|base_?cost|moneda|currency/.test(c)
   );
   if (!esHeader) return { map: fallback, esHeader: false };
 
@@ -167,15 +169,17 @@ function resolverMapaColumnasCatalogo(headerRow) {
     return -1;
   };
 
-  // Código / Nº de parte: priorizar "numero de parte", "codigo", NO "descripcion"
+  // Código / Nº de parte: priorizar "numero de parte", "ven_item", "part number", "codigo"
+  // NO "descripcion" ni "replacing_item"
   let codigo = findIdx(
+    /^ven_?item(\s*\(.*\))?$/,
+    /part\s*number/,
     /^numero de parte$/,
     /^n[oº°.]?\s*de\s*parte$/,
     /^codigo(\s*de\s*item)?$/,
-    /^part\s*number$/,
     /^sku$/
   );
-  // Si no hay match por nombre, forzar columna C (índice 2)
+  // Si no hay match por nombre, forzar columna C (índice 2) — layout Contabilidad
   if (codigo < 0) codigo = 2;
 
   let descripcion = findIdx(/^descripcion$/, /^description$/, /^concepto$/);
@@ -185,25 +189,50 @@ function resolverMapaColumnasCatalogo(headerRow) {
     descripcion = codigo === 3 ? 2 : 3;
   }
 
-  let numProv = findIdx(/^no\.?\s*de\s*proveedor$/, /^num(ero)?\s*proveedor$/, /^vendor$/);
+  let numProv = findIdx(
+    /^vendor_?number$/,
+    /^no\.?\s*de\s*proveedor$/,
+    /^num(ero)?\s*proveedor$/,
+    /^vendor$/,
+    /^vendor_?no/
+  );
   if (numProv < 0) numProv = 0;
 
-  let nombreProv = findIdx(/^proveedor$/, /^nombre\s*proveedor$/, /^supplier$/);
-  if (nombreProv < 0) nombreProv = 1;
+  let nombreProv = findIdx(/^proveedor$/, /^nombre\s*proveedor$/, /^supplier$/, /^vendor_?name$/);
+  // En layout SUESSEN no hay nombre de proveedor; -1 → se ignora
+  if (nombreProv < 0) {
+    // Solo default a col B si no parece layout de part-number en B
+    nombreProv = (codigo === 1) ? -1 : 1;
+  }
 
-  let uom = findIdx(/^uom$/, /^unidad(es)?$/, /^udm$/);
+  let uom = findIdx(/^stock_?uom$/, /^uom$/, /^unidad(es)?$/, /^udm$/);
   if (uom < 0) uom = 4;
 
-  let costo = findIdx(/^costo/, /^precio/, /^cost\s*unit/);
+  let costo = findIdx(/^base_?cost$/, /^costo/, /^precio/, /^cost\s*unit/, /^unit\s*cost/);
   if (costo < 0) costo = 5;
 
-  let moneda = findIdx(/^moneda$/, /^currency$/);
+  let moneda = findIdx(/^moneda$/, /^currency$/, /^curr$/);
   if (moneda < 0) moneda = 6;
 
   return {
     map: { numProv, nombreProv, codigo, descripcion, uom, costo, moneda },
     esHeader: true,
   };
+}
+
+/** Parsea costos tipo "$116.10", "1,234.56", "116.10 USD" */
+function parseCostoCatalogo(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  let s = String(raw).trim();
+  if (!s) return null;
+  // Quitar moneda y símbolos
+  s = s.replace(/[$€£\s]/g, '').replace(/[A-Za-z]/g, '');
+  // Si usa coma decimal europea (116,10) y no hay punto
+  if (/^\d+,\d+$/.test(s)) s = s.replace(',', '.');
+  else s = s.replace(/,/g, '');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
 }
 
 function celda(row, idx) {
@@ -250,13 +279,13 @@ async function importarExcel(req, res) {
       }
 
       const rawNumProv = celda(row, map.numProv);
-      // Código de ítem = columna C (índice 2) salvo mapeo por encabezado explícito
+      // Código de ítem = columna mapeada (C en Contabilidad; VEN_ITEM en layout proveedor)
       const numeroParte = celda(row, map.codigo);
       const descripcion = celda(row, map.descripcion);
       const uom = celda(row, map.uom);
-      const costoRaw = celda(row, map.costo);
-      const costo = costoRaw !== '' ? parseFloat(String(costoRaw).replace(/,/g, '')) : null;
-      const moneda = celda(row, map.moneda).toUpperCase() || 'MXN';
+      const costo = parseCostoCatalogo(celda(row, map.costo));
+      let moneda = celda(row, map.moneda).toUpperCase().replace(/[^A-Z]/g, '') || 'MXN';
+      if (moneda.length > 3) moneda = moneda.slice(0, 3);
 
       if (!numeroParte || !descripcion) {
         omitidos++;
@@ -267,16 +296,21 @@ async function importarExcel(req, res) {
         omitidos++;
         continue;
       }
+      // Saltar filas de "replacing" u otros no-código (muy largas sin dígitos útiles)
+      if (/^replacing/i.test(numeroParte)) {
+        omitidos++;
+        continue;
+      }
 
-      const prov = await obtenerPorNumProveedor(rawNumProv);
+      const prov = rawNumProv ? await obtenerPorNumProveedor(rawNumProv) : null;
       const proveedor_id = prov ? prov.id : null;
       const payload = {
         tipo: 'PARTES',
         codigo: numeroParte,
         descripcion,
         unidad: uom || null,
-        costo_referencia: costo != null && !isNaN(costo) ? costo : null,
-        moneda: ['MXN', 'USD'].includes(moneda) ? moneda : 'MXN',
+        costo_referencia: costo,
+        moneda: ['MXN', 'USD', 'EUR'].includes(moneda) ? moneda : 'MXN',
         proveedor_id,
         activo: 1,
       };

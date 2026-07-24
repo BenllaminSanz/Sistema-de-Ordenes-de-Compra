@@ -7,6 +7,28 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-07-24
+
+Reportes unificados, moneda EUR y mejoras de UI para operación diaria.
+
+### Añadido
+- **Moneda EUR** en catálogo, cotizaciones y carga Excel de catálogo
+- Layout de import catálogo tipo proveedor (**VENDOR_NUMBER / PART NUMBER / BASE_COST**, p. ej. AMERICAN SUESSEN)
+- Helper frontend **ExcelUI**: botones y descargas de Excel homologados
+
+### Cambiado
+- **Reportes General / REQ / OC** con el **mismo layout BASE GRAL**:
+  `No. proveedor`, `Proveedor`, `Area`, `Departamento` (en lugar de Depto/Centro único)
+- **General (Dashboard)**: incluye **REQ del año + OC del año** (deduplica por N°; prioriza fila de OC)
+- Botones Excel unificados: **Exportar Excel** / **Cargar Excel** con estado Generando…/Importando…
+- Listado OC: se quita columna **Requerimiento**; se mantiene **No. OC** (REQ sigue en el detalle)
+- Import REQ acepta layout unificado y el Excel legado de Contabilidad (Depto)
+
+### Notas de despliegue
+- **Sin migración de base de datos**
+- Conservar en el servidor: `.env`, `backend/uploads/`
+- Si se cargó catálogo Suessen solo en local, reimportar el Excel en el servidor (Catálogo → Cargar Excel)
+
 ## [1.5.0] — 2026-07-24
 
 Entrega post-carga histórica BASE GRAL + operación con estados de OC reales.

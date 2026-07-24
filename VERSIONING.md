@@ -68,6 +68,8 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 | `v1.3.2` | plantilla RFQ, Nº ítem OC, líneas catálogo | |
 | `v1.4.0` | fases A–D: PO/fecha_po, UDM, catálogo Excel, export OC | |
 | `v1.4.1` | post-reunión: idioma RFQ, recibo por ítem, reporte OC, catálogo proveedor | | |
+| `v1.5.0` | BASE GRAL import, sync estados OC, filtros activos | | |
+| `v1.6.0` | reportes unificados, EUR, General REQ+OC, UI Excel | | |
 
 ## Convención de mensajes de commit (recomendado)
 

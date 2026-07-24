@@ -415,7 +415,7 @@ async function exportarExcel(req, res) {
 
     const fecha  = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Requerimientos-${fecha}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="BASE_GRAL_REQ_${fecha}.xlsx"`);
     res.send(buffer);
   } catch (err) {
     logger.error('[exportarExcel requerimientos]', err);

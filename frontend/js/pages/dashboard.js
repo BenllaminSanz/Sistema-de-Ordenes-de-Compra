@@ -391,17 +391,21 @@ async function renderOCActivas() {
   } catch { UI.empty(el, 'Error al cargar órdenes activas'); }
 }
 
-// ─── Reporte discreto (solo contabilidad/admin) ───────────────
+// ─── Export BASE GRAL (solo contabilidad/admin) ───────────────
 function inicializarReporteStatus() {
   const user = Auth.getUsuario();
   const btn  = document.getElementById('btn-reporte');
   if (!btn) return;
   if (!user || !['contabilidad', 'admin'].includes(user.rol)) return;
 
-  btn.style.display = 'flex';
+  btn.style.display = 'inline-flex';
+  if (window.ExcelUI?.htmlExport) btn.innerHTML = ExcelUI.htmlExport();
+  btn.title = 'Exportar BASE GRAL del año: todos los REQ y OC';
   btn.addEventListener('click', () => {
-    if (window.Reportes?.descargarStatusPOS) {
-      Reportes.descargarStatusPOS(anioActual);
+    if (window.Reportes?.descargarBaseGral) {
+      Reportes.descargarBaseGral(anioActual, btn);
+    } else if (window.Reportes?.descargarStatusPOS) {
+      Reportes.descargarStatusPOS(anioActual, btn);
     } else {
       Toast.error('No se pudo cargar el módulo de reportes');
     }

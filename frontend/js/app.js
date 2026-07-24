@@ -454,18 +454,22 @@ function debounce(fn, delay = 300) {
 }
 
 /**
- * Maneja estado de carga en botones (deshabilita + cambia texto)
+ * Maneja estado de carga en botones (deshabilita + cambia texto/HTML)
  */
-function setButtonLoading(btn, isLoading, loadingText = 'Guardando...') {
+function setButtonLoading(btn, isLoading, loadingText = 'Guardando…') {
   if (!btn) return;
   if (isLoading) {
-    if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent;
+    if (btn.dataset.originalHtml == null) {
+      btn.dataset.originalHtml = btn.innerHTML;
+    }
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
     btn.textContent = loadingText;
   } else {
     btn.disabled = false;
-    if (btn.dataset.originalText) {
-      btn.textContent = btn.dataset.originalText;
+    btn.removeAttribute('aria-busy');
+    if (btn.dataset.originalHtml != null) {
+      btn.innerHTML = btn.dataset.originalHtml;
     }
   }
 }
@@ -506,27 +510,64 @@ window.setButtonLoading = setButtonLoading;
 window.delegate = delegate;
 window.confirmAction = confirmAction;
 
-// ─── REPORTES (descargas Excel protegidas) ───────────────────────────────────
-const Reportes = {
-  async descargarStatusPOS(anio) {
+// ─── EXCEL / REPORTES (botones y descargas homologados) ───────────────────────
+const ExcelUI = {
+  /** Icono ↓ exportar (SVG inline, 13px) */
+  iconExport:
+    '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>' +
+    '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>' +
+    '</svg>',
+
+  /** Icono ↑ cargar (SVG inline, 13px) */
+  iconImport:
+    '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>' +
+    '<polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>' +
+    '</svg>',
+
+  labelExport: 'Exportar Excel',
+  labelImport: 'Cargar Excel',
+
+  htmlExport() {
+    return `${this.iconExport} ${this.labelExport}`;
+  },
+  htmlImport() {
+    return `${this.iconImport} ${this.labelImport}`;
+  },
+
+  /**
+   * Descarga un blob Excel autenticado.
+   * @param {string} path ruta API (con query)
+   * @param {object} [opts]
+   * @param {HTMLElement} [opts.btn]
+   * @param {string} [opts.filename]
+   * @param {string} [opts.successMsg]
+   * @param {string} [opts.loadingText]
+   */
+  async descargar(path, opts = {}) {
+    const {
+      btn = null,
+      filename = null,
+      successMsg = 'Excel descargado',
+      loadingText = 'Generando…',
+    } = opts;
+
+    const token = Auth.getToken();
+    if (!token) {
+      Toast.error('Debes iniciar sesión');
+      return false;
+    }
+
+    if (btn) setButtonLoading(btn, true, loadingText);
     try {
-      const token = Auth.getToken();
-      if (!token) {
-        Toast.error('Debes iniciar sesión como contabilidad o admin');
-        return;
-      }
-
-      const year = parseInt(anio) || new Date().getFullYear();
-      const res = await fetch(API_BASE + `/reportes/status-pos-hilos?anio=${year}`, {
+      const res = await fetch(API_BASE + path, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` },
       });
-
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.mensaje || 'Error al descargar el reporte');
+        throw new Error(errData.mensaje || 'Error al generar el Excel');
       }
 
       const blob = await res.blob();
@@ -534,24 +575,46 @@ const Reportes = {
       const a = document.createElement('a');
       a.href = url;
 
+      let name = filename || `export_${new Date().toISOString().slice(0, 10)}.xlsx`;
       const disposition = res.headers.get('Content-Disposition');
-      let filename = `STATUS_${year}_POS_HILOS_${new Date().toISOString().slice(0, 10)}.xlsx`;
       if (disposition) {
-        const match = disposition.match(/filename="?([^"]+)"?/);
-        if (match) filename = match[1];
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        if (match) name = match[1].trim();
       }
-      a.download = filename;
-
+      a.download = name;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
 
-      Toast.success(`Reporte STATUS POS HILOS ${year} descargado`);
+      Toast.success(successMsg);
+      return true;
     } catch (err) {
-      Toast.error(err.message || 'Error al descargar el reporte STATUS');
+      Toast.error(err.message || 'Error al descargar el Excel');
+      return false;
+    } finally {
+      if (btn) setButtonLoading(btn, false);
     }
-  }
+  },
 };
 
+/** Reportes de operación en layout BASE GRAL */
+const Reportes = {
+  /** Dashboard: BASE GRAL del año seleccionado */
+  async descargarBaseGral(anio, btn) {
+    const year = parseInt(anio) || new Date().getFullYear();
+    return ExcelUI.descargar(`/reportes/status-pos-hilos?anio=${year}`, {
+      btn,
+      successMsg: `BASE GRAL ${year} descargado (REQ + OC)`,
+      loadingText: 'Generando…',
+    });
+  },
+
+  /** Alias histórico (UI anterior STATUS POS) */
+  async descargarStatusPOS(anio, btn) {
+    return this.descargarBaseGral(anio, btn);
+  },
+};
+
+window.ExcelUI = ExcelUI;
 window.Reportes = Reportes;
