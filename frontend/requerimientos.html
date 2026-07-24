@@ -273,6 +273,7 @@
             </div>
             <select id="fil-estado" class="form-control">
               <option value="">Todos los estados</option>
+              <option value="activos">Activos / no cerrados</option>
               <option value="borrador">Borrador</option>
               <option value="en_revision">En revisión</option>
               <option value="aprobado">Aprobado</option>
@@ -296,7 +297,7 @@
           </div>
 
           <div id="tabla-reqs"></div>
-          <div id="paginacion-reqs"></div>
+          <div id="paginacion-reqs" class="pagination-bar" aria-label="Paginación de requerimientos"></div>
         </div>
       </div>
 
@@ -345,9 +346,13 @@
     </div>
     <div style="padding:20px 24px">
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">
-        El archivo debe tener hojas <strong>SERVICIOS</strong> y/o <strong>PARTES</strong>
-        con el mismo formato del archivo histórico. Solo se importarán registros nuevos
-        (que no existan aún en el sistema).
+        Use la plantilla <strong>BASE GRAL</strong> (mismas columnas que el Excel de Contabilidad):
+        <em>Orden de compra, Fecha, N°, Fecha de solicitud, Tipo, Proveedor, Total, Moneda,
+        Usuario, Estado, Depto, Compañía, Tipo de servicio, Status</em>.
+        Puede ir en una sola hoja (<code>Hoja1</code>) o por tipo.
+        <br><br>
+        <strong>Solo se agregan REQ que aún no existan</strong> (mismo consecutivo / N° con sufijo A/B/C).
+        Los que ya están en el sistema se omiten; no se borran datos.
       </p>
       <div class="form-group">
         <label class="form-label">Archivo Excel (.xlsx)</label>

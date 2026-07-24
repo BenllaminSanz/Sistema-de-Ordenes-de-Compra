@@ -7,6 +7,31 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-07-24
+
+Entrega post-carga histórica BASE GRAL + operación con estados de OC reales.
+
+### Añadido
+- **Plantilla Excel BASE GRAL** para importar requerimientos (layout Contabilidad: PO → Fecha → N° → … → Estado → Status)
+- Import que **solo agrega** REQ/OC que aún no existen (no borra; consecutivos con sufijo **A/B/C** válidos)
+- Usuarios solicitantes inexistentes se crean **inactivos** (solo nombre; sin correo real)
+- Validación de catálogo al importar: si no hay match, ítem libre + nota
+- Script `backend/scripts/cargar-base-req.mjs` (dry-run / apply; wipe solo excepcional)
+- Script `backend/scripts/sincronizar-estados-oc.mjs` para **actualizar estados de OC** desde Excel (Cerrada / Distribuida / **Parcial→en_proceso** / Cancelada)
+- Filtro **Activos / no cerrados** en listado de requerimientos
+- Paginación **fija al pie** de pantalla en REQ y OC
+- Dashboard: depto vía área del Excel, ciclo req→fecha PO, desglose OC activas, monedas USD/EUR
+
+### Cambiado
+- Listado OC: columnas **PO DTN → Fecha PO → Requerimiento → No. OC** (anchos fijos; PO como referencia)
+- Filtro OC renombrado a **Activas / no concluidas**
+- Export Excel de REQ alineado al layout BASE GRAL
+- Dashboard KPIs por año + links a listados filtrados
+
+### Corregido
+- Dashboard: error `ONLY_FULL_GROUP_BY` en top de áreas/deptos
+- Dashboard: top departamentos vacío cuando el depto venía solo en `area` (import)
+
 ## [1.4.1] — 2026-07-17
 
 Patch post-reunión de entrega v1.4.0 (correcciones y mejoras de usabilidad).
@@ -27,8 +52,6 @@ Patch post-reunión de entrega v1.4.0 (correcciones y mejoras de usabilidad).
 
 ## [1.4.0] — 2026-07-14
 
-Checklist completo: `docs/CHECKLIST-v1.4.0.md`.
-
 ### Añadido
 - PO DTN + `fecha_po` al generar OC (o NA sin PO)
 - Notas de contabilidad editables en OC (panel destacado)
@@ -40,7 +63,6 @@ Checklist completo: `docs/CHECKLIST-v1.4.0.md`.
 - Marcador de correo de cotización enviado / sin enviar
 - Adjuntos de cotización: PDF, Word, Excel e imágenes (no solo PDF)
 - Límite de 15 ítems por REQ; consecutivo solo al enviar a revisión; borrar borrador
-- Checklist de entrega v1.4.0 (`docs/CHECKLIST-v1.4.0.md`)
 
 ### Cambiado
 - REQ pasa a **cerrado** al generar OC (corrige bug de estado aprobado)

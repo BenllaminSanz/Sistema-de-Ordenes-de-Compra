@@ -26,6 +26,17 @@ const params = new URLSearchParams(window.location.search);
 if (params.get('id')) {
   abrirDetalle(params.get('id'));
 } else {
+  // Restaurar filtros desde URL (ej. ?estado=activos)
+  const estadoUrl = params.get('estado');
+  const tipoUrl = params.get('tipo');
+  if (estadoUrl) {
+    const sel = document.getElementById('fil-estado');
+    if (sel) sel.value = estadoUrl;
+  }
+  if (tipoUrl) {
+    const sel = document.getElementById('fil-tipo');
+    if (sel) sel.value = tipoUrl;
+  }
   cargarRequerimientos(1);
 
   if (params.get('crear') === '1' && Auth.puedeHacer(['solicitante', 'contabilidad', 'admin'])) {

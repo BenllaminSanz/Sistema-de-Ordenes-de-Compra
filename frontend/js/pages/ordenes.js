@@ -316,7 +316,7 @@ async function cargarOrdenes(pagina) {
           ? 'No tienes órdenes de compra generadas a partir de tus requerimientos.'
           : 'No hay órdenes de compra';
       } else if (estado === 'activas') {
-        msg = 'No hay órdenes de compra activas o pendientes de cerrar.';
+        msg = 'No hay órdenes de compra activas / no concluidas.';
       } else if (sinPo) {
         msg = 'No hay órdenes sin PO DataTextNow con los filtros seleccionados.';
       }
@@ -335,27 +335,48 @@ async function cargarOrdenes(pagina) {
 
     contenedor.innerHTML = `
       <div class="table-wrap">
-        <table>
+        <table class="tabla-oc-listado">
+          <colgroup>
+            <col class="col-po-dtn">
+            <col class="col-fecha-po">
+            <col class="col-req">
+            <col class="col-no-oc">
+            <col class="col-tipo">
+            <col class="col-proveedor">
+            <col class="col-monto">
+            <col class="col-persona">
+            <col class="col-estado">
+            <col class="col-modif">
+            <col class="col-acciones">
+          </colgroup>
           <thead><tr>
-            <th>No. OC</th><th>PO DTN</th><th>Fecha PO</th><th>Requerimiento</th><th>Tipo</th>
+            <th>PO DTN</th><th>Fecha PO</th><th>Requerimiento</th><th>No. OC</th><th>Tipo</th>
             <th>Proveedor</th><th>Monto</th><th>${columnaHeader}</th>
             <th>Estado</th><th>Últ. modificación</th><th></th>
           </tr></thead>
-          <tbody>${datos.map(o => `
+          <tbody>${datos.map(o => {
+            const poRaw = (o.datatextnow_id && String(o.datatextnow_id).trim())
+              ? String(o.datatextnow_id).trim()
+              : '';
+            const poTxt = poRaw ? UI.esc(poRaw) : '—';
+            const poTitle = poRaw ? ` title="${UI.esc(poRaw)}"` : '';
+            const provTxt = UI.labelProveedor(o);
+            const personaTxt = getColumnaValor(o);
+            return `
             <tr>
-              <td class="fw-600">${o.numero_oc}</td>
-              <td class="text-muted small">${(o.datatextnow_id && String(o.datatextnow_id).trim()) ? UI.esc(String(o.datatextnow_id).trim()) : '—'}</td>
-              <td class="text-muted small">${o.fecha_po ? fechaPoUi(o.fecha_po) : (esPoNa(o.datatextnow_id) ? 'NA' : '—')}</td>
-              <td>${o.consecutivo}</td>
-              <td>${o.tipo}</td>
-              <td>${UI.labelProveedor(o)}</td>
-              <td>${o.monto_total != null
+              <td class="fw-600 col-po-dtn"${poTitle}>${poTxt}</td>
+              <td class="text-muted small col-fecha-po">${o.fecha_po ? fechaPoUi(o.fecha_po) : (esPoNa(o.datatextnow_id) ? 'NA' : '—')}</td>
+              <td class="col-req" title="${UI.esc(o.consecutivo || '')}">${o.consecutivo || '—'}</td>
+              <td class="text-muted small col-no-oc" title="${UI.esc(o.numero_oc || '')}">${o.numero_oc || '—'}</td>
+              <td class="col-tipo">${o.tipo}</td>
+              <td class="col-proveedor" title="${UI.esc(provTxt)}">${provTxt}</td>
+              <td class="col-monto">${o.monto_total != null
                     ? '$' + Number(o.monto_total).toLocaleString('es-MX') + ' ' + o.moneda
                     : '—'}</td>
-              <td>${getColumnaValor(o)}</td>
-              <td>${UI.badge(o.estado)}</td>
-              <td class="text-muted text-sm">${UI.fecha(o.updated_at || o.created_at)}</td>
-              <td>
+              <td class="col-persona" title="${UI.esc(personaTxt)}">${personaTxt}</td>
+              <td class="col-estado">${UI.badge(o.estado)}</td>
+              <td class="text-muted text-sm col-modif">${UI.fecha(o.updated_at || o.created_at)}</td>
+              <td class="col-acciones">
                 <button class="btn btn-sm btn-outline" data-action="ver-oc" data-id="${o.id}" title="Ver detalle" style="padding:2px 6px;">
                   <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" style="vertical-align:-1px;">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -363,7 +384,8 @@ async function cargarOrdenes(pagina) {
                   </svg>
                 </button>
               </td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
           </tbody>
         </table>
       </div>`;

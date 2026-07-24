@@ -440,6 +440,7 @@ tbody tr:last-child td { border-bottom: none; }
   justify-content: flex-end;
   margin-top: 16px;
   font-size: 13px;
+  flex-wrap: wrap;
 }
 .pagination button {
   padding: 5px 11px;
@@ -452,6 +453,41 @@ tbody tr:last-child td { border-bottom: none; }
 .pagination button.active  { background: var(--primary); color: #fff; border-color: var(--primary); }
 .pagination button:disabled { opacity: .4; cursor: not-allowed; }
 .pagination .pag-info      { color: var(--muted); margin: 0 6px; }
+
+/* Barra de paginación fija al pie de pantalla (listados largos) */
+#paginacion-reqs:not(:empty),
+#paginacion-oc:not(:empty),
+.pagination-bar:not(:empty) {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-w);
+  right: 0;
+  z-index: 85;
+  margin: 0;
+  padding: 10px 24px;
+  background: rgba(255, 255, 255, 0.97);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(6px);
+}
+#paginacion-reqs .pagination,
+#paginacion-oc .pagination,
+.pagination-bar .pagination {
+  margin-top: 0;
+  justify-content: center;
+}
+/* Espacio inferior para que la última fila no quede bajo la barra */
+#main-content {
+  padding-bottom: 72px;
+}
+@media (max-width: 768px) {
+  #paginacion-reqs:not(:empty),
+  #paginacion-oc:not(:empty),
+  .pagination-bar:not(:empty) {
+    left: 0;
+    padding: 10px 14px;
+  }
+}
 
 /* ── Historial de estados ──────────────────────────────────── */
 .timeline { position: relative; padding-left: 24px; }
@@ -857,6 +893,46 @@ body.catalogo-con-carrito #main-content {
   color: #1e40af;
   margin-bottom: 8px;
   line-height: 1.45;
+}
+
+/* ── Listado Órdenes de Compra ─────────────────────────────── */
+/* Anchos anclados a PO DTN numérico fijo (ej. 310006877 ≈ 9 dígitos).
+   Valores en texto más largos se truncan con ellipsis; hover muestra el completo. */
+#tabla-oc .tabla-oc-listado {
+  table-layout: fixed;
+  width: 100%;
+}
+#tabla-oc .tabla-oc-listado col.col-po-dtn    { width: 7.25rem; }  /* ref. 310006877 (9 dígitos) */
+#tabla-oc .tabla-oc-listado col.col-fecha-po  { width: 6.5rem; }   /* "17 jul 2026" */
+#tabla-oc .tabla-oc-listado col.col-req       { width: 5.75rem; }
+#tabla-oc .tabla-oc-listado col.col-no-oc     { width: 5.5rem; }
+#tabla-oc .tabla-oc-listado col.col-tipo      { width: 5.75rem; }  /* PARTES / SERVICIOS / FLETES */
+#tabla-oc .tabla-oc-listado col.col-proveedor { width: auto; }     /* resto del ancho */
+#tabla-oc .tabla-oc-listado col.col-monto     { width: 7.25rem; }
+#tabla-oc .tabla-oc-listado col.col-persona   { width: 7.5rem; }
+#tabla-oc .tabla-oc-listado col.col-estado    { width: 6.75rem; }
+#tabla-oc .tabla-oc-listado col.col-modif     { width: 7rem; }
+#tabla-oc .tabla-oc-listado col.col-acciones  { width: 2.75rem; }
+
+#tabla-oc .tabla-oc-listado th,
+#tabla-oc .tabla-oc-listado td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  vertical-align: middle;
+}
+#tabla-oc .tabla-oc-listado td.col-po-dtn {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+#tabla-oc .tabla-oc-listado td.col-proveedor,
+#tabla-oc .tabla-oc-listado td.col-persona {
+  white-space: nowrap;
+}
+#tabla-oc .tabla-oc-listado td.col-estado {
+  overflow: visible; /* badges no se cortan */
 }
 
 /* ── Responsive ────────────────────────────────────────────── */

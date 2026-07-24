@@ -1,15 +1,18 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.3.2** — Julio 2026
+**Versión 1.5.0** — Julio 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · **Manual al subir cambios:** [docs/MANUAL-GIT-GITHUB.md](./docs/MANUAL-GIT-GITHUB.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · **Manual al subir cambios:** [docs/MANUAL-GIT-GITHUB.md](./docs/MANUAL-GIT-GITHUB.md)  
+**Presentación v1.5.0:** [docs/PRESENTACION-v1.5.0.md](./docs/PRESENTACION-v1.5.0.md) · [docs/Presentacion-Sistema-OC-v1.5.0.pptx](./docs/Presentacion-Sistema-OC-v1.5.0.pptx)
 
-## Novedades v1.3.2
+## Novedades v1.5.0
 
-- **Plantilla RFQ** mejorada para cotizaciones
-- **Nº de ítem** al generar OC y líneas de OC alineadas al catálogo
+- Plantilla Excel **BASE GRAL** (import solo de N° nuevos)
+- Sincronización de **estados de OC** (Cerrada / Parcial→en_proceso / Distribuida)
+- Filtros **activos** en REQ y OC; paginación fija; listado OC con PO primero
+- Dashboard alineado a datos históricos (áreas, ciclo, OC activas)
 
 ## Novedades v1.3
 
@@ -141,12 +144,17 @@ Sistema de Ordenes de Compra/
 
 | Comando | Descripción |
 |---------|-------------|
-| `npm run dev` | Servidor con recarga automática |
-| `npm start` | Servidor en modo producción |
-| `node backend/scripts/seed-admin.js` | Crear o actualizar usuario administrador |
-| `npm run test:ci` (en `backend/`) | Comprobaciones sin BD (versión, archivos, sintaxis) — lo usa GitHub Actions |
-| `npm test` (en `backend/`) | Pruebas de flujo API (requiere servidor + MySQL + admin en `.env`) |
-| `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy (sin `node_modules`, `.env` ni `uploads`) |
+| `npm run dev` / `npm start` (en `backend/`) | Servidor desarrollo / producción |
+| `node backend/scripts/seed-admin.js` | Crear o actualizar administrador |
+| `node backend/scripts/seed-proveedor-prueba.mjs` | Proveedor de prueba (+ opcional `--correo`) |
+| `node backend/scripts/cargar-base-req.mjs` | Import Excel BASE GRAL (solo N° nuevos; `--dry-run` / `--apply`) |
+| `node backend/scripts/sincronizar-estados-oc.mjs` | Actualizar estados OC desde Excel (`--dry-run` / `--apply`) |
+| `node backend/scripts/corregir-*.mjs` / `migrar-consecutivos.mjs` | Corrección / migración de datos (dry-run por defecto) |
+| `npm run test:ci` (en `backend/`) | CI sin BD (GitHub Actions) |
+| `npm test` (en `backend/`) | Pruebas de flujo API (servidor + MySQL) |
+| `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | ZIP de deploy |
+
+Documentación de entrega y demo: `docs/PRESENTACION-v1.5.0.md` · diapositivas en `docs/Presentacion-Sistema-OC-v1.5.0.pptx`.
 
 ## Variables de Entorno
 

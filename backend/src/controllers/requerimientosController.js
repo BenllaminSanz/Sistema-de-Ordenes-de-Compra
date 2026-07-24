@@ -3,7 +3,7 @@ import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
 import { validarMismoProveedorCatalogo } from '../utils/catalogoItems.js';
 import { parseExcelRequerimientos, generarExcelRequerimientos } from '../utils/excelRequerimientos.js';
-import { sincronizarConsecutivosControl } from '../utils/consecutivos.js';
+import { importarBaseRequerimientos } from '../utils/importBaseReq.js';
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 
@@ -400,7 +400,9 @@ async function exportarExcel(req, res) {
         oc.monto_total           AS oc_monto_total,
         oc.moneda                AS oc_moneda,
         oc.datatextnow_id        AS oc_datatextnow_id,
+        oc.fecha_po              AS oc_fecha_po,
         oc.fecha_autorizacion    AS oc_fecha_autorizacion,
+        p.num_proveedor          AS proveedor_num,
         p.nombre                 AS proveedor_nombre
       FROM requerimientos r
       JOIN usuarios u ON u.id = r.solicitante_id
@@ -422,113 +424,63 @@ async function exportarExcel(req, res) {
 }
 
 // ─── POST /requerimientos/importar ────────────────────────────────────────────
+/**
+ * Importa Excel en layout BASE GRAL (PO/Fecha/N°/Estado…) o legacy (hojas SERVICIOS/PARTES).
+ * Body multipart: archivo=Excel
+ * Query/body opcional:
+ *   dry_run=1  → solo valida y resume (no escribe)
+ *   wipe=1     → borra REQ/OC/recepciones/cotizaciones antes (solo admin; local/recarga controlada)
+ *
+ * No crea cotizaciones. Crea OC cuando el Estado Excel lo indica.
+ * Sufijos A/B/C en el consecutivo son válidos (varias OC del mismo REQ lógico).
+ */
 async function importarExcel(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ mensaje: 'No se recibió ningún archivo Excel' });
     }
 
-    const { filas, hojasSaltadas } = parseExcelRequerimientos(req.file.buffer);
-    if (!filas.length) {
-      return res.status(400).json({ mensaje: 'El archivo no contiene filas válidas en las hojas SERVICIOS o PARTES' });
-    }
+    const dryRun =
+      req.query.dry_run === '1' ||
+      req.query.dry_run === 'true' ||
+      req.body?.dry_run === '1' ||
+      req.body?.dry_run === true;
+    const wipe =
+      req.query.wipe === '1' ||
+      req.query.wipe === 'true' ||
+      req.body?.wipe === '1' ||
+      req.body?.wipe === true;
 
-    // Cargar catálogo de usuarios para matching por nombre
-    const [dbUsers] = await pool.query('SELECT id, nombre FROM usuarios');
-    const byFull    = new Map(dbUsers.map(u => [u.nombre.toLowerCase().trim(), u.id]));
-    const adminId   = dbUsers.find(u => u.id === req.usuario.id)?.id
-                   || dbUsers.find(u => /* any admin */true)?.id;
-
-    function matchUsuario(excelNombre) {
-      if (!excelNombre) return null;
-      const lower = excelNombre.toLowerCase().trim();
-      if (byFull.has(lower)) return byFull.get(lower);
-      const tokens = lower.split(/\s+/);
-      if (tokens.length > 2) {
-        const dos = tokens.slice(0, 2).join(' ');
-        if (byFull.has(dos)) return byFull.get(dos);
-        for (const [k, v] of byFull.entries()) {
-          if (lower.includes(k.split(' ')[0]) && lower.includes((k.split(' ')[1] || ''))) return v;
-          if (k.includes(tokens[0]) && (tokens[1] ? k.includes(tokens[1]) : true)) return v;
-        }
-      }
-      return null;
-    }
-
-    // Cargar consecutivos existentes para deduplicar
-    const [existentes] = await pool.query('SELECT consecutivo FROM requerimientos');
-    const existenteSet  = new Set(existentes.map(r => r.consecutivo));
-
-    const nuevas = filas.filter(f =>
-      !existenteSet.has(f.consecutivo) && !existenteSet.has('REQ-' + f.consecutivo)
-    );
-
-    if (!nuevas.length) {
-      return res.json({
-        importados:    0,
-        saltados:      filas.length,
-        hojasSaltadas,
-        mensaje:       'Todos los registros del archivo ya existen en el sistema',
+    if (wipe && req.usuario.rol !== 'admin') {
+      return res.status(403).json({
+        mensaje: 'Solo admin puede importar con wipe (borrado de REQ/OC previos)',
       });
     }
 
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-
-      let importados = 0;
-      const errores  = [];
-
-      for (const f of nuevas) {
-        const solicitanteId = matchUsuario(f.usuario) ?? req.usuario.id;
-        const titulo        = (f.titulo || f.consecutivo).slice(0, 500);
-        const notas         = (f.notas || '').slice(0, 2000);
-        const createdAt     = f.fecha_sol ? `${f.fecha_sol} 00:00:00` : null;
-
-        try {
-          await conn.query(`
-            INSERT INTO requerimientos
-              (consecutivo, solicitante_id, titulo_solicitud, tipo, area,
-               notas, requiere_cotizacion, estado, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())
-          `, [
-            f.consecutivo,
-            solicitanteId,
-            titulo,
-            f.tipo,
-            f.area,
-            notas,
-            f.estado,
-            createdAt,
-          ]);
-          importados++;
-        } catch (rowErr) {
-          errores.push(`${f.consecutivo}: ${rowErr.message}`);
-        }
-      }
-
-      await conn.commit();
-
-      try {
-        await sincronizarConsecutivosControl(pool);
-      } catch (syncErr) {
-        logger.error('[importarExcel] no se pudo sincronizar consecutivos_control', { error: syncErr.message });
-      }
-
-      res.json({
-        importados,
-        saltados:      filas.length - nuevas.length,
-        errores:       errores.length ? errores : undefined,
-        hojasSaltadas: hojasSaltadas.length ? hojasSaltadas : undefined,
-        mensaje:       `Se importaron ${importados} requerimiento(s) nuevos.` +
-                       (errores.length ? ` ${errores.length} con error.` : ''),
+    const parsed = parseExcelRequerimientos(req.file.buffer);
+    if (!parsed.filas.length) {
+      return res.status(400).json({
+        mensaje:
+          'El archivo no contiene filas válidas. Use el layout BASE GRAL (Orden de compra, Fecha, N°, …) ' +
+          'o las hojas SERVICIOS/PARTES del formato anterior.',
+        hojasSaltadas: parsed.hojasSaltadas,
+        layout: parsed.layout,
       });
-    } catch (err) {
-      await conn.rollback();
-      throw err;
-    } finally {
-      conn.release();
     }
+
+    const reporte = await importarBaseRequerimientos({
+      filas: parsed.filas,
+      duplicados: parsed.duplicados,
+      actorUserId: req.usuario.id,
+      wipe: wipe && !dryRun,
+      dryRun,
+    });
+
+    res.json({
+      ...reporte,
+      layout: parsed.layout,
+      hojasSaltadas: parsed.hojasSaltadas?.length ? parsed.hojasSaltadas : undefined,
+    });
   } catch (err) {
     logger.error('[importarExcel requerimientos]', err);
     res.status(500).json({ mensaje: 'Error al procesar el archivo: ' + err.message });

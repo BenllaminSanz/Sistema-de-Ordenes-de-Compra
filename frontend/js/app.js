@@ -249,26 +249,50 @@ const UI = {
       </div>`;
   },
 
-  // Renderiza paginación
+  // Scroll vertical a restaurar tras cambiar de página (lo setea el click del paginador)
+  _pagScrollY: null,
+
+  // Renderiza paginación (si el contenedor es .pagination-bar queda fijo al pie)
   paginacion(contenedor, total, pagina, limite, onCambio) {
     const totalPags = Math.ceil(total / limite);
     if (totalPags <= 1) { contenedor.innerHTML = ''; return; }
 
     let html = `<div class="pagination">
-      <button onclick="(${onCambio})(${pagina - 1})" ${pagina === 1 ? 'disabled' : ''}>‹</button>`;
+      <button type="button" data-pag="${pagina - 1}" ${pagina === 1 ? 'disabled' : ''}>‹</button>`;
 
     for (let i = 1; i <= totalPags; i++) {
       if (i === 1 || i === totalPags || Math.abs(i - pagina) <= 1) {
-        html += `<button class="${i === pagina ? 'active' : ''}"
-                  onclick="(${onCambio})(${i})">${i}</button>`;
+        html += `<button type="button" class="${i === pagina ? 'active' : ''}" data-pag="${i}">${i}</button>`;
       } else if (Math.abs(i - pagina) === 2) {
         html += `<span>…</span>`;
       }
     }
 
-    html += `<button onclick="(${onCambio})(${pagina + 1})" ${pagina === totalPags ? 'disabled' : ''}>›</button>
-      <span class="pag-info">${total} registros</span></div>`;
+    html += `<button type="button" data-pag="${pagina + 1}" ${pagina === totalPags ? 'disabled' : ''}>›</button>
+      <span class="pag-info">Pág. ${pagina} de ${totalPags} · ${total} registros</span></div>`;
     contenedor.innerHTML = html;
+
+    contenedor.querySelectorAll('button[data-pag]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const p = Number(btn.dataset.pag);
+        if (!Number.isFinite(p) || p < 1) return;
+        // Guardar scroll ANTES de que el spinner colapse la tabla
+        UI._pagScrollY = window.scrollY;
+        onCambio(p);
+      });
+    });
+
+    // Restaurar scroll tras re-render (doble rAF: espera layout de la tabla)
+    if (UI._pagScrollY != null) {
+      const y = UI._pagScrollY;
+      UI._pagScrollY = null;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, y);
+        });
+      });
+    }
   },
 
   // Abre modal

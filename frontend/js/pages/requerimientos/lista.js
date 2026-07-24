@@ -13,7 +13,7 @@ async function cargarRequerimientos(pagina) {
 
   let qs = `?pagina=${pagina}&limite=15`;
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
-  if (estado)   qs += `&estado=${estado}`;
+  if (estado)   qs += `&estado=${encodeURIComponent(estado)}`;
   if (tipo)     qs += `&tipo=${tipo}`;
   if (area)     qs += `&area=${encodeURIComponent(area)}`;
   if (depto)    qs += `&departamento=${encodeURIComponent(depto)}`;
@@ -21,7 +21,14 @@ async function cargarRequerimientos(pagina) {
   try {
     const { datos, total, limite } = await Api.get('/requerimientos' + qs);
 
-    if (!datos.length) { UI.empty(contenedor, 'No se encontraron requerimientos'); return; }
+    if (!datos.length) {
+      const msg = estado === 'activos'
+        ? 'No hay requerimientos activos (sin estado cerrado) con los filtros actuales.'
+        : 'No se encontraron requerimientos';
+      UI.empty(contenedor, msg);
+      document.getElementById('paginacion-reqs').innerHTML = '';
+      return;
+    }
 
     contenedor.innerHTML = `
       <div class="table-wrap">

@@ -82,12 +82,32 @@ async function ejecutarImport() {
     const texto = data.importados > 0 ? '#166534' : '#475569';
     resultado.style.cssText = `display:block;background:${color};border:1px solid ${borde};border-radius:6px;padding:10px 14px;font-size:13px;line-height:1.5;margin-top:14px;color:${texto}`;
 
-    let html = `<strong>${data.mensaje}</strong>`;
-    if (data.saltados) html += `<br>Registros ya existentes (omitidos): <strong>${data.saltados}</strong>`;
+    let html = `<strong>${data.mensaje || 'Importación finalizada'}</strong>`;
+    if (data.layout) html += `<br>Layout detectado: <strong>${data.layout}</strong>`;
+    if (data.importados != null) html += `<br>Nuevos REQ: <strong>${data.importados}</strong>`;
+    if (data.ocsCreadas) html += `<br>OC creadas: <strong>${data.ocsCreadas}</strong>`;
+    const saltados = data.saltados
+      ?? (data.errores || []).filter((e) =>
+          String(e?.error || e || '').toLowerCase().includes('ya existe')).length;
+    if (saltados) html += `<br>Ya existentes (omitidos): <strong>${saltados}</strong>`;
+    if (data.duplicados?.length) {
+      html += `<br>Duplicados en archivo (1 sola carga): <strong>${data.duplicados.length}</strong>`;
+    }
+    if (data.usuariosCreados?.length) {
+      html += `<br>Usuarios nuevos (inactivos): <strong>${data.usuariosCreados.length}</strong>`;
+    }
+    if (data.sinCatalogo?.length) {
+      html += `<br>Sin match de catálogo (nota en ítem): <strong>${data.sinCatalogo.length}</strong>`;
+    }
     if (data.hojasSaltadas?.length) html += `<br>Hojas ignoradas: ${data.hojasSaltadas.join(', ')}`;
     if (data.errores?.length) {
-      html += `<br>Errores: <ul style="margin:4px 0 0 16px;padding:0">` +
-              data.errores.map(e => `<li>${e}</li>`).join('') + `</ul>`;
+      const muestra = data.errores.slice(0, 15).map((e) =>
+        typeof e === 'string' ? e : `${e.consecutivo || ''} (fila ${e.filaExcel || '?'}): ${e.error || ''}`
+      );
+      html += `<br>Detalle omitidos/errores: <ul style="margin:4px 0 0 16px;padding:0">` +
+              muestra.map((t) => `<li>${UI.esc ? UI.esc(t) : t}</li>`).join('') +
+              (data.errores.length > 15 ? `<li>… y ${data.errores.length - 15} más</li>` : '') +
+              `</ul>`;
     }
     resultado.innerHTML = html;
 

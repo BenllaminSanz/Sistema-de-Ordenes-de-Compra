@@ -14,7 +14,10 @@ async function listar(filtros = {}) {
   let where = [];
   let params = [];
 
-  if (estado) {
+  // Activos / no concluidos: todo excepto cerrado (incluye borrador, revisión, aprobado, incompleto, rechazado…)
+  if (estado === 'activos') {
+    where.push(`r.estado <> 'cerrado'`);
+  } else if (estado) {
     const estados = String(estado).split(',').map(s => s.trim()).filter(Boolean);
     if (estados.length === 1) {
       where.push('r.estado = ?');
