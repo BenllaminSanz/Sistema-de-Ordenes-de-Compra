@@ -9,6 +9,11 @@ renderTopbar('Dashboard');
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const HOY   = new Date();
 let anioActual = HOY.getFullYear();
+const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
+
+function tituloDashboard(anio) {
+  return esSolicitante ? `Mi panel ${anio}` : `Dashboard ${anio}`;
+}
 
 // ─── Selector de año ──────────────────────────────────────────
 (function initAnioSelect() {
@@ -22,10 +27,10 @@ let anioActual = HOY.getFullYear();
   }
   sel.addEventListener('change', () => {
     anioActual = parseInt(sel.value);
-    document.getElementById('dash-titulo').textContent = `Dashboard ${anioActual}`;
+    document.getElementById('dash-titulo').textContent = tituloDashboard(anioActual);
     cargarDashboard();
   });
-  document.getElementById('dash-titulo').textContent = `Dashboard ${anioActual}`;
+  document.getElementById('dash-titulo').textContent = tituloDashboard(anioActual);
 })();
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -115,9 +120,10 @@ function renderKPIs(s) {
     ocRec ? `${ocRec} recibidas` : null,
   ].filter(Boolean).join(' · ') || 'Sin desglose';
 
+  const mio = s.alcance === 'propio' || esSolicitante;
   const cards = [
     {
-      label: `Requerimientos ${s.anio}`,
+      label: mio ? `Mis requerimientos ${s.anio}` : `Requerimientos ${s.anio}`,
       value: totalReqs.toLocaleString('es-MX'),
       sub: `${reqAbiertos} abiertos · ${enRevision} en revisión · ${aprobados} aprob. · ${rechazados} rech.`,
       color: '#185FA5', bg: '#e6f1fb',
@@ -127,7 +133,7 @@ function renderKPIs(s) {
       extra: sparkline(s.volumen_mensual),
     },
     {
-      label: `Gasto MXN ${s.anio}`,
+      label: mio ? `Mi gasto MXN ${s.anio}` : `Gasto MXN ${s.anio}`,
       value: fmt(gastoMXN, 'MXN'),
       sub: subGasto.join(' · '),
       color: '#0f766e', bg: '#d1fae5',
@@ -136,7 +142,7 @@ function renderKPIs(s) {
              </svg>`,
     },
     {
-      label: 'OC activas (no concluidas)',
+      label: mio ? 'Mis OC activas' : 'OC activas (no concluidas)',
       value: ocEnVuelo.toLocaleString('es-MX'),
       sub: `${subOcActivas} · ${ocCerradasHist.toLocaleString('es-MX')} cerradas hist. · ${totalOCHist.toLocaleString('es-MX')} OC total`,
       color: '#7c3aed', bg: '#ede9fe',
@@ -146,7 +152,7 @@ function renderKPIs(s) {
       link: 'ordenes.html?estado=activas',
     },
     {
-      label: `Ciclo req → PO (${s.anio})`,
+      label: mio ? `Mi ciclo req → PO (${s.anio})` : `Ciclo req → PO (${s.anio})`,
       value: ciclo != null && !Number.isNaN(+ciclo) ? `${ciclo}d` : '—',
       sub: ciclo != null && s.ciclo
         ? `Mín ${s.ciclo.dias_min}d · Máx ${s.ciclo.dias_max}d`
@@ -288,7 +294,21 @@ function renderAging(s) {
   const count = document.getElementById('aging-count');
   if (!el) return;
 
-  const rows = s.aging_reqs || [];
+  // Red de seguridad en cliente: si es solicitante, solo filas de su id
+  let rows = s.aging_reqs || [];
+  if (esSolicitante || s.alcance === 'propio') {
+    const uid = Number(Auth.getUsuario()?.id);
+    if (Number.isFinite(uid) && uid > 0) {
+      rows = rows.filter((r) => {
+        // Si el backend no mandó solicitante_id, no confiar en la fila ajena:
+        // solo mostrar si coincide o si no hay id (no debería pasar tras el fix)
+        if (r.solicitante_id == null || r.solicitante_id === '') return false;
+        return Number(r.solicitante_id) === uid;
+      });
+    } else {
+      rows = [];
+    }
+  }
   if (count) {
     count.textContent = rows.length || '';
     count.style.display = rows.length ? '' : 'none';
@@ -301,20 +321,23 @@ function renderAging(s) {
         <svg width="16" height="16" fill="none" stroke="#1D9E75" stroke-width="2" viewBox="0 0 24 24">
           <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
-        Sin requerimientos pendientes (revisión / aprobado / incompleto)
+        ${esSolicitante ? 'No tienes requerimientos pendientes' : 'Sin requerimientos pendientes (revisión / aprobado / incompleto)'}
       </div>`;
     return;
   }
 
+  const colSolicitante = esSolicitante
+    ? ''
+    : '<th>Solicitante</th>';
   el.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px;gap:8px;flex-wrap:wrap">
-      <a href="requerimientos.html?estado=activos" class="btn btn-sm btn-outline">Ver REQ activos →</a>
+      <a href="requerimientos.html?estado=activos" class="btn btn-sm btn-outline">${esSolicitante ? 'Mis REQ activos →' : 'Ver REQ activos →'}</a>
     </div>
     <div class="table-wrap">
       <table class="table-sm">
         <thead><tr>
           <th>Consecutivo</th><th>Tipo</th><th>Estado</th>
-          <th>Área / Depto</th><th>Solicitante</th><th>Espera</th><th></th>
+          <th>Área / Depto</th>${colSolicitante}<th>Espera</th><th></th>
         </tr></thead>
         <tbody>${rows.map(r => {
           const depto = r.departamento || r.area || '—';
@@ -325,7 +348,7 @@ function renderAging(s) {
             <td>${UI.badge(r.estado || 'en_revision')}</td>
             <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                 title="${UI.esc(depto)}">${UI.esc(depto)}</td>
-            <td>${UI.esc(r.solicitante || '—')}</td>
+            ${esSolicitante ? '' : `<td>${UI.esc(r.solicitante || '—')}</td>`}
             <td>${badgeDias(r.dias_espera)}</td>
             <td><a href="requerimientos.html?id=${r.id}" class="btn btn-sm btn-outline">Ver</a></td>
           </tr>`;
@@ -354,13 +377,13 @@ async function renderOCActivas() {
           <svg width="16" height="16" fill="none" stroke="#1D9E75" stroke-width="2" viewBox="0 0 24 24">
             <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
-          Sin órdenes de compra activas
+          ${esSolicitante ? 'No tienes órdenes de compra activas' : 'Sin órdenes de compra activas'}
         </div>`;
       return;
     }
     el.innerHTML = `
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <a href="ordenes.html?estado=activas" class="btn btn-sm btn-outline">Ver todas en Órdenes →</a>
+        <a href="ordenes.html?estado=activas" class="btn btn-sm btn-outline">${esSolicitante ? 'Ver mis órdenes →' : 'Ver todas en Órdenes →'}</a>
       </div>
       <div class="table-wrap">
         <table class="table-sm">
@@ -411,6 +434,30 @@ function inicializarReporteStatus() {
     }
   });
 }
+
+// Ajustes de textos de secciones según rol
+(function ajustarTitulosSolicitante() {
+  if (!esSolicitante) return;
+  const aging = document.getElementById('aging-titulo');
+  const ocTit = document.getElementById('oc-activas-titulo');
+  if (aging) aging.textContent = 'Mis REQ pendientes (revisión / aprobado)';
+  if (ocTit) ocTit.textContent = 'Mis OC activas / no concluidas';
+  const topProvCard = document.querySelector('#top-proveedores')?.closest('.card')?.querySelector('.card-title');
+  if (topProvCard) {
+    // Conservar el SVG y cambiar solo el texto visible
+    const svg = topProvCard.querySelector('svg');
+    topProvCard.innerHTML = '';
+    if (svg) topProvCard.appendChild(svg);
+    topProvCard.appendChild(document.createTextNode(' Mis proveedores (gasto MXN)'));
+  }
+  const topDeptoCard = document.querySelector('#top-departamentos')?.closest('.card')?.querySelector('.card-title');
+  if (topDeptoCard) {
+    const svg = topDeptoCard.querySelector('svg');
+    topDeptoCard.innerHTML = '';
+    if (svg) topDeptoCard.appendChild(svg);
+    topDeptoCard.appendChild(document.createTextNode(' Mis áreas / deptos'));
+  }
+})();
 
 // ─── Carga principal ──────────────────────────────────────────
 async function cargarDashboard() {
