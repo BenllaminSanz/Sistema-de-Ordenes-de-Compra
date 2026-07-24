@@ -654,8 +654,10 @@
             <datalist id="cot_proveedores_list"></datalist>
           </div>
           <div class="form-group">
-            <label class="form-label">Fecha de Envío <span class="text-danger">*</span></label>
-            <input type="date" id="cot_fecha_envio" class="form-control" required>
+            <label class="form-label">Fecha <span class="text-danger">*</span></label>
+            <input type="date" id="cot_fecha_envio" class="form-control" required
+                   title="Fecha de la cotización o del envío de solicitud RFQ">
+            <small class="text-muted">Cotización recibida o fecha de envío RFQ</small>
           </div>
         </div>
 
@@ -721,7 +723,11 @@
 
         <div class="form-group">
           <label class="form-label">Notas</label>
-          <textarea id="cot_notas" class="form-control" rows="3" placeholder="Observaciones para el proveedor..."></textarea>
+          <textarea id="cot_notas" class="form-control" rows="3" placeholder="Observaciones (opcionales)…"></textarea>
+        </div>
+        <div style="font-size:12px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;">
+          Al guardar podrás elegir <strong>Solo registrar (sin correo)</strong> si ya tienes la cotización,
+          o <strong>enviar / programar RFQ</strong> al proveedor.
         </div>
       </form>
     </div>
@@ -760,7 +766,7 @@
 
 <!-- ── Modal: Confirmar Envío de Cotización ───────────────────────────────── -->
 <div class="modal-backdrop" id="modal-confirmar-envio-cotizacion">
-  <div class="modal-box" style="max-width: 460px;">
+  <div class="modal-box" style="max-width: 520px;">
     <div class="modal-header">
       <h3 class="modal-title" id="confirm-envio-titulo">Confirmar envío</h3>
       <button class="modal-close" onclick="cerrarModalConfirmacionEnvio()">×</button>

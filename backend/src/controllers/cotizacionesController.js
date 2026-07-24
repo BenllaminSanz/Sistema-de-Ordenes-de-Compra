@@ -112,7 +112,10 @@ export const crearCotizacion = async (req, res) => {
       hora_envio,     // Alternativa: fecha_envio + hora_envio
       notas,
       idioma_correo,
-      items 
+      items,
+      // Solo registrar (cotización ya recibida / compra en tienda): no manda RFQ
+      omitir_envio_correo,
+      solo_registro,
     } = req.body;
 
     if (!requerimiento_id || !proveedor_id) {
@@ -120,6 +123,14 @@ export const crearCotizacion = async (req, res) => {
     }
 
     const idioma = (idioma_correo || 'es').toString().toLowerCase().startsWith('en') ? 'en' : 'es';
+    const soloRegistro = omitir_envio_correo === true
+      || omitir_envio_correo === 1
+      || omitir_envio_correo === '1'
+      || omitir_envio_correo === 'true'
+      || solo_registro === true
+      || solo_registro === 1
+      || solo_registro === '1'
+      || solo_registro === 'true';
 
     // Validación básica de fecha
     const validacionFecha = validarFechaEnvio(fecha_envio);
@@ -144,13 +155,15 @@ export const crearCotizacion = async (req, res) => {
     const esFechaFutura   = fechaEnvioSolo > hoySinHora;
     const esHoy           = !esFechaAnterior && !esFechaFutura;
 
-    // Calcular scheduled_at
-    let finalScheduledAt = scheduled_at || null;
-
-    if (!finalScheduledAt && fecha_envio && hora_envio) {
-      finalScheduledAt = `${fecha_envio} ${hora_envio}:00`;
-    } else if (!finalScheduledAt && fecha_envio && esFechaFutura) {
-      finalScheduledAt = `${fecha_envio} 09:00:00`;
+    // Calcular scheduled_at (solo si se va a programar envío real)
+    let finalScheduledAt = null;
+    if (!soloRegistro) {
+      finalScheduledAt = scheduled_at || null;
+      if (!finalScheduledAt && fecha_envio && hora_envio) {
+        finalScheduledAt = `${fecha_envio} ${hora_envio}:00`;
+      } else if (!finalScheduledAt && fecha_envio && esFechaFutura) {
+        finalScheduledAt = `${fecha_envio} 09:00:00`;
+      }
     }
 
     const scheduledDate = finalScheduledAt ? new Date(finalScheduledAt) : null;
@@ -158,7 +171,9 @@ export const crearCotizacion = async (req, res) => {
     let emailSentAtOnCreate = null;
     let estadoInicial = 'en_revision';
 
-    if (esFechaAnterior) {
+    // Fecha pasada: se asume cotización ya gestionada (sin RFQ nuevo).
+    // Solo registro (omitir_envio): no marca "enviado"; solo no manda correo ni programa envío.
+    if (esFechaAnterior && !soloRegistro) {
       emailSentAtOnCreate = new Date();
       estadoInicial = 'enviada';
     }
@@ -186,15 +201,21 @@ export const crearCotizacion = async (req, res) => {
       estado_anterior: null,
       estado_nuevo: estadoInicial,
       cambiado_por: req.usuario?.id || 1,
-      notas: 'Cotización creada'
+      notas: soloRegistro
+        ? 'Cotización registrada sin envío de correo'
+        : 'Cotización creada'
     });
 
     let emailEnviado = false;
     let emailOmitido = false;
     let emailError = null;
 
-    if (esFechaAnterior) {
-      logger.info(`[Cotizacion] Cotización #${id} con fecha anterior a hoy. Se guardó como enviada (sin enviar correo).`);
+    if (soloRegistro || esFechaAnterior) {
+      emailOmitido = true;
+      logger.info(
+        `[Cotizacion] Cotización #${id} registrada sin envío de correo`
+        + (soloRegistro ? ' (solo_registro)' : ' (fecha anterior)')
+      );
     } else if (esHoy) {
       const programadoMasTardeHoy = scheduledDate && scheduledDate > ahora;
       if (!programadoMasTardeHoy) {

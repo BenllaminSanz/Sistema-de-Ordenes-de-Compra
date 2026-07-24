@@ -1,10 +1,14 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.6.1** — Julio 2026
+**Versión 1.6.2** — Julio 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
 Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md)
+
+## Novedades v1.6.2
+
+- **Solo registrar cotización (sin correo)** — si ya tienen la cotización o fue compra en tienda
 
 ## Novedades v1.6.1
 

@@ -117,7 +117,7 @@ async function guardarCotizacionOriginal() {
   const notas        = document.getElementById('cot_notas').value.trim();
 
   if (!reqId)                    return Toast.error('Error: No se encontró el ID del requerimiento');
-  if (!proveedor_id || !fecha_envio) return Toast.error('Proveedor y Fecha de Envío son obligatorios');
+  if (!proveedor_id || !fecha_envio) return Toast.error('Proveedor y Fecha son obligatorios');
 
   try {
     let datos = {
@@ -136,6 +136,10 @@ async function guardarCotizacionOriginal() {
     } else {
       const idiomaEl = document.getElementById('cot_idioma_correo');
       if (idiomaEl?.value) datos.idioma_correo = idiomaEl.value;
+    }
+    // Cotización ya recibida / compra en tienda: no envía RFQ al proveedor
+    if (datosCotizacionPendiente?.omitir_envio_correo) {
+      datos.omitir_envio_correo = true;
     }
 
     const tbody           = document.querySelector('#tabla-items-cot tbody');
@@ -200,8 +204,8 @@ async function guardarCotizacionOriginal() {
       if (!cotizacionEditandoId && response.email_enviado) {
         msg = 'Cotización guardada y solicitud enviada por correo al proveedor';
         Toast.success(msg);
-      } else if (!cotizacionEditandoId && response.email_omitido) {
-        msg = 'Cotización guardada (registro interno, sin envío de correo)';
+      } else if (!cotizacionEditandoId && (response.email_omitido || datos.omitir_envio_correo)) {
+        msg = 'Cotización registrada sin enviar correo. Puedes adjuntar el PDF con 📎';
         Toast.success(msg);
       } else if (!cotizacionEditandoId && response.email_error) {
         // La cotización SÍ se guardó; falló solo el SMTP
@@ -241,7 +245,7 @@ function prepararConfirmacionEnvioCotizacion() {
   const proveedor_id = resolverProveedorCotizacionId();
   const fecha_envio  = document.getElementById('cot_fecha_envio').value;
 
-  if (!proveedor_id || !fecha_envio) return Toast.error('Proveedor y Fecha de Envío son obligatorios');
+  if (!proveedor_id || !fecha_envio) return Toast.error('Proveedor y Fecha son obligatorios');
 
   datosCotizacionPendiente = {
     reqId:        document.getElementById('cot_req_id').value,
@@ -250,6 +254,7 @@ function prepararConfirmacionEnvioCotizacion() {
     moneda:       document.getElementById('cot_moneda').value || 'MXN',
     notas:        document.getElementById('cot_notas').value.trim() || null,
     hora_envio:   null,
+    omitir_envio_correo: false,
   };
 
   const fechaSeleccionada = new Date(fecha_envio + 'T00:00:00');
@@ -272,52 +277,68 @@ function prepararConfirmacionEnvioCotizacion() {
   body.innerHTML   = '';
   footer.innerHTML = '';
 
+  // Catálogo / fecha pasada: solo registro (sin RFQ)
   if (esPasado || !permiteOpcionesEnvio) {
-    titulo.textContent = !permiteOpcionesEnvio ? 'Cotización para ítems de catálogo' : 'Fecha anterior a hoy';
+    titulo.textContent = !permiteOpcionesEnvio
+      ? 'Registrar cotización'
+      : 'Registrar cotización (sin correo)';
     body.innerHTML = `
-      <div class="alert alert-warning">
-        <strong>Atención:</strong>
+      <div class="alert alert-warning" style="margin-bottom:12px;">
+        <strong>Sin envío de correo.</strong>
         ${!permiteOpcionesEnvio
-          ? 'Este requerimiento usa ítems que ya están en el catálogo.<br>Se guardará la cotización como registro interno, <strong>pero no se enviará correo</strong> al proveedor.'
-          : 'La fecha seleccionada ya pasó.<br><br>Se guardará el registro de la cotización, <strong>pero no se enviará ningún correo</strong> al proveedor.'}
+          ? ' Este requerimiento usa ítems de catálogo: se guarda como registro interno.'
+          : ' La fecha es anterior a hoy: se asume que la cotización ya fue gestionada.'}
       </div>
-      <p>¿Deseas continuar de todas formas?</p>`;
+      <p style="margin:0;line-height:1.5;color:#334155;">
+        Ideal si <strong>ya tienes la cotización</strong> del proveedor (ticket, PDF, correo, etc.).
+        Después puedes adjuntar el archivo con 📎.
+      </p>`;
     footer.innerHTML = `
       <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmarGuardarSinEnvio()">Guardar sin enviar correo</button>`;
+      <button class="btn btn-primary" onclick="confirmarGuardarSinEnvio()">Solo registrar (sin correo)</button>`;
 
   } else if (esHoy) {
-    titulo.textContent = 'Confirmar envío de cotización';
+    // Servicios / ítems libres: elegir registrar o solicitar por correo
+    titulo.textContent = '¿Cómo guardar la cotización?';
     body.innerHTML = `
-      <p style="margin:0 0 14px;line-height:1.5;color:#334155;">
-        La cotización se enviará <strong>automáticamente por correo</strong> al proveedor al guardar.
+      <p style="margin:0 0 12px;line-height:1.5;color:#334155;">
+        Si <strong>ya tienes la cotización</strong> del proveedor (o fue compra en tienda),
+        regístrala sin mandar correo. El envío RFQ es opcional.
       </p>
-      <div class="form-group" style="margin-bottom:0;">
-        <label class="form-label" for="idioma-envio-correo">Idioma del correo *</label>
+      <div class="form-group" style="margin-bottom:0;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+        <label class="form-label" for="idioma-envio-correo">Idioma del correo (solo si envías RFQ)</label>
         <select id="idioma-envio-correo" class="form-control">
           <option value="es">Español</option>
           <option value="en">English</option>
         </select>
-        <small class="text-muted">Seleccione el idioma en el que se redactará la solicitud al proveedor.</small>
+        <small class="text-muted">Se usa únicamente con «Guardar y enviar correo».</small>
       </div>`;
     footer.innerHTML = `
       <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmarEnvioInmediato()">Guardar y enviar correo</button>`;
+      <button class="btn btn-outline" onclick="confirmarGuardarSinEnvio()" title="Cotización ya recibida; no manda correo">
+        Solo registrar (sin correo)
+      </button>
+      <button class="btn btn-primary" onclick="confirmarEnvioInmediato()">
+        Guardar y enviar correo
+      </button>`;
 
   } else {
     const fechaFormateada = fechaSeleccionada.toLocaleDateString('es-MX', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
-    titulo.textContent = 'Programar envío de cotización';
+    titulo.textContent = 'Programar o solo registrar';
     body.innerHTML = `
-      <p>Ha seleccionado enviar la cotización el <strong>${fechaFormateada}</strong>.</p>
+      <p style="margin:0 0 12px;line-height:1.5;color:#334155;">
+        Fecha seleccionada: <strong>${fechaFormateada}</strong>.
+        Puedes programar el RFQ o solo registrar la cotización sin correo.
+      </p>
       <div class="form-group">
-        <label class="form-label" for="hora-envio-programado">Hora de envío *</label>
+        <label class="form-label" for="hora-envio-programado">Hora de envío (si programas RFQ)</label>
         <input type="time" id="hora-envio-programado" class="form-control" value="09:00">
-        <small class="text-muted">Se enviará automáticamente a la hora indicada (requiere que el sistema esté activo).</small>
+        <small class="text-muted">Solo aplica a «Programar envío».</small>
       </div>
       <div class="form-group" style="margin-bottom:0;">
-        <label class="form-label" for="idioma-envio-correo">Idioma del correo *</label>
+        <label class="form-label" for="idioma-envio-correo">Idioma del correo</label>
         <select id="idioma-envio-correo" class="form-control">
           <option value="es">Español</option>
           <option value="en">English</option>
@@ -325,6 +346,7 @@ function prepararConfirmacionEnvioCotizacion() {
       </div>`;
     footer.innerHTML = `
       <button class="btn btn-outline" onclick="cerrarModalConfirmacionEnvio()">Cancelar</button>
+      <button class="btn btn-outline" onclick="confirmarGuardarSinEnvio()">Solo registrar (sin correo)</button>
       <button class="btn btn-primary" onclick="confirmarProgramarEnvioFuturo()">Programar envío</button>`;
   }
 
@@ -357,8 +379,14 @@ async function confirmarEnvioInmediato() {
 }
 
 async function confirmarGuardarSinEnvio() {
-  cerrarModalConfirmacionEnvio();
+  // Conservar datos del form y marcar que no se envíe RFQ
+  const pendiente = datosCotizacionPendiente;
+  if (pendiente) pendiente.omitir_envio_correo = true;
+  const modal = document.getElementById('modal-confirmar-envio-cotizacion');
+  if (modal) modal.style.display = 'none';
+  datosCotizacionPendiente = pendiente;
   await guardarCotizacionOriginal();
+  datosCotizacionPendiente = null;
 }
 
 async function confirmarProgramarEnvioFuturo() {

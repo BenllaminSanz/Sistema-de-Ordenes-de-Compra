@@ -7,6 +7,24 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.6.2] — 2026-07-24
+
+Registrar cotizaciones sin enviar correo al proveedor (cotización ya recibida / compra en tienda).
+
+### Añadido
+- Al guardar cotización: opción **Solo registrar (sin correo)** (fecha hoy o futura)
+- API: flag `omitir_envio_correo` / `solo_registro` en `POST /cotizaciones`
+
+### Cambiado
+- Modal de confirmación: el envío RFQ ya no es la única vía cuando la fecha es hoy
+- Etiqueta «Fecha de envío» → **Fecha** (cotización recibida o RFQ)
+- Aviso en el formulario de cotización sobre registrar vs enviar
+
+### Notas de despliegue
+- Sin migración de BD
+- Conservar `.env` y `backend/uploads/`
+- Reiniciar Node/PM2
+
 ## [1.6.1] — 2026-07-24
 
 Correcciones operativas: proveedores sin correo y vista Área/Departamento alineada al catálogo.
