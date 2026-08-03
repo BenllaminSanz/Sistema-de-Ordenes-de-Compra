@@ -24,9 +24,9 @@ const upload = multer({
 
 router.get('/',                                                   listar);
 router.get('/:id',                                                obtener);
-router.post('/',    autorizar('contabilidad','admin'),            crear);
-router.put('/:id',  autorizar('contabilidad','admin'),            actualizar);
+router.post('/',    autorizar('compras','admin'),            crear);
+router.put('/:id',  autorizar('compras','admin'),            actualizar);
 router.patch('/:id/estado', autorizar('admin'),                   cambiarEstado);
-router.post('/import', autorizar('contabilidad','admin'), upload.single('excel'), importarExcel);
+router.post('/import', autorizar('compras','admin'), upload.single('excel'), importarExcel);
 
 export default router;

@@ -77,38 +77,139 @@ export async function wipeFlujoReqOc(conn = null) {
   }
 }
 
-async function cargarMapaUsuarios(db) {
-  const [rows] = await db.query('SELECT id, nombre, email, activo FROM usuarios');
-  const byFull = new Map();
-  for (const u of rows) {
-    byFull.set(u.nombre.toLowerCase().trim(), u);
-  }
-  return { rows, byFull };
+function normalizarNombreUsuario(nombre) {
+  return String(nombre || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function matchUsuario(byFull, excelNombre) {
-  if (!excelNombre) return null;
-  const lower = excelNombre.toLowerCase().trim();
-  if (byFull.has(lower)) return byFull.get(lower);
+function tokensNombreUsuario(nombre) {
+  return normalizarNombreUsuario(nombre)
+    .split(' ')
+    .filter((t) => t.length >= 3);
+}
 
-  const tokens = lower.split(/\s+/).filter(Boolean);
-  if (tokens.length >= 2) {
-    // match por inclusión de primer y segundo token
-    for (const [k, u] of byFull.entries()) {
-      if (k.includes(tokens[0]) && k.includes(tokens[1])) return u;
+/**
+ * Alias fijos Excel → cuenta real del sistema (casos validados a mano).
+ * Evita crear un segundo usuario cuando BASE GRAL trae nombre completo
+ * y en el sistema está el nombre corto / correo corporativo.
+ *
+ * Ampliar aquí solo casos confirmados (no adivinar homónimos).
+ */
+const ALIAS_USUARIO_IMPORT = [
+  {
+    // Caso: login "Isai Fonseca" / "Jose Isai Fonseca" vs Excel "Jose Isai Fonseca Vivas"
+    patrones: [
+      'jose isai fonseca',
+      'jose isai fonseca vivas',
+      'isai fonseca',
+      'isai fonseca vivas',
+    ],
+    email: 'jose.fonseca@parkdalemills.com',
+    nombresSistema: ['jose isai fonseca', 'isai fonseca'],
+  },
+];
+
+function buscarUsuarioPorAlias(rows, excelNombre) {
+  const lower = normalizarNombreUsuario(excelNombre);
+  if (!lower) return null;
+
+  for (const alias of ALIAS_USUARIO_IMPORT) {
+    const coincide = alias.patrones.some((p) => {
+      const pn = normalizarNombreUsuario(p);
+      if (lower === pn) return true;
+      // Excel más largo: todos los tokens del patrón están en el nombre del Excel
+      const pt = tokensNombreUsuario(pn);
+      if (pt.length < 2) return false;
+      return pt.every((t) => lower.split(' ').includes(t));
+    });
+    if (!coincide) continue;
+
+    // 1) Por correo corporativo (más fiable)
+    if (alias.email) {
+      const porEmail = rows.find(
+        (u) => String(u.email || '').toLowerCase() === alias.email.toLowerCase()
+      );
+      if (porEmail) return porEmail;
     }
-  }
-  // un solo token
-  if (tokens.length === 1) {
-    for (const [k, u] of byFull.entries()) {
-      if (k === tokens[0] || k.startsWith(tokens[0] + ' ')) return u;
+    // 2) Por nombre ya registrado en el sistema
+    for (const ns of alias.nombresSistema || []) {
+      const nn = normalizarNombreUsuario(ns);
+      const porNombre = rows.find((u) => normalizarNombreUsuario(u.nombre) === nn);
+      if (porNombre) return porNombre;
     }
   }
   return null;
 }
 
+async function cargarMapaUsuarios(db) {
+  const [rows] = await db.query('SELECT id, nombre, email, activo FROM usuarios');
+  const byFull = new Map();
+  for (const u of rows) {
+    byFull.set(normalizarNombreUsuario(u.nombre), u);
+  }
+  return { rows, byFull };
+}
+
+/**
+ * Empareja el nombre del Excel con un usuario existente.
+ * 1) Alias fijos validados (p. ej. Jose Isai Fonseca)
+ * 2) Coincidencia exacta (normalizada)
+ * 3) Nombre corto ↔ nombre largo por tokens (fuzzy)
+ * Prefiere usuarios activos cuando hay varios candidatos.
+ */
+function matchUsuario(cache, excelNombre) {
+  if (!excelNombre) return null;
+  const { byFull, rows } = cache;
+
+  // 1) Casos fijos (actualización / reimport)
+  const porAlias = buscarUsuarioPorAlias(rows || [], excelNombre);
+  if (porAlias) return porAlias;
+
+  const lower = normalizarNombreUsuario(excelNombre);
+  if (byFull.has(lower)) return byFull.get(lower);
+
+  const tokensExcel = tokensNombreUsuario(excelNombre);
+  if (!tokensExcel.length) return null;
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const [k, u] of byFull.entries()) {
+    const tokensExist = tokensNombreUsuario(k);
+    if (!tokensExist.length) continue;
+
+    const setExcel = new Set(tokensExcel);
+    const setExist = new Set(tokensExist);
+    const inter = tokensExist.filter((t) => setExcel.has(t));
+    if (!inter.length) continue;
+
+    // Todos los tokens del nombre más corto deben estar en el más largo
+    const corto = tokensExist.length <= tokensExcel.length ? tokensExist : tokensExcel;
+    const largoSet = tokensExist.length <= tokensExcel.length ? setExcel : setExist;
+    const coberturaCorto = corto.filter((t) => largoSet.has(t)).length / corto.length;
+    if (coberturaCorto < 1) continue;
+    if (inter.length < 2 && corto.length > 1) continue;
+
+    let score = inter.length * 10 + coberturaCorto * 5;
+    if (Number(u.activo) === 1) score += 50; // preferir cuenta real de login
+    if (score > bestScore) {
+      bestScore = score;
+      best = u;
+    }
+  }
+
+  // Umbral: al menos 2 tokens compartidos (score base 20)
+  if (best && bestScore >= 20) return best;
+  return null;
+}
+
 async function asegurarUsuarioInactivo(db, nombre, cache, reporte) {
-  const existing = matchUsuario(cache.byFull, nombre);
+  const existing = matchUsuario(cache, nombre);
   if (existing) return existing.id;
 
   const slug = slugNombre(nombre);
@@ -133,7 +234,7 @@ async function asegurarUsuarioInactivo(db, nombre, cache, reporte) {
     activo: 0,
   };
   cache.rows.push(user);
-  cache.byFull.set(nombre.toLowerCase().trim(), user);
+  cache.byFull.set(normalizarNombreUsuario(user.nombre), user);
   reporte.usuariosCreados.push({ id: user.id, nombre: user.nombre, email: user.email });
   return user.id;
 }
@@ -287,7 +388,7 @@ export async function importarBaseRequerimientos(opts = {}) {
       if (f.crearOc) {
         reporte.porEstadoOc[f.ocEstado] = (reporte.porEstadoOc[f.ocEstado] || 0) + 1;
       }
-      if (f.usuario && !matchUsuario(users.byFull, f.usuario)) {
+      if (f.usuario && !matchUsuario(users, f.usuario)) {
         reporte.usuariosCreados.push({ nombre: f.usuario, pendiente: true });
       }
       const code = f.codigo_sugerido || extraerCodigoDesdeDescripcion(f.descripcion);

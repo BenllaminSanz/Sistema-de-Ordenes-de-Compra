@@ -9,13 +9,30 @@ import { obtenerSiguienteConsecutivo } from '../utils/consecutivos.js';
 
 /**
  * Listar requerimientos con filtros opcionales y paginación.
- * filtros: { estado, tipo, solicitante_id, busqueda, pagina, limite }
+ * filtros: { estado, tipo, solicitante_id, busqueda, orden, ordenar_por, pagina, limite }
+ * orden: 'asc' | 'desc' (default desc)
+ * ordenar_por: fecha | consecutivo | solicitante | estado | tipo | area | departamento
  *
  * Nota: `area`/`departamento` en BD pueden venir del import legacy
  * (depto guardado en area). Se normalizan a la vista con el catálogo.
  */
 async function listar(filtros = {}) {
-  const { estado, area, departamento, tipo, solicitante_id, busqueda, pagina = 1, limite = 20 } = filtros;
+  const {
+    estado, area, departamento, tipo, solicitante_id, busqueda,
+    orden, ordenar_por, pagina = 1, limite = 20,
+  } = filtros;
+  const dir = String(orden || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  const COLS_ORDEN = {
+    fecha: 'r.created_at',
+    created_at: 'r.created_at',
+    consecutivo: 'r.consecutivo',
+    solicitante: 'u.nombre',
+    estado: 'r.estado',
+    tipo: 'r.tipo',
+    area: 'r.area',
+    departamento: 'r.departamento',
+  };
+  const colOrden = COLS_ORDEN[String(ordenar_por || 'fecha').toLowerCase()] || COLS_ORDEN.fecha;
 
   let where = [];
   let params = [];
@@ -81,7 +98,7 @@ async function listar(filtros = {}) {
      JOIN usuarios u ON u.id = r.solicitante_id
      LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
      ${clausulaWhere}
-     ORDER BY r.created_at DESC
+     ORDER BY ${colOrden} ${dir}, r.id ${dir}
      LIMIT ? OFFSET ?`,
     [...params, Number(limite), Number(offset)]
   );
@@ -133,6 +150,30 @@ async function obtenerPorId(id) {
      ORDER BY h.created_at ASC`,
     [id]
   );
+
+  // Último estatus / nota de seguimiento (p. ej. cotización enviada con fecha)
+  const ultimo = historial.length ? historial[historial.length - 1] : null;
+  req.ultimo_estatus = ultimo
+    ? {
+        estado: ultimo.estado_nuevo,
+        estado_anterior: ultimo.estado_anterior,
+        notas: ultimo.notas || null,
+        fecha: ultimo.created_at,
+        usuario: ultimo.cambiado_por || null,
+        es_seguimiento: !!(
+          ultimo.notas
+          && ultimo.estado_anterior
+          && ultimo.estado_anterior === ultimo.estado_nuevo
+        ),
+      }
+    : {
+        estado: req.estado,
+        estado_anterior: null,
+        notas: null,
+        fecha: req.updated_at || req.created_at,
+        usuario: null,
+        es_seguimiento: false,
+      };
 
   // Cargar ítems del catálogo asociados (estructurados)
   const [items] = await pool.query(
@@ -247,8 +288,8 @@ async function crear(datos, solicitante_id, intento = 1) {
     // El consecutivo formal se asigna al enviar a revisión (no en borrador)
     const consecutivo = null;
 
-    const tieneLibresEnDatos = Array.isArray(datos.items_libres) && datos.items_libres.length > 0;
-    const requiereCotEnBD = tieneLibresEnDatos ? 1 : (datos.requiere_cotizacion ? 1 : 0);
+    // requiere_cotizacion lo calcula el controller (libres / SERVICIOS / PARTES sin precio)
+    const requiereCotEnBD = datos.requiere_cotizacion ? 1 : 0;
 
     const [result] = await conn.query(
       `INSERT INTO requerimientos
@@ -443,14 +484,7 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
       if (affected === 0) affected = 1;
     }
 
-    // Consistencia de requiere_cotizacion según ítems (derivado de presencia de libres vs catálogo)
-    const finalTieneLibres = Array.isArray(itemsLibres) ? (itemsLibres.length > 0) : null;
-    const finalTieneItems = Array.isArray(items) ? (items.length > 0) : null;
-    if (finalTieneLibres === true) {
-      await conn.query('UPDATE requerimientos SET requiere_cotizacion = 1 WHERE id = ?', [id]);
-    } else if (finalTieneItems === true && finalTieneLibres === false) {
-      await conn.query('UPDATE requerimientos SET requiere_cotizacion = 0 WHERE id = ?', [id]);
-    }
+    // requiere_cotizacion ya viene calculado en datos (controller); no forzar 0 por catálogo
 
     await conn.commit();
     return affected;
@@ -464,13 +498,19 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
 
 /**
  * Cambiar el estado de un requerimiento y registrar en historial.
- * estadosPermitidos define las transiciones válidas por estado origen.
+ *
+ * Flujo:
+ *   borrador → en_revision (solicitante envía)
+ *   en_revision → recibido (Compras acusa recibo) | rechazado
+ *   recibido → aprobado | incompleto | rechazado | en_revision
+ *   Tras generar OC el REQ queda cerrado; cancelar se hace sobre la OC.
  */
 const TRANSICIONES = {
   borrador:    ['en_revision'],
-  en_revision: ['aprobado', 'incompleto', 'rechazado'],
-  incompleto:  ['en_revision'],
-  aprobado:    ['cerrado', 'rechazado'],
+  en_revision: ['recibido', 'rechazado'],
+  recibido:    ['aprobado', 'incompleto', 'rechazado', 'en_revision'],
+  incompleto:  ['en_revision', 'rechazado'],
+  aprobado:    ['cerrado', 'rechazado', 'recibido', 'en_revision'],
   rechazado:   [],
   cerrado:     [],
 };
@@ -508,9 +548,12 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
       [nuevoEstado, notas, consecutivo, id]
     );
 
-    const notasHist = nuevoEstado === 'en_revision' && !req.consecutivo && consecutivo
-      ? `${notas ? notas + ' — ' : ''}Consecutivo asignado: ${consecutivo}`
-      : notas;
+    let notasHist = notas;
+    if (nuevoEstado === 'en_revision' && !req.consecutivo && consecutivo) {
+      notasHist = `${notas ? notas + ' — ' : ''}Consecutivo asignado: ${consecutivo}`;
+    } else if (nuevoEstado === 'recibido' && req.estado === 'en_revision' && !notas) {
+      notasHist = 'Acuse formal de recibo por Compras';
+    }
 
     await conn.query(
       `INSERT INTO historial_estados
@@ -531,7 +574,7 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
 /**
  * Eliminar un requerimiento solo si está en estado 'borrador'.
  * options.solicitante_id: si se indica, solo el dueño puede borrar.
- * options.rol: admin/contabilidad pueden borrar cualquier borrador.
+ * options.rol: admin/compras pueden borrar cualquier borrador.
  */
 async function eliminar(id, { solicitante_id = null, rol = null } = {}) {
   const [[req]] = await pool.query(
@@ -545,7 +588,7 @@ async function eliminar(id, { solicitante_id = null, rol = null } = {}) {
       mensaje: 'Solo se pueden eliminar requerimientos en estado borrador (aún no enviados a revisión).',
     };
   }
-  if (rol !== 'admin' && rol !== 'contabilidad') {
+  if (rol !== 'admin' && rol !== 'compras') {
     if (!solicitante_id || req.solicitante_id !== solicitante_id) {
       throw { status: 403, mensaje: 'Solo el solicitante puede eliminar su propio borrador' };
     }
@@ -574,6 +617,20 @@ async function eliminar(id, { solicitante_id = null, rol = null } = {}) {
   }
 }
 
+/**
+ * Corrige área/departamento de un REQ en cualquier estado (compras/admin).
+ * No altera ítems ni el resto de campos editables del flujo de borrador.
+ */
+async function actualizarAreaDepartamento(id, area, departamento) {
+  const [result] = await pool.query(
+    `UPDATE requerimientos
+     SET area = ?, departamento = ?
+     WHERE id = ?`,
+    [area, departamento, id]
+  );
+  return result.affectedRows;
+}
+
 async function asignarCatalogoAItemLibre(requerimientoId, libreId, catalogoId) {
   const [[item]] = await pool.query(
     `SELECT id FROM requerimiento_items_libres WHERE id = ? AND requerimiento_id = ?`,
@@ -600,6 +657,7 @@ export {
   obtenerPorId,
   crear,
   actualizar,
+  actualizarAreaDepartamento,
   cambiarEstado,
   eliminar,
   asignarCatalogoAItemLibre,

@@ -35,7 +35,7 @@ También conviene copiar la carpeta de la app o al menos `.env`.
 
 ## 1) Código actualizado
 
-Asegúrate de tener **v1.6.0** (o el ZIP que incluye `backend/scripts/cargar-base-req.mjs`).
+Asegúrate de tener **v1.7.0+** (o el ZIP que incluye `backend/scripts/cargar-base-req.mjs`).
 
 ```powershell
 # Verificar

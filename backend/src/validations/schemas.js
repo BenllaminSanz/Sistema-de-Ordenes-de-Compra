@@ -23,7 +23,7 @@ export const registroSolicitanteSchema = z.object({
 export const actualizarUsuarioSchema = z.object({
   nombre: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').trim(),
   email: z.string().email('El email no es válido').toLowerCase().trim(),
-  rol: z.enum(['solicitante', 'contabilidad', 'admin'], {
+  rol: z.enum(['solicitante', 'compras', 'admin'], {
     errorMap: () => ({ message: 'Rol inválido' }),
   }),
 });
@@ -107,12 +107,18 @@ export const actualizarRequerimientoSchema = z.object({
   path: ["items"],
 });
 
+// Compras/Admin: corregir área y depto en REQ ya creados
+export const actualizarAreaDepartamentoSchema = z.object({
+  area: z.string().trim().toUpperCase().min(1, 'Área requerida'),
+  departamento: z.string().trim().toUpperCase().min(1, 'Departamento requerido'),
+});
+
 // ============================================================
 // ESQUEMAS DE CAMBIO DE ESTADO (Requerimientos)
 // ============================================================
 
 export const cambiarEstadoRequerimientoSchema = z.object({
-  estado: z.enum(['en_revision', 'aprobado', 'incompleto', 'rechazado', 'cerrado'], {
+  estado: z.enum(['en_revision', 'recibido', 'aprobado', 'incompleto', 'rechazado', 'cerrado'], {
     errorMap: () => ({ message: 'Estado inválido' }),
   }),
   notas: z.string().trim().optional(),

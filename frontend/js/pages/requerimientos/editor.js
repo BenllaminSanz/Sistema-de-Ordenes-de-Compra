@@ -84,7 +84,7 @@ window.irAlCatalogoDesdeReq = function() {
 };
 
 function puedeGestionarCotizaciones() {
-  return Auth.puedeHacer(['contabilidad', 'admin']);
+  return Auth.puedeHacer(['compras', 'admin']);
 }
 
 async function abrirEditorRequerimiento(req = null, opts = {}) {
@@ -318,7 +318,18 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     area,
     departamento,
     notas:               document.getElementById('req-notas')?.value || '',
-    requiere_cotizacion: tieneLibres,
+    // SERVICIOS siempre; PARTES sin precio ref.; ítems libres — el backend lo recalcula
+    requiere_cotizacion: (function () {
+      if (tieneLibres) return true;
+      const tipo = (document.getElementById('req-tipo')?.value || '').toUpperCase();
+      if (tipo === 'SERVICIOS') return true;
+      const cat = window.requerimientoItemsSeleccionados || [];
+      return cat.some((i) => {
+        if (i.costo_referencia == null || i.costo_referencia === '') return true;
+        const n = parseFloat(i.costo_referencia);
+        return Number.isNaN(n);
+      });
+    })(),
     items: (window.requerimientoItemsSeleccionados || []).map(i => ({
       catalogo_id: i.catalogo_id,
       cantidad:    i.cantidad

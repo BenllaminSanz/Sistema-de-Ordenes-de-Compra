@@ -64,6 +64,16 @@ function filaBaseGralDesdeOc(oc, indice) {
  */
 function filaBaseGralDesdeReq(req, indice) {
   const ad = camposAreaDeptoVista(req.area, req.departamento, indice);
+  // Detalle: título + notas (sin Status) — no solo el tipo PARTES/SERVICIOS
+  const titulo = String(req.titulo_solicitud || '').trim();
+  let notas = String(req.notas || '').trim()
+    .replace(/\s*\|\s*Status:\s*.+$/i, '')
+    .replace(/^Status:\s*.+?(?:\s*\|\s*Import:.*)?$/i, '')
+    .replace(/\s*\|\s*Import:.*$/i, '')
+    .trim();
+  const detalle = [titulo, notas && notas !== titulo ? notas : '']
+    .filter(Boolean)
+    .join(' | ');
   return {
     orden_compra: req.oc_datatextnow_id || '',
     fecha_po: req.oc_fecha_po || null,
@@ -84,7 +94,7 @@ function filaBaseGralDesdeReq(req, indice) {
     oc_estado: req.oc_estado,
     ...ad,
     compania: '31',
-    tipo_servicio: req.titulo_solicitud || '',
+    tipo_servicio: detalle || titulo || notas || '',
     status: extraerStatusNotas(req.notas, null),
   };
 }
@@ -114,6 +124,7 @@ export async function generarReporteOrdenesCompra(req, res) {
       busqueda,
       sin_po,
       tipo_req,
+      solicitante_id,
     } = req.query;
 
     const filtros = {};
@@ -152,6 +163,7 @@ export async function generarReporteOrdenesCompra(req, res) {
     else if (req.query.tipo && !['anual', 'mensual', 'semanal'].includes(String(req.query.tipo))) {
       filtros.tipo = req.query.tipo;
     }
+    if (solicitante_id) filtros.solicitante_id = solicitante_id;
 
     const { datos: ocs } = await Ordenes.listar({
       ...filtros,
@@ -256,16 +268,26 @@ export async function generarReporteStatusPOS(req, res) {
         oc.id AS oc_id,
         oc.numero_oc AS oc_numero,
         oc.estado AS oc_estado,
-        oc.monto_total AS oc_monto_total,
-        oc.moneda AS oc_moneda,
+        COALESCE(oc.monto_total, cot.monto_total) AS oc_monto_total,
+        COALESCE(oc.moneda, cot.moneda) AS oc_moneda,
         oc.datatextnow_id AS oc_datatextnow_id,
         oc.fecha_po AS oc_fecha_po,
-        p.num_proveedor AS proveedor_num,
-        p.nombre AS proveedor_nombre
+        COALESCE(p_oc.num_proveedor, p_cot.num_proveedor, p_cat.num_proveedor) AS proveedor_num,
+        COALESCE(p_oc.nombre, p_cot.nombre, p_cat.nombre) AS proveedor_nombre
       FROM requerimientos r
       JOIN usuarios u ON u.id = r.solicitante_id
       LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
-      LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+      LEFT JOIN cotizaciones cot ON cot.requerimiento_id = r.id
+        AND (cot.seleccionada = 1 OR cot.estado = 'seleccionada')
+      LEFT JOIN proveedores p_oc  ON p_oc.id  = oc.proveedor_id
+      LEFT JOIN proveedores p_cot ON p_cot.id = cot.proveedor_id
+      LEFT JOIN proveedores p_cat ON p_cat.id = (
+        SELECT cat.proveedor_id
+        FROM requerimiento_items ri
+        JOIN catalogo cat ON cat.id = ri.catalogo_id
+        WHERE ri.requerimiento_id = r.id AND cat.proveedor_id IS NOT NULL
+        LIMIT 1
+      )
       WHERE YEAR(r.created_at) = ?
     `;
     const paramsReq = [year];

@@ -39,9 +39,28 @@ async function listar(filtros = {}) {
     solicitante_id,
     fecha_desde,
     fecha_hasta,
+    orden,
+    ordenar_por,
     pagina = 1,
     limite = 20,
   } = filtros;
+  // orden: 'asc' | 'desc'; ordenar_por: fecha | fecha_po | numero_oc | estado | tipo | solicitante | updated_at
+  const ordenExplicit = (orden != null && String(orden).trim() !== '')
+    || (ordenar_por != null && String(ordenar_por).trim() !== '');
+  const dir = String(orden || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  const COLS_ORDEN = {
+    fecha: 'COALESCE(oc.fecha_po, oc.fecha_autorizacion, oc.created_at)',
+    fecha_po: 'oc.fecha_po',
+    created_at: 'oc.created_at',
+    numero_oc: 'oc.numero_oc',
+    estado: 'oc.estado',
+    tipo: 'r.tipo',
+    solicitante: 'sol.nombre',
+    autorizado: 'u.nombre',
+    updated_at: 'oc.updated_at',
+    proveedor: 'p.nombre',
+  };
+  const colOrden = COLS_ORDEN[String(ordenar_por || 'fecha').toLowerCase()] || COLS_ORDEN.fecha;
 
   let where = [];
   let params = [];
@@ -132,9 +151,12 @@ async function listar(filtros = {}) {
      )
      LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
      ${whereClause}
-     ORDER BY ${soloActivas
-       ? `(oc.datatextnow_id IS NULL OR TRIM(oc.datatextnow_id) = '' OR UPPER(TRIM(oc.datatextnow_id)) = 'NA') DESC, oc.created_at ASC`
-       : 'oc.created_at DESC'}
+     ORDER BY ${
+       // Activas sin orden por columna: prioriza sin PO/NA y luego más antiguas (cola de trabajo)
+       soloActivas && !ordenExplicit
+         ? `(oc.datatextnow_id IS NULL OR TRIM(oc.datatextnow_id) = '' OR UPPER(TRIM(oc.datatextnow_id)) = 'NA') DESC, oc.created_at ASC`
+         : `${colOrden} ${dir}, oc.id ${dir}`
+     }
      LIMIT ? OFFSET ?`,
     [...params, Number(limite), Number(offset)]
   );
@@ -240,7 +262,8 @@ async function obtenerPorId(id) {
 
 /**
  * Normaliza PO al crear/editar OC.
- * - 'NA' (sin PO en DTN): datatextnow_id = 'NA', fecha_po = null
+ * - 'NA' (sin PO en DTN): datatextnow_id = 'NA' + fecha_po obligatoria
+ *   (fecha de cierre/registro operativo, aunque no haya PO en DTN)
  * - Con PO: número obligatorio + fecha_po obligatoria
  */
 function normalizarPoYFecha({ datatextnow_id, fecha_po, requerido = true } = {}) {
@@ -252,18 +275,22 @@ function normalizarPoYFecha({ datatextnow_id, fecha_po, requerido = true } = {})
     return { datatextnow_id: null, fecha_po: null };
   }
 
-  const esNa = raw.toUpperCase() === 'NA';
-  if (esNa) {
-    return { datatextnow_id: 'NA', fecha_po: null };
-  }
-
   let fecha = fecha_po == null || fecha_po === '' ? null : String(fecha_po).trim();
   if (!fecha) {
-    throw { status: 400, mensaje: 'La fecha del PO (DataTextNow) es obligatoria cuando se registra un número de PO' };
+    throw {
+      status: 400,
+      mensaje: raw.toUpperCase() === 'NA'
+        ? 'La fecha es obligatoria aunque el PO sea NA (fecha de registro/cierre de la orden)'
+        : 'La fecha del PO (DataTextNow) es obligatoria cuando se registra un número de PO',
+    };
   }
   // Aceptar YYYY-MM-DD
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     throw { status: 400, mensaje: 'fecha_po debe tener formato YYYY-MM-DD' };
+  }
+
+  if (raw.toUpperCase() === 'NA') {
+    return { datatextnow_id: 'NA', fecha_po: fecha };
   }
   return { datatextnow_id: raw, fecha_po: fecha };
 }
@@ -369,7 +396,7 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
     }
 
     const notaHistOc = po.datatextnow_id === 'NA'
-      ? 'OC generada (PO = NA)'
+      ? `OC generada (PO = NA, fecha registro ${po.fecha_po || '—'})`
       : `OC generada (PO DTN ${po.datatextnow_id}${po.fecha_po ? `, fecha PO ${po.fecha_po}` : ''})`;
 
     await conn.query(
@@ -393,11 +420,16 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
   }
 }
 
+/**
+ * Máquina de estados de OC (compras/admin).
+ * Incluye avance del flujo, cancelación y regreso a estados anteriores
+ * mientras la OC no esté cerrada/cancelada.
+ */
 const TRANSICIONES_OC = {
   generada:    ['distribuida', 'cancelada'],
-  distribuida: ['en_proceso', 'cancelada'],
-  en_proceso:  ['cerrada', 'cancelada'],
-  recibida:    ['cerrada'],
+  distribuida: ['en_proceso', 'cancelada', 'generada'],
+  en_proceso:  ['cerrada', 'cancelada', 'distribuida'],
+  recibida:    ['cerrada', 'en_proceso'],
   cerrada:     [],
   cancelada:   [],
 };
@@ -453,8 +485,8 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
 
 /**
  * Actualiza el número de PO / Order code de DataTextNow y su fecha manual.
- * Acepta 'NA' (sin PO) o número + fecha_po.
- * Si se envía PO numérico sin fecha_po, se conserva la fecha ya registrada (si existe).
+ * Acepta 'NA' (sin PO) o número; en ambos casos fecha_po es obligatoria
+ * (o se reutiliza la ya registrada si no se envía una nueva).
  */
 async function actualizarDatatextnow(id, datatextnow_id, fecha_po = undefined) {
   const raw = datatextnow_id == null ? '' : String(datatextnow_id).trim();
@@ -462,31 +494,30 @@ async function actualizarDatatextnow(id, datatextnow_id, fecha_po = undefined) {
     throw { status: 400, mensaje: 'Debes indicar el PO de DataTextNow o marcar NA si no tiene PO' };
   }
 
-  let poId = raw;
+  const poId = raw.toUpperCase() === 'NA' ? 'NA' : raw;
   let fecha = null;
 
-  if (raw.toUpperCase() === 'NA') {
-    poId = 'NA';
-    fecha = null;
+  if (fecha_po != null && fecha_po !== '') {
+    fecha = String(fecha_po).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw { status: 400, mensaje: 'fecha_po debe tener formato YYYY-MM-DD' };
+    }
   } else {
-    poId = raw;
-    if (fecha_po != null && fecha_po !== '') {
-      fecha = String(fecha_po).trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-        throw { status: 400, mensaje: 'fecha_po debe tener formato YYYY-MM-DD' };
-      }
+    const [[oc]] = await pool.query(
+      'SELECT fecha_po FROM ordenes_compra WHERE id = ?',
+      [id]
+    );
+    if (oc?.fecha_po) {
+      fecha = oc.fecha_po instanceof Date
+        ? oc.fecha_po.toISOString().slice(0, 10)
+        : String(oc.fecha_po).slice(0, 10);
     } else {
-      const [[oc]] = await pool.query(
-        'SELECT fecha_po FROM ordenes_compra WHERE id = ?',
-        [id]
-      );
-      if (oc?.fecha_po) {
-        fecha = oc.fecha_po instanceof Date
-          ? oc.fecha_po.toISOString().slice(0, 10)
-          : String(oc.fecha_po).slice(0, 10);
-      } else {
-        throw { status: 400, mensaje: 'La fecha del PO es obligatoria cuando se registra un número de PO' };
-      }
+      throw {
+        status: 400,
+        mensaje: poId === 'NA'
+          ? 'La fecha es obligatoria aunque el PO sea NA (fecha de registro/cierre de la orden)'
+          : 'La fecha del PO es obligatoria cuando se registra un número de PO',
+      };
     }
   }
 
@@ -554,7 +585,7 @@ async function actualizarItemCatalogo(ocId, catalogoId, { proveedor_id, costo_re
 }
 
 /**
- * Actualiza notas de contabilidad de la OC (editables durante todo el ciclo).
+ * Actualiza notas de compras de la OC (editables durante todo el ciclo).
  */
 async function actualizarNotas(id, notas) {
   const texto = notas == null ? null : String(notas);

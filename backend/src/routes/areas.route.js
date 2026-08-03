@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { autenticar, esContabilidadOAdmin } from '../middlewares/authMiddleware.js';
+import { autenticar, esComprasOAdmin } from '../middlewares/authMiddleware.js';
 import {
   getAreas,
   getHistorial,
@@ -17,14 +17,14 @@ const router = Router();
 router.use(autenticar);
 
 router.get('/', getAreas);
-router.get('/historial', esContabilidadOAdmin, getHistorial);
-router.get('/:id/departamentos/:nombre/uso', esContabilidadOAdmin, getUsoDepartamento);
+router.get('/historial', esComprasOAdmin, getHistorial);
+router.get('/:id/departamentos/:nombre/uso', esComprasOAdmin, getUsoDepartamento);
 
-router.post('/', esContabilidadOAdmin, crearArea);
-router.put('/:id', esContabilidadOAdmin, actualizarArea);
-router.delete('/:id', esContabilidadOAdmin, eliminarArea);
-router.post('/:id/departamentos', esContabilidadOAdmin, crearDepartamento);
-router.put('/:id/departamentos/:nombre', esContabilidadOAdmin, actualizarDepartamento);
-router.delete('/:id/departamentos/:nombre', esContabilidadOAdmin, eliminarDepartamento);
+router.post('/', esComprasOAdmin, crearArea);
+router.put('/:id', esComprasOAdmin, actualizarArea);
+router.delete('/:id', esComprasOAdmin, eliminarArea);
+router.post('/:id/departamentos', esComprasOAdmin, crearDepartamento);
+router.put('/:id/departamentos/:nombre', esComprasOAdmin, actualizarDepartamento);
+router.delete('/:id/departamentos/:nombre', esComprasOAdmin, eliminarDepartamento);
 
 export default router;

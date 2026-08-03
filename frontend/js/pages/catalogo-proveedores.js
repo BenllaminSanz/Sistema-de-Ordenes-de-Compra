@@ -42,8 +42,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar();
   renderTopbar('Catálogo por proveedor');
 
-  puedeSolicitarReqProv = Auth.puedeHacer(['solicitante', 'contabilidad', 'admin']);
-  esAdminCatalogoProv = Auth.puedeHacer(['contabilidad', 'admin']);
+  puedeSolicitarReqProv = Auth.puedeHacer(['solicitante', 'compras', 'admin']);
+  esAdminCatalogoProv = Auth.puedeHacer(['compras', 'admin']);
 
   CarritoReq.load();
   CarritoReq.onChange(() => {
@@ -177,6 +177,10 @@ function filtrarListaProveedores() {
 
   if (!grupos.length) {
     UI.empty(contenedor, q ? 'Sin proveedores para esa búsqueda' : 'No hay proveedores con ítems en catálogo');
+    // Si el filtro de tipo deja al proveedor seleccionado sin ítems, refrescar panel derecho
+    if (_proveedorSeleccionadoId) {
+      renderItemsProveedor(_proveedorSeleccionadoId);
+    }
     return;
   }
 
@@ -197,6 +201,9 @@ function filtrarListaProveedores() {
     const tabla  = document.getElementById('tabla-items-proveedor');
     if (titulo) titulo.textContent = 'Selecciona un proveedor para ver sus ítems';
     if (tabla) tabla.innerHTML = '';
+  } else if (_proveedorSeleccionadoId) {
+    // Recalcular ítems del proveedor al cambiar tipo (PARTES/SERVICIOS/FLETES)
+    renderItemsProveedor(_proveedorSeleccionadoId);
   }
 }
 

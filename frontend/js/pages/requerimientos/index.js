@@ -5,13 +5,13 @@ renderSidebar();
 renderTopbar('Requerimientos');
 
 // Ocultar botón "nuevo" si no puede crear requerimientos
-if (!Auth.puedeHacer(['solicitante', 'contabilidad', 'admin'])) {
+if (!Auth.puedeHacer(['solicitante', 'compras', 'admin'])) {
   const btnNuevo = document.getElementById('btn-nuevo');
   if (btnNuevo) btnNuevo.style.display = 'none';
 }
 
-// Mostrar botón importar solo a contabilidad/admin
-if (Auth.puedeHacer(['contabilidad', 'admin'])) {
+// Mostrar botón importar solo a compras/admin
+if (Auth.puedeHacer(['compras', 'admin'])) {
   const btnImportar = document.getElementById('btn-importar');
   if (btnImportar) btnImportar.style.display = '';
 }
@@ -29,6 +29,7 @@ if (params.get('id')) {
   // Restaurar filtros desde URL (ej. ?estado=activos)
   const estadoUrl = params.get('estado');
   const tipoUrl = params.get('tipo');
+  const solicitanteUrl = params.get('solicitante_id') || params.get('usuario');
   if (estadoUrl) {
     const sel = document.getElementById('fil-estado');
     if (sel) sel.value = estadoUrl;
@@ -37,9 +38,19 @@ if (params.get('id')) {
     const sel = document.getElementById('fil-tipo');
     if (sel) sel.value = tipoUrl;
   }
-  cargarRequerimientos(1);
+  // Orden por columna vía ?orden= / ?ordenar_por=
+  if (typeof aplicarOrdenReqDesdeUrl === 'function') {
+    aplicarOrdenReqDesdeUrl(params);
+  }
+  // Filtro por usuario/solicitante (compras/admin)
+  (async () => {
+    if (typeof cargarFiltroSolicitantesReq === 'function') {
+      await cargarFiltroSolicitantesReq(solicitanteUrl || '');
+    }
+    cargarRequerimientos(1);
+  })();
 
-  if (params.get('crear') === '1' && Auth.puedeHacer(['solicitante', 'contabilidad', 'admin'])) {
+  if (params.get('crear') === '1' && Auth.puedeHacer(['solicitante', 'compras', 'admin'])) {
     CarritoReq.load();
     setTimeout(async () => {
       if (typeof abrirEditorRequerimiento === 'function') {

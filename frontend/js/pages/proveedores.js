@@ -5,8 +5,8 @@
 
 Auth.requiereAuth();
 
-// Solo contabilidad y admin pueden acceder
-if (!Auth.puedeHacer(['contabilidad','admin'])) {
+// Solo compras y admin pueden acceder
+if (!Auth.puedeHacer(['compras','admin'])) {
   window.location.href = 'dashboard.html';
 }
 

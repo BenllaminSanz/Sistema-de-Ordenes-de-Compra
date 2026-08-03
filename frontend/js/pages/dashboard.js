@@ -85,9 +85,10 @@ function renderKPIs(s) {
 
   const totalReqs  = Object.values(reqMap).reduce((a, b) => a + b, 0);
   const enRevision = reqMap['en_revision'] || 0;
+  const recibidos  = reqMap['recibido'] || 0;
   const aprobados  = reqMap['aprobado'] || 0;
   const rechazados = reqMap['rechazado'] || 0;
-  const reqAbiertos = enRevision + aprobados + (reqMap['incompleto'] || 0) + (reqMap['borrador'] || 0);
+  const reqAbiertos = enRevision + recibidos + aprobados + (reqMap['incompleto'] || 0) + (reqMap['borrador'] || 0);
 
   // OC activas: del resumen en vivo (histórico operativo) o del año
   const resumenActivas = s.oc_activas_resumen || [];
@@ -121,25 +122,40 @@ function renderKPIs(s) {
   ].filter(Boolean).join(' · ') || 'Sin desglose';
 
   const mio = s.alcance === 'propio' || esSolicitante;
+  // Bandeja: pendientes de acuse (en_revision) e histórico
+  let enRevisionHist = enRevision;
+  let recibidosHist = recibidos;
+  (s.estados_req_hist || []).forEach((r) => {
+    if (r.estado === 'en_revision') enRevisionHist = +r.total || enRevision;
+    if (r.estado === 'recibido') recibidosHist = +r.total || recibidos;
+  });
+  const porRecibir = mio ? enRevision : enRevisionHist;
+  const enTrabajo = mio ? recibidos : recibidosHist;
+
   const cards = [
+    {
+      label: mio ? 'Mis REQ en revisión' : 'Por recibir (acuse Compras)',
+      value: porRecibir.toLocaleString('es-MX'),
+      sub: mio
+        ? 'Enviados a Compras, pendientes de acuse/respuesta'
+        : `${enTrabajo} ya recibidos en proceso · ${enRevision} por acuse en ${s.anio}`,
+      color: '#c2410c', bg: '#ffedd5',
+      icon: `<svg width="16" height="16" fill="none" stroke="#c2410c" stroke-width="2" viewBox="0 0 24 24">
+               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+             </svg>`,
+      link: 'requerimientos.html?estado=en_revision',
+      highlight: porRecibir > 0,
+    },
     {
       label: mio ? `Mis requerimientos ${s.anio}` : `Requerimientos ${s.anio}`,
       value: totalReqs.toLocaleString('es-MX'),
-      sub: `${reqAbiertos} abiertos · ${enRevision} en revisión · ${aprobados} aprob. · ${rechazados} rech.`,
+      sub: `${reqAbiertos} abiertos · ${enRevision} pend. acuse · ${recibidos} recibidos · ${aprobados} aprob.`,
       color: '#185FA5', bg: '#e6f1fb',
       icon: `<svg width="16" height="16" fill="none" stroke="#185FA5" stroke-width="2" viewBox="0 0 24 24">
                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
              </svg>`,
       extra: sparkline(s.volumen_mensual),
-    },
-    {
-      label: mio ? `Mi gasto MXN ${s.anio}` : `Gasto MXN ${s.anio}`,
-      value: fmt(gastoMXN, 'MXN'),
-      sub: subGasto.join(' · '),
-      color: '#0f766e', bg: '#d1fae5',
-      icon: `<svg width="16" height="16" fill="none" stroke="#0f766e" stroke-width="2" viewBox="0 0 24 24">
-               <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-             </svg>`,
+      link: 'requerimientos.html',
     },
     {
       label: mio ? 'Mis OC activas' : 'OC activas (no concluidas)',
@@ -152,22 +168,19 @@ function renderKPIs(s) {
       link: 'ordenes.html?estado=activas',
     },
     {
-      label: mio ? `Mi ciclo req → PO (${s.anio})` : `Ciclo req → PO (${s.anio})`,
-      value: ciclo != null && !Number.isNaN(+ciclo) ? `${ciclo}d` : '—',
-      sub: ciclo != null && s.ciclo
-        ? `Mín ${s.ciclo.dias_min}d · Máx ${s.ciclo.dias_max}d`
-          + (s.ciclo.muestra != null ? ` · n=${s.ciclo.muestra}` : '')
-          + ` · cerradas año: ${ocCerradasAnio}`
-        : 'Sin datos suficientes',
-      color: '#b45309', bg: '#fef3c7',
-      icon: `<svg width="16" height="16" fill="none" stroke="#b45309" stroke-width="2" viewBox="0 0 24 24">
-               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      label: mio ? `Mi gasto MXN ${s.anio}` : `Gasto MXN ${s.anio}`,
+      value: fmt(gastoMXN, 'MXN'),
+      sub: subGasto.join(' · ')
+        + (ciclo != null && !Number.isNaN(+ciclo) ? ` · ciclo req→PO ${ciclo}d` : ''),
+      color: '#0f766e', bg: '#d1fae5',
+      icon: `<svg width="16" height="16" fill="none" stroke="#0f766e" stroke-width="2" viewBox="0 0 24 24">
+               <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
              </svg>`,
     },
   ];
 
   document.getElementById('metrics').innerHTML = cards.map(c => `
-    <div class="kpi-card" style="--kpi-color:${c.color};--kpi-bg:${c.bg}">
+    <div class="kpi-card${c.highlight ? ' kpi-card-pulse' : ''}" style="--kpi-color:${c.color};--kpi-bg:${c.bg}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <span class="label">${c.label}</span>
         <div class="kpi-icon" style="background:${c.bg}">${c.icon}</div>
@@ -417,12 +430,12 @@ async function renderOCActivas() {
   } catch { UI.empty(el, 'Error al cargar órdenes activas'); }
 }
 
-// ─── Export BASE GRAL (solo contabilidad/admin) ───────────────
+// ─── Export BASE GRAL (solo compras/admin) ───────────────
 function inicializarReporteStatus() {
   const user = Auth.getUsuario();
   const btn  = document.getElementById('btn-reporte');
   if (!btn) return;
-  if (!user || !['contabilidad', 'admin'].includes(user.rol)) return;
+  if (!user || !['compras', 'admin'].includes(user.rol)) return;
 
   btn.style.display = 'inline-flex';
   if (window.ExcelUI?.htmlExport) btn.innerHTML = ExcelUI.htmlExport();

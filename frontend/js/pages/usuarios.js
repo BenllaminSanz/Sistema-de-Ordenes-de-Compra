@@ -1,10 +1,10 @@
 /**
  * usuarios.js
- * Gestión de usuarios (contabilidad / admin)
+ * Gestión de usuarios (compras / admin)
  */
 
 Auth.requiereAuth();
-if (!Auth.puedeHacer(['admin', 'contabilidad'])) window.location.href = 'dashboard.html';
+if (!Auth.puedeHacer(['admin', 'compras'])) window.location.href = 'dashboard.html';
 
 const usuarioActual = Auth.getUsuario();
 const esAdmin = usuarioActual?.rol === 'admin';
@@ -138,7 +138,7 @@ function renderTablaUsuarios(usuarios, totalOriginal = null) {
             <tr>
               <td class="fw-600">${u.nombre}</td>
               <td>${u.email}</td>
-              <td><span class="badge badge-en_revision">${u.rol}</span></td>
+              <td><span class="badge badge-en_revision">${Auth.etiquetaRol(u.rol)}</span></td>
               <td>${u.activo
                     ? '<span class="badge badge-aprobado">Activo</span>'
                     : '<span class="badge badge-rechazado">Inactivo</span>'}</td>

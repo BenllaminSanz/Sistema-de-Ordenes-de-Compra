@@ -78,7 +78,7 @@ router.post('/:id/seleccionar', cotizacionesController.seleccionarCotizacion);
 router.post('/:id/deseleccionar', cotizacionesController.deseleccionarCotizacion);
 
 // Enviar (o re-enviar) manualmente el correo de solicitud de cotización (botón en UI)
-router.post('/:id/enviar', autorizar('contabilidad', 'admin'), cotizacionesController.enviarCorreoCotizacion);
+router.post('/:id/enviar', autorizar('compras', 'admin'), cotizacionesController.enviarCorreoCotizacion);
 
 // Subir archivo de respaldo (PDF, Word, Excel, etc.) — campo "archivo" o "pdf" (compat)
 router.post(

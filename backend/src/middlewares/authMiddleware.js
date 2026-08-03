@@ -2,6 +2,12 @@
 import jwt from 'jsonwebtoken';
 import { promisify } from 'util';
 
+/** Rol legacy `contabilidad` → `compras` (tokens y datos previos). */
+function normalizarRol(rol) {
+    if (rol === 'contabilidad') return 'compras';
+    return rol;
+}
+
 // ─── Middleware principal de autenticación ───────────────────────────────
 const verificarToken = async (req, res, next) => {
     try {
@@ -17,7 +23,10 @@ const verificarToken = async (req, res, next) => {
         const token = authHeader.split(' ')[1];
         const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
-        req.usuario = decoded;
+        req.usuario = {
+            ...decoded,
+            rol: normalizarRol(decoded.rol),
+        };
         next();
     } catch (error) {
         console.error('Error en verificarToken:', error);
@@ -41,21 +50,22 @@ const verificarRol = (rolesPermitidos) => {
             });
         }
 
-        const rolUsuario = req.usuario.rol;
+        const rolUsuario = normalizarRol(req.usuario.rol);
+        const permitidos = (rolesPermitidos || []).map(normalizarRol);
 
         // Admin = superusuario → siempre pasa
         if (rolUsuario === 'admin') return next();
 
-        if (rolesPermitidos.includes(rolUsuario)) return next();
+        if (permitidos.includes(rolUsuario)) return next();
 
         return res.status(403).json({
             success: false,
-            message: `Acceso denegado. Solo ${rolesPermitidos.join(' o ')} pueden realizar esta acción.`
+            message: `Acceso denegado. Solo ${permitidos.join(' o ')} pueden realizar esta acción.`
         });
     };
 };
 
-// Acepta autorizar('admin'), autorizar('contabilidad', 'admin') o autorizar(['contabilidad', 'admin'])
+// Acepta autorizar('admin'), autorizar('compras', 'admin') o autorizar(['compras', 'admin'])
 const autorizar = (...roles) => {
     const rolesArray = roles.length === 1 && Array.isArray(roles[0])
         ? roles[0]
@@ -65,18 +75,24 @@ const autorizar = (...roles) => {
 
 // Middlewares específicos (útiles para otras rutas)
 const esSolicitante = verificarRol(['solicitante']);
-const esContabilidad = verificarRol(['contabilidad']);
+const esCompras = verificarRol(['compras']);
 const esAdmin = verificarRol(['admin']);
-const esContabilidadOAdmin = verificarRol(['contabilidad', 'admin']);
+const esComprasOAdmin = verificarRol(['compras', 'admin']);
 const esSolicitanteOAdmin = verificarRol(['solicitante', 'admin']);
+// Alias legacy (imports antiguos)
+const esContabilidad = esCompras;
+const esContabilidadOAdmin = esComprasOAdmin;
 
 export {
     verificarToken,
     autenticar,
     autorizar,
+    normalizarRol,
     esSolicitante,
-    esContabilidad,
+    esCompras,
     esAdmin,
+    esComprasOAdmin,
+    esSolicitanteOAdmin,
+    esContabilidad,
     esContabilidadOAdmin,
-    esSolicitanteOAdmin
 };

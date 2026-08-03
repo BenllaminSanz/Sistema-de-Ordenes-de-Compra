@@ -305,6 +305,58 @@ function volverLista() {
   history.replaceState(null, '', window.location.pathname);
 }
 
+/**
+ * ¿Se debe cotizar este REQ?
+ * - Flag requiere_cotizacion
+ * - Ítems libres
+ * - Tipo SERVICIOS (reparaciones / costos variables)
+ * - PARTES/FLETES con algún ítem sin costo de referencia
+ */
+function reqNecesitaCotizacion(req) {
+  if (!req) return false;
+  if (req.requiere_cotizacion) return true;
+  if (Array.isArray(req.items_libres) && req.items_libres.length > 0) return true;
+  const tipo = (req.tipo || '').toUpperCase();
+  if (tipo === 'SERVICIOS') return true;
+  if (Array.isArray(req.items) && req.items.some((i) => {
+    if (i.costo_referencia == null || i.costo_referencia === '') return true;
+    return Number.isNaN(parseFloat(i.costo_referencia));
+  })) return true;
+  return false;
+}
+window.reqNecesitaCotizacion = reqNecesitaCotizacion;
+
+/** Bloque de último estatus / nota de seguimiento (cotización enviada, etc.). */
+function renderUltimoEstatus(ue, { destacado = false } = {}) {
+  if (!ue) return '—';
+  const fecha = ue.fecha ? UI.fecha(ue.fecha) : '—';
+  const usuario = ue.usuario ? UI.esc(ue.usuario) : '';
+  const meta = [fecha, usuario].filter(Boolean).join(' · ');
+  const nota = ue.notas
+    ? `<div style="margin-top:4px;line-height:1.45;${destacado ? 'font-size:13.5px;color:#1e3a8a;font-weight:500' : 'font-size:13px'}">${UI.esc(ue.notas)}</div>`
+    : '';
+  if (ue.es_seguimiento || (ue.notas && ue.estado_anterior === ue.estado)) {
+    return `
+      <div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+          ${UI.badge(ue.estado || '')}
+          <span class="text-muted text-sm">${meta}</span>
+        </div>
+        ${nota}
+      </div>`;
+  }
+  return `
+    <div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+        ${ue.estado_anterior && ue.estado_anterior !== ue.estado
+          ? `${UI.badge(ue.estado_anterior)} → ${UI.badge(ue.estado)}`
+          : UI.badge(ue.estado || '')}
+        <span class="text-muted text-sm">${meta}</span>
+      </div>
+      ${nota}
+    </div>`;
+}
+
 function renderDetalle(req) {
   document.getElementById('detalle-titulo').textContent =
     `${req.consecutivo || 'Borrador (sin consecutivo)'} — ${req.tipo}`;
@@ -318,11 +370,23 @@ function renderDetalle(req) {
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${req.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Área</td>
-          <td>${req.area || '—'}</td></tr>
+          <td>
+            <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span>${req.area || '—'}</span>
+              ${Auth.puedeHacer(['compras', 'admin']) ? `
+              <button type="button" class="btn btn-sm btn-outline"
+                      style="padding:1px 8px;font-size:11px"
+                      onclick="abrirCorregirAreaDepartamento()"
+                      title="Corregir área y departamento">✎ Corregir</button>` : ''}
+            </span>
+          </td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Departamento</td>
           <td>${req.departamento ? `${req.departamento_codigo ? `<strong>${req.departamento_codigo}</strong> — ` : ''}${req.departamento}` : '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Estado</td>
           <td>${UI.badge(req.estado)}</td></tr>
+      ${req.ultimo_estatus ? `
+      <tr><td style="padding:6px 0;color:#6b7280;vertical-align:top">Último estatus</td>
+          <td>${renderUltimoEstatus(req.ultimo_estatus)}</td></tr>` : ''}
       ${req.oc_id || req.oc_numero ? `
       <tr><td style="padding:6px 0;color:#6b7280">OC Relacionada</td>
           <td>
@@ -331,7 +395,7 @@ function renderDetalle(req) {
             <button class="btn btn-sm btn-outline" style="margin-left:6px;padding:1px 6px;font-size:11px" onclick="window.location='ordenes.html?id=${req.oc_id}'">Ver OC</button>
           </td></tr>` : (req.estado === 'aprobado' ? `
       <tr><td style="padding:6px 0;color:#6b7280">OC Relacionada</td>
-          <td><span class="text-muted">Pendiente de generación (Contabilidad)</span></td></tr>` : '')}
+          <td><span class="text-muted">Pendiente de generación (Compras)</span></td></tr>` : '')}
       <tr><td style="padding:6px 0;color:#6b7280">Solicitante</td>
           <td>${req.solicitante_nombre}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Requiere cotización</td>
@@ -360,7 +424,7 @@ function renderDetalle(req) {
           const catBadge = item.catalogo_asignado_id
             ? `<span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:3px;font-weight:600;white-space:nowrap;">&#128230; ${item.catalogo_codigo || 'ID:' + item.catalogo_asignado_id}</span>`
             : '';
-          const btnAsignar = Auth.puedeHacer(['contabilidad', 'admin'])
+          const btnAsignar = Auth.puedeHacer(['compras', 'admin'])
             ? `<button type="button"
                  onclick="abrirAsignarCatalogo(${item.id},'${item.descripcion.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}','${req.tipo}')"
                  style="padding:1px 7px;font-size:10px;cursor:pointer;border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;color:#334155;flex-shrink:0;">
@@ -383,6 +447,14 @@ function renderDetalle(req) {
       <strong>📝 Borrador</strong> — Puedes editar este requerimiento antes de enviarlo a revisión.
     </div>` : ''}
 
+    ${req.ultimo_estatus?.notas ? `
+    <div style="margin-top:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:12px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#1d4ed8;margin-bottom:6px">
+        Último estatus / nota
+      </div>
+      ${renderUltimoEstatus(req.ultimo_estatus, { destacado: true })}
+    </div>` : ''}
+
     ${req.notas_rechazo ? `
     <div style="margin-top:12px;background:#FCEBEB;border-radius:7px;padding:12px">
       <div style="font-size:12px;font-weight:600;color:#A32D2D;margin-bottom:4px">Nota</div>
@@ -390,8 +462,9 @@ function renderDetalle(req) {
     </div>` : ''}`;
 
   // ── Cotizaciones ──────────────────────────────────────────
+  // Mostrar si el flag lo indica, o por reglas de negocio (SERVICIOS / libres / PARTES sin precio)
   const panelCot = document.getElementById('detalle-cotizaciones');
-  if (req.requiere_cotizacion) {
+  if (reqNecesitaCotizacion(req)) {
     panelCot.style.display = 'block';
     cargarCotizaciones(req.id);
 
@@ -408,17 +481,23 @@ function renderDetalle(req) {
   if (!req.historial?.length) {
     timeline.innerHTML = '<p class="text-muted text-sm">Sin historial</p>';
   } else {
-    timeline.innerHTML = req.historial.map(h => `
+    timeline.innerHTML = req.historial.map(h => {
+      const esSeguimiento = h.estado_anterior && h.estado_anterior === h.estado_nuevo && h.notas;
+      return `
       <div class="timeline-item">
         <div class="timeline-dot"></div>
-        <div class="timeline-date">${UI.fecha(h.created_at)} · ${h.cambiado_por}</div>
+        <div class="timeline-date">${UI.fecha(h.created_at)} · ${h.cambiado_por || '—'}</div>
         <div class="timeline-text">
-          ${h.estado_anterior
-            ? `${UI.badge(h.estado_anterior)} → ${UI.badge(h.estado_nuevo)}`
-            : `Creado como ${UI.badge(h.estado_nuevo)}`}
-          ${h.notas ? `<div class="text-sm text-muted mt-2">${h.notas}</div>` : ''}
+          ${esSeguimiento
+            ? `<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;">Nota de estatus</span>
+               <span class="text-muted text-sm" style="margin-left:6px">${UI.badge(h.estado_nuevo)}</span>`
+            : (h.estado_anterior
+              ? `${UI.badge(h.estado_anterior)} → ${UI.badge(h.estado_nuevo)}`
+              : `Creado como ${UI.badge(h.estado_nuevo)}`)}
+          ${h.notas ? `<div class="text-sm ${esSeguimiento ? '' : 'text-muted'} mt-2" style="${esSeguimiento ? 'color:#1e3a8a;font-weight:500' : ''}">${UI.esc(h.notas)}</div>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   renderAcciones(req);
@@ -448,7 +527,7 @@ function renderAcciones(req) {
   const u      = Auth.getUsuario();
   const acciones = [];
 
-  acciones.push({ label:'🖨️ Imprimir', accion:'imprimirRequerimiento', clase:'btn-secundary' });
+  acciones.push({ label:'🖨️ Imprimir', accion:'imprimirRequerimiento', clase:'btn-outline' });
 
   const esDueno = u && req.solicitante_id === u.id;
   if (esDueno && (req.estado === 'borrador' || req.estado === 'incompleto')) {
@@ -456,20 +535,35 @@ function renderAcciones(req) {
     acciones.push({ label:'📤 Enviar a revisión', estado:'en_revision', clase:'btn-primary' });
   }
   // Eliminar solo en borrador (aún no enviado formalmente a revisión)
-  if (req.estado === 'borrador' && (esDueno || ['contabilidad', 'admin'].includes(u?.rol))) {
+  if (req.estado === 'borrador' && (esDueno || ['compras', 'admin'].includes(u?.rol))) {
     acciones.push({ label:'🗑️ Eliminar borrador', accion:'eliminarBorradorReq', clase:'btn-danger' });
   }
 
-  if (['contabilidad','admin'].includes(u.rol)) {
-    // Flujo: Revisión → Aprobar/Rechazar → Cotizar (si aplica) → Autorizar/Generar OC
+  if (['compras','admin'].includes(u.rol)) {
+    // Compras: acusa recibo → decide; puede regresar/cancelar (pre-OC)
+    const sinOc = !req.oc_id && !req.orden_compra_id;
+
+    // En revisión = llegó a la bandeja; acuse formal = "recibido"
     if (req.estado === 'en_revision') {
+      acciones.push({ label:'✓ Marcar como recibido', estado:'recibido', clase:'btn-primary' });
+      acciones.push({ label:'Cancelar REQ', estado:'rechazado', clase:'btn-danger' });
+    }
+    // Recibido = Compras ya lo tiene; puede aprobar / devolver / cancelar
+    if (req.estado === 'recibido') {
       acciones.push({ label:'Aprobar',    estado:'aprobado',   clase:'btn-success' });
       acciones.push({ label:'Incompleto', estado:'incompleto', clase:'btn-outline' });
-      acciones.push({ label:'Rechazar',   estado:'rechazado',  clase:'btn-danger'  });
+      acciones.push({ label:'Regresar a pendientes', estado:'en_revision', clase:'btn-outline' });
+      acciones.push({ label:'Cancelar REQ', estado:'rechazado',  clase:'btn-danger'  });
+    }
+    if (req.estado === 'incompleto' && sinOc) {
+      acciones.push({ label:'Enviar a revisión', estado:'en_revision', clase:'btn-primary' });
+      acciones.push({ label:'Cancelar REQ', estado:'rechazado', clase:'btn-danger' });
     }
     if (req.estado === 'aprobado') {
       acciones.push({ label:'Generar OC', accion:'generarOC', clase:'btn-primary' });
-      if (!req.oc_id && !req.orden_compra_id) {
+      if (sinOc) {
+        acciones.push({ label:'Regresar a recibido', estado:'recibido', clase:'btn-outline' });
+        acciones.push({ label:'Regresar a pendientes', estado:'en_revision', clase:'btn-outline' });
         acciones.push({ label:'Cancelar REQ', estado:'rechazado', clase:'btn-danger' });
       }
     }
@@ -497,9 +591,17 @@ function renderAcciones(req) {
 // ── Cambio de estado ──────────────────────────────────────────
 async function prepararCambioEstado(estado, label) {
   estadoPendiente = estado;
-  const titulo = estado === 'rechazado' && requerimientoActual?.estado === 'aprobado'
-    ? 'Cancelar requerimiento'
-    : label;
+  const desde = requerimientoActual?.estado;
+  let titulo = label;
+  if (estado === 'rechazado' && ['aprobado', 'en_revision', 'recibido', 'incompleto'].includes(desde)) {
+    titulo = 'Cancelar requerimiento';
+  } else if (estado === 'recibido' && desde === 'en_revision') {
+    titulo = 'Marcar como recibido';
+  } else if (estado === 'en_revision' && ['aprobado', 'recibido'].includes(desde)) {
+    titulo = 'Regresar a pendientes (en revisión)';
+  } else if (estado === 'recibido' && desde === 'aprobado') {
+    titulo = 'Regresar a recibido';
+  }
   document.getElementById('modal-estado-titulo').textContent = titulo;
   document.getElementById('estado-notas').value = '';
 
@@ -507,6 +609,14 @@ async function prepararCambioEstado(estado, label) {
   if (avisoEl) {
     avisoEl.style.display = 'none';
     avisoEl.innerHTML = '';
+
+    if (estado === 'recibido' && desde === 'en_revision') {
+      avisoEl.innerHTML = '<strong>Acuse de recibo:</strong> confirmas que este REQ llegó a Compras. Después podrás aprobarlo, marcarlo incompleto o cancelarlo.';
+      avisoEl.style.display = 'block';
+    } else if (estado === 'en_revision' && ['aprobado', 'recibido'].includes(desde)) {
+      avisoEl.innerHTML = '<strong>Nota:</strong> volverá a la bandeja de pendientes (en revisión). Habrá que marcarlo como recibido otra vez antes de aprobar.';
+      avisoEl.style.display = 'block';
+    }
 
     if (estado === 'aprobado' && requerimientoActual?.requiere_cotizacion) {
       try {
@@ -534,6 +644,8 @@ async function prepararCambioEstado(estado, label) {
       UI.cerrarModal('modal-estado');
       if (estadoPendiente === 'en_revision' && actualizado?.consecutivo) {
         Toast.success(`Enviado a revisión. Consecutivo: ${actualizado.consecutivo}`);
+      } else if (estadoPendiente === 'recibido' && desde === 'en_revision') {
+        Toast.success('Acuse de recibo registrado. El REQ quedó como Recibido por Compras.');
       } else {
         Toast.success('Estado actualizado');
       }
@@ -672,7 +784,114 @@ function editarRequerimientoActual() {
   abrirEditorRequerimiento(requerimientoActual);
 }
 
-// ── Asignar ítem libre al catálogo (Contabilidad/Admin) ───────
+// ── Corregir área / departamento (Compras/Admin) ─────────
+window.filtrarDeptosCorreccion = function(areaId, deptoPreferido) {
+  const sel = document.getElementById('corr-req-departamento');
+  if (!sel) return;
+  const prev = deptoPreferido || sel.value;
+  const areas = (typeof _areasCache !== 'undefined' && _areasCache) ? _areasCache : [];
+  const areaData = areas.find(a => a.id === areaId);
+
+  sel.innerHTML = '';
+  if (!areaData) {
+    sel.innerHTML = '<option value="">Selecciona un área primero…</option>';
+    return;
+  }
+  const opt0 = document.createElement('option');
+  opt0.value = '';
+  opt0.textContent = `Selecciona departamento de ${areaData.label}…`;
+  sel.appendChild(opt0);
+  areaData.departamentos.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.nombre;
+    opt.textContent = d.codigo ? `${d.nombre} (${d.codigo})` : d.nombre;
+    sel.appendChild(opt);
+  });
+  if (prev && areaData.departamentos.some(d => d.nombre === prev)) {
+    sel.value = prev;
+  }
+};
+
+window.abrirCorregirAreaDepartamento = async function() {
+  if (!requerimientoActual) return;
+  if (!Auth.puedeHacer(['compras', 'admin'])) {
+    return Toast.error('Solo compras o admin pueden corregir área/departamento');
+  }
+
+  if (typeof cargarAreasEnForm === 'function') {
+    await cargarAreasEnForm();
+  }
+
+  const areas = (typeof _areasCache !== 'undefined' && _areasCache) ? _areasCache : [];
+  const selArea = document.getElementById('corr-req-area');
+  if (!selArea) return;
+
+  const areaActual = requerimientoActual.area || '';
+  const deptoActual = requerimientoActual.departamento || '';
+
+  selArea.innerHTML = '<option value="">Selecciona…</option>';
+  areas.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = a.label;
+    selArea.appendChild(opt);
+  });
+
+  // Si el área del REQ no está en catálogo (legacy), ofrecerla para no perder contexto
+  if (areaActual && !areas.some(a => a.id === areaActual)) {
+    const opt = document.createElement('option');
+    opt.value = areaActual;
+    opt.textContent = `${areaActual} (no está en catálogo)`;
+    selArea.appendChild(opt);
+  }
+
+  selArea.value = areaActual;
+  filtrarDeptosCorreccion(selArea.value, deptoActual);
+
+  // Si el depto actual no está en el catálogo del área, añadirlo temporalmente
+  const selDepto = document.getElementById('corr-req-departamento');
+  if (deptoActual && selDepto && ![...selDepto.options].some(o => o.value === deptoActual)) {
+    const opt = document.createElement('option');
+    opt.value = deptoActual;
+    opt.textContent = `${deptoActual} (actual)`;
+    selDepto.appendChild(opt);
+    selDepto.value = deptoActual;
+  }
+
+  UI.abrirModal('modal-area-depto-req');
+};
+
+window.guardarAreaDepartamentoReq = async function() {
+  if (!requerimientoActual) return;
+  const area = document.getElementById('corr-req-area')?.value || '';
+  const departamento = document.getElementById('corr-req-departamento')?.value || '';
+
+  if (typeof validarComboAreaDepto === 'function') {
+    const v = validarComboAreaDepto(area, departamento);
+    if (!v.ok) return Toast.error(v.mensaje);
+  } else if (!area || !departamento) {
+    return Toast.error('Selecciona área y departamento');
+  }
+
+  const btn = document.getElementById('btn-guardar-area-depto-req');
+  if (btn) btn.disabled = true;
+  try {
+    const actualizado = await Api.patch(
+      `/requerimientos/${requerimientoActual.id}/area-departamento`,
+      { area, departamento }
+    );
+    UI.cerrarModal('modal-area-depto-req');
+    Toast.success('Área y departamento actualizados');
+    requerimientoActual = actualizado;
+    renderDetalle(actualizado);
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo actualizar área/departamento');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+// ── Asignar ítem libre al catálogo (Compras/Admin) ───────
 let _asignarCatalogoLibreId = null;
 
 window.abrirAsignarCatalogo = function(libreId, descripcion, tipo) {
@@ -883,8 +1102,14 @@ async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo, datatex
     const oc = await Api.post('/ordenes-compra', body);
     cerrarModalCompletarNroItemOC();
     cerrarModalPoGenerarOC();
+    const reqId = requerimientoActual?.id;
     Toast.success(`OC generada: ${oc.numero_oc}`);
-    setTimeout(() => { window.location.href = `ordenes.html?id=${oc.id}`; }, 1200);
+    // Permanecer en Requerimientos (detalle del REQ actual), no redirigir a Órdenes
+    if (reqId) {
+      await abrirDetalle(reqId);
+    } else {
+      await cargarRequerimientos(paginaActual || 1);
+    }
   } catch (err) {
     if (esErrorFaltanCodigosCatalogo(err)) {
       cerrarModalPoGenerarOC();
@@ -901,7 +1126,7 @@ async function intentarGenerarOC({ cotizacion_id, items_codigo_catalogo, datatex
     }
 
     if (err.status === 403 || (err.mensaje && err.mensaje.toLowerCase().includes('permiso'))) {
-      Toast.error('No tienes permiso para generar Órdenes de Compra. Contacta a Contabilidad o Administrador.');
+      Toast.error('No tienes permiso para generar Órdenes de Compra. Contacta a Compras o Administrador.');
     } else {
       Toast.error(err.mensaje || 'Error al generar OC');
     }
@@ -919,7 +1144,8 @@ function abrirModalPoGenerarOC() {
   const num = document.getElementById('po-oc-numero');
   const fecha = document.getElementById('po-oc-fecha');
   if (num) num.value = '';
-  if (fecha) fecha.value = '';
+  // Fecha por defecto = hoy (registro/cierre operativo)
+  if (fecha) fecha.value = new Date().toISOString().slice(0, 10);
   toggleCamposPoGenerarOC();
   modal.classList.add('show');
   modal.style.display = 'flex';
@@ -937,6 +1163,16 @@ function toggleCamposPoGenerarOC() {
   const tiene = document.querySelector('input[name="po-oc-tiene"]:checked')?.value === 'si';
   const box = document.getElementById('po-oc-campos-numero');
   if (box) box.style.display = tiene ? 'block' : 'none';
+
+  const label = document.getElementById('po-oc-fecha-label');
+  const hint = document.getElementById('po-oc-fecha-hint');
+  if (tiene) {
+    if (label) label.textContent = 'Fecha del PO en DataTextNow *';
+    if (hint) hint.textContent = 'Fecha en que se creó el PO en DTN (no es la fecha del sistema).';
+  } else {
+    if (label) label.textContent = 'Fecha de registro / cierre *';
+    if (hint) hint.textContent = 'Obligatoria aunque el PO sea NA: fecha operativa de la orden (como cierre).';
+  }
 }
 
 async function confirmarPoYGenerarOC() {
@@ -947,19 +1183,21 @@ async function confirmarPoYGenerarOC() {
 
   const tiene = document.querySelector('input[name="po-oc-tiene"]:checked')?.value === 'si';
   let datatextnow_id = 'NA';
-  let fecha_po = null;
+  const fecha_po = (document.getElementById('po-oc-fecha')?.value || '').trim();
 
   if (tiene) {
     datatextnow_id = (document.getElementById('po-oc-numero')?.value || '').trim();
-    fecha_po = (document.getElementById('po-oc-fecha')?.value || '').trim();
     if (!datatextnow_id) {
       Toast.error('Ingresa el número de PO de DataTextNow');
       return;
     }
-    if (!fecha_po) {
-      Toast.error('Ingresa la fecha del PO en DataTextNow');
-      return;
-    }
+  }
+
+  if (!fecha_po) {
+    Toast.error(tiene
+      ? 'Ingresa la fecha del PO en DataTextNow'
+      : 'Ingresa la fecha de registro/cierre (obligatoria aunque el PO sea NA)');
+    return;
   }
 
   const btn = document.getElementById('btn-confirmar-po-generar-oc');

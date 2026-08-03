@@ -1,6 +1,37 @@
 import pool from '../config/db.js';
 
 /**
+ * ¿El requerimiento debe pasar por cotización (RFQ)?
+ * - Ítems libres (alta en catálogo): siempre
+ * - SERVICIOS: siempre (costos variables, p. ej. reparaciones)
+ * - PARTES / FLETES: solo si algún ítem de catálogo no tiene costo de referencia
+ *
+ * @param {{ tipo?: string, items?: Array<{catalogo_id:number}>, items_libres?: any[] }} datos
+ * @param {import('mysql2/promise').Pool|import('mysql2/promise').PoolConnection} [conn]
+ */
+export async function calcularRequiereCotizacion(datos = {}, conn = null) {
+  const db = conn || pool;
+  const itemsLibres = Array.isArray(datos.items_libres) ? datos.items_libres : [];
+  if (itemsLibres.length > 0) return true;
+
+  const tipo = String(datos.tipo || '').toUpperCase();
+  if (tipo === 'SERVICIOS') return true;
+
+  const items = Array.isArray(datos.items) ? datos.items : [];
+  const ids = [...new Set(items.map((i) => i?.catalogo_id).filter(Boolean))];
+  if (!ids.length) return false;
+
+  const [rows] = await db.query(
+    `SELECT id, costo_referencia FROM catalogo WHERE id IN (?)`,
+    [ids]
+  );
+  // Sin precio de referencia → hay que cotizar
+  return rows.some(
+    (r) => r.costo_referencia == null || r.costo_referencia === ''
+  );
+}
+
+/**
  * Valida que todos los ítems del catálogo pertenezcan al mismo proveedor.
  */
 export async function validarMismoProveedorCatalogo(items) {

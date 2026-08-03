@@ -1,71 +1,30 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.6.2** — Julio 2026
+**Versión 1.7.0** — Agosto 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.7.0.md](./DESPLIEGUE-v1.7.0.md)
 
-## Novedades v1.6.2
+## Novedades v1.7.0
 
-- **Solo registrar cotización (sin correo)** — si ya tienen la cotización o fue compra en tienda
+- Rol **Compras** (antes Contabilidad) en API, permisos y UI
+- **Acuse formal**: estado `recibido` entre *en revisión* y *aprobado*
+- **Bandeja**: KPI “Por recibir”, campana de notificaciones y correo al enviar REQ a revisión
+- Filtros por solicitante, orden por columnas, export Excel con proveedor + detalle
+- Cotización/RFQ: servicios, partes sin precio, No. de parte en correo
+- Correcciones de catálogo, import/usuarios y regreso de estados pre-OC
 
-## Novedades v1.6.1
+## Características principales
 
-- **Correo de proveedor opcional** (tiendas / compra directa sin RFQ por email)
-- **Vista Área / Depto** corregida según catálogo (incluye datos del import legacy)
-
-## Novedades v1.6.0
-
-- Reportes **General / REQ / OC** con layout BASE GRAL unificado (`No. proveedor`, `Area`, `Departamento`)
-- **General (Dashboard)**: REQ + OC del año en un solo Excel
-- Moneda **EUR**; import catálogo layout proveedor (Suessen / PART NUMBER)
-- Botones Excel homologados; listado OC sin columna Requerimiento
-
-## Novedades v1.5.0
-
-- Plantilla Excel **BASE GRAL** (import solo de N° nuevos)
-- Sincronización de **estados de OC** (Cerrada / Parcial→en_proceso / Distribuida)
-- Filtros **activos** en REQ y OC; paginación fija; listado OC con PO primero
-- Dashboard alineado a datos históricos (áreas, ciclo, OC activas)
-
-## Novedades v1.3
-
-- **Consecutivos con año y tipo** — REQ: `2026S-001` (servicios), `2026P-001` (partes)
-- **Carrito y borrador REQ** — al ir al catálogo se guardan datos e ítems; se restauran al volver
-- **Catálogo por proveedor** — vista alternativa `catalogo-proveedores.html`
-- **Búsqueda de proveedor** por código o nombre (REQ, catálogo, cotización, OC)
-- **Impresión REQ** — logo, subtítulo, subtotales por línea, total y ajuste a una página
-- **Correos** — branding con logo; cantidades enteras (sin `1.0000`)
-- **Cotizaciones** — envío automático si la fecha es hoy; PDF adjunto opcional (con aviso)
-- **REQ** — bloqueo de guardado vacío; cancelar aprobado sin OC; proveedor seleccionado en detalle
-- **Cotizar** — Nº ítem opcional; notas del REQ prellenan notas de cotización
-
-## Novedades v1.2
-
-- **Carrito compartido** entre catálogo y requerimientos, con aviso de un solo proveedor por REQ
-- **Impresión REQ** — firmas con cargo debajo (Gerente de Planta / Jefe Inmediato)
-- **Cotización → catálogo** — el Nº ítem de cotización pasa como código de catálogo al formalizar
-- **Recepciones** — bloqueo de edición/eliminación en OC cerrada; recálculo de pendientes al editar
-- **Cierre de OC** — modal para capturar PO DataTextNow cuando falta
-
-## Novedades v1.0
-
-- **Dashboard** con KPIs en tiempo real, aging de requerimientos en revisión y **OC activas** (pendientes de cerrar)
-- **Áreas y departamentos** — catálogo alineado a DataTextNow, editable desde Administración
-- **Homologación visual** de badges y estados en catálogo, proveedores y usuarios
-- **Filtro `estado=activas`** en el listado de órdenes de compra
-- Limpieza de scripts de migración one-time (carga Excel) — la BD de producción ya está poblada
-
-## Características Principales
-
-- **Requerimientos** con flujo de aprobación (borrador → en revisión → aprobado/rechazado/incompleto)
+- **Requerimientos** — flujo: borrador → en revisión → **recibido** (acuse Compras) → aprobado / incompleto / cancelado
   - Exclusividad catálogo vs ítems libres (nunca mezclados)
-- **Cotizaciones** con comparación, PDFs adjuntos y envío de RFQ por correo
-- **Órdenes de compra** con herencia de cotización, PO DataTextNow y cierre controlado
-- **Recepciones** con avance automático de estado de OC
+  - Bandeja y campana para Compras (pendientes de acuse)
+- **Cotizaciones** con comparación, adjuntos y envío de RFQ por correo (o solo registro)
+- **Órdenes de compra** con PO DataTextNow, ciclo de estados y cierre controlado
+- **Recepciones** con avance automático de la OC
 - **Historial** de cambios de estado por entidad
-- **Proveedores, catálogo, usuarios** con roles (Admin, Contabilidad, Solicitante)
+- **Proveedores, catálogo, usuarios** — roles Admin, Compras, Solicitante
 - **Configuración SMTP** desde panel de administración
 - **Verificación de correo** al registrarse
 
@@ -81,7 +40,6 @@ Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIO
 
 - Node.js 18+
 - MySQL 8+
-- Git
 
 ## Instalación
 
@@ -100,23 +58,15 @@ cd backend && npm install
 cp .env.example .env
 ```
 
-Edita `.env` con credenciales reales de base de datos, JWT, SMTP y admin.
+Edita `.env` con credenciales reales de base de datos, JWT, SMTP y (opcional) `EMAIL_NOTIF_COMPRAS`.
 
 ### 3. Base de datos
 
-La instalación de producción utiliza la base de datos `ordenes_compra` ya configurada y poblada.
+La instalación de producción usa la base `ordenes_compra` ya configurada y poblada.
 
-Para un **ambiente nuevo**, restaura un respaldo proporcionado por el administrador del sistema o solicita el dump del esquema y datos iniciales.
+Para un **ambiente nuevo**, restaura un respaldo del administrador o un dump del esquema y datos iniciales. Al arrancar, el backend aplica migraciones ligeras (ENUM de roles/estados, columnas opcionales).
 
-### 4. Usuario administrador
-
-```bash
-node backend/scripts/seed-admin.js
-```
-
-Usa `ADMIN_EMAIL`, `ADMIN_PASSWORD` y `ADMIN_NOMBRE` del `.env`. El script crea o actualiza el admin y marca el correo como verificado.
-
-### 5. Iniciar
+### 4. Iniciar
 
 ```bash
 cd backend
@@ -126,30 +76,31 @@ npm run dev    # desarrollo (nodemon)
 
 Abre `http://localhost:3000`
 
-## Estructura del Proyecto
+> El primer usuario administrador se crea/gestiona desde la base o la UI de usuarios (no hay script `seed-admin` en este repo).
+
+## Estructura del proyecto
 
 ```
 Sistema de Ordenes de Compra/
 ├── backend/
 │   ├── src/
-│   │   ├── config/          # db, mailer, env, departamentos
+│   │   ├── config/          # db, mailer, env, departamentosStore
 │   │   ├── controllers/
 │   │   ├── models/
 │   │   ├── routes/
 │   │   ├── middlewares/
-│   │   ├── utils/
+│   │   ├── utils/           # migraciones, email, excel, import
 │   │   └── validations/
-│   ├── scripts/
-│   │   └── seed-admin.js    # Crear/actualizar administrador
+│   ├── scripts/             # cargar-base-req, vincular-usuarios-import
 │   ├── uploads/
 │   └── app.js
 ├── frontend/                # HTML + JS + CSS
-├── docs/                    # Manual de operaciones
-├── empaquetar-deploy.ps1    # Empaquetado para servidor
-├── CHANGELOG.md             # Historial de versiones
-├── VERSIONING.md            # Flujo de tags y releases
-├── docs/
-│   └── MANUAL-GIT-GITHUB.md # Consulta al subir cambios a GitHub
+├── docs-generados/          # PDFs / material de apoyo (no va al deploy)
+├── empaquetar-deploy.ps1
+├── DESPLIEGUE-v1.7.0.md
+├── CHANGELOG.md
+├── VERSIONING.md
+├── RECARGAR-BASE-GRAL-SERVIDOR.md
 ├── .env.example
 ├── README.md
 └── .env                     # No se sube al repositorio
@@ -160,18 +111,14 @@ Sistema de Ordenes de Compra/
 | Comando | Descripción |
 |---------|-------------|
 | `npm run dev` / `npm start` (en `backend/`) | Servidor desarrollo / producción |
-| `node backend/scripts/seed-admin.js` | Crear o actualizar administrador |
-| `node backend/scripts/seed-proveedor-prueba.mjs` | Proveedor de prueba (+ opcional `--correo`) |
-| `node backend/scripts/cargar-base-req.mjs` | Import Excel BASE GRAL (solo N° nuevos; `--dry-run` / `--apply`) |
-| `node backend/scripts/sincronizar-estados-oc.mjs` | Actualizar estados OC desde Excel (`--dry-run` / `--apply`) |
-| `node backend/scripts/corregir-*.mjs` / `migrar-consecutivos.mjs` | Corrección / migración de datos (dry-run por defecto) |
+| `node backend/scripts/cargar-base-req.mjs` | Import Excel BASE GRAL (`--dry-run` / `--apply`) |
+| `node backend/scripts/vincular-usuarios-import.mjs` | Vincular historial import a usuarios activos (`--apply`) |
 | `npm run test:ci` (en `backend/`) | CI sin BD (GitHub Actions) |
-| `npm test` (en `backend/`) | Pruebas de flujo API (servidor + MySQL) |
-| `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | ZIP de deploy |
+| `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy |
 
-Documentación de entrega y demo: `docs/PRESENTACION-v1.5.0.md` · diapositivas en `docs/Presentacion-Sistema-OC-v1.5.0.pptx`.
+Detalle de import en servidor: [RECARGAR-BASE-GRAL-SERVIDOR.md](./RECARGAR-BASE-GRAL-SERVIDOR.md).
 
-## Variables de Entorno
+## Variables de entorno
 
 Ver [`.env.example`](./.env.example) para la lista completa.
 
@@ -181,31 +128,32 @@ Ver [`.env.example`](./.env.example) para la lista completa.
 | Base de datos | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | MySQL |
 | Auth | `JWT_SECRET`, `JWT_EXPIRES_IN` | Tokens de sesión |
 | Seguridad | `SECRET_ENCRYPTION_KEY` | Encriptación SMTP en DB |
-| Correo | `EMAIL_*`, `EMAIL_CC_COTIZACIONES` | Fallback SMTP |
-| Admin | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NOMBRE` | Seed inicial |
+| Correo | `EMAIL_*`, `EMAIL_CC_COTIZACIONES`, `EMAIL_NOTIF_COMPRAS` | SMTP y notificaciones |
+| Admin | `ADMIN_*` | Referencia / documentación (no hay seed automático) |
 
 Los administradores pueden configurar SMTP completo (incluido CC de cotizaciones) desde **Administración → Configuración SMTP**. La tabla `configuracion_smtp` tiene prioridad sobre `.env`.
 
-**Nota:** El SMTP suele apuntar al servidor interno de la empresa (`192.168.x.x`). En desarrollo local es normal ver un aviso de conexión rechazada; el resto del sistema funciona sin correo.
+**Nota:** El SMTP suele apuntar al servidor interno de la empresa. En desarrollo local es normal ver un aviso de conexión rechazada; el resto del sistema funciona sin correo.
 
-## Roles y Acceso
+## Roles y acceso
 
 | Rol | Acceso principal |
 |-----|------------------|
-| **Solicitante** | Requerimientos propios, catálogo (lectura), OC de sus reqs aprobados |
-| **Contabilidad** | Flujo completo operativo, proveedores, usuarios, áreas |
+| **Solicitante** | Requerimientos propios, catálogo (lectura), OC de sus reqs |
+| **Compras** | Flujo completo operativo, proveedores, usuarios (no admin), áreas |
 | **Admin** | Todo lo anterior + configuración SMTP |
 
-## Flujo del Sistema
+## Flujo del sistema
 
 ```mermaid
 flowchart TD
     A[Crear Requerimiento] --> B{¿Catálogo o libres?}
     B -->|Catálogo| C[Borrador → En revisión]
     B -->|Libres| D[Requiere cotización]
-    C --> E{Aprobar}
-    D --> F[Cotizaciones + PDF] --> E
-    E --> G[Generar OC]
+    C --> R[Recibido — acuse Compras]
+    D --> F[Cotizaciones + adjunto] --> R
+    R --> E{Aprobar / Incompleto / Cancelar}
+    E -->|Aprobado| G[Generar OC]
     G --> H[generada → distribuida → en_proceso → recibida]
     H --> I[Cerrar con PO DataTextNow]
 ```
@@ -213,37 +161,45 @@ flowchart TD
 ### Reglas clave
 
 - Un requerimiento es **solo catálogo** o **solo ítems libres**, nunca ambos
-- Ítems libres siempre requieren cotización; el email RFQ solo aplica a SERVICIOS o libres
-- La formalización a catálogo ocurre al **generar la OC** (los libres originales se preservan)
-- Cerrar una OC exige **PO DataTextNow** (`datatextnow_id`) y recepciones completas
+- Compras **acusa recibo** (`recibido`) antes de aprobar
+- Ítems libres y servicios habilitan cotización; el email RFQ puede omitirse (solo registro)
+- La formalización a catálogo ocurre al **generar la OC**
+- Cerrar una OC exige **PO DataTextNow** y recepciones completas
 - Estados de OC activos: `generada`, `distribuida`, `en_proceso`, `recibida`
 
-## API Principal
+## API principal
 
 | Endpoint | Descripción |
 |----------|-------------|
+| `GET /api/health` | Estado del servidor + `version` desplegada |
 | `GET /api/dashboard/stats` | KPIs del dashboard |
+| `GET /api/notificaciones/bandeja` | Bandeja de pendientes (campana) |
 | `GET /api/ordenes-compra?estado=activas` | OC pendientes de cerrar |
 | `GET /api/areas` | Áreas y departamentos |
-| `GET /api/health` | Estado del servidor + `version` desplegada |
+| `PATCH /api/requerimientos/:id/estado` | Cambio de estado (incluye `recibido`) |
+| `PATCH /api/requerimientos/:id/area-departamento` | Corregir área/depto |
 
 ## Actualizar en producción
 
-1. **Respaldar** la carpeta actual, el archivo `.env` y la base de datos MySQL
-2. **Empaquetar** en desarrollo: `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1`
-3. **Descomprimir** en el servidor conservando `.env` y `backend/uploads/` (PDFs y referencias existentes)
-4. En el servidor: `cd backend && npm install --omit=dev`
-5. **Reiniciar** el proceso Node (PM2, servicio Windows, IIS, etc.)
-6. Verificar `GET /api/health` y probar login
+Guía paso a paso: **[DESPLIEGUE-v1.7.0.md](./DESPLIEGUE-v1.7.0.md)**
 
-> Esta versión **no requiere migración SQL** adicional: los cambios son de aplicación (frontend + backend).
+Resumen:
 
-## Notas de Producción
+1. Respaldar carpeta, `.env` y base MySQL
+2. Empaquetar: `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1`
+3. Descomprimir en el servidor conservando `.env` y `backend/uploads/`
+4. `cd backend && npm install --omit=dev`
+5. Reiniciar Node/PM2
+6. Verificar `GET /api/health` → version `1.7.0`
 
-- El archivo `.env` va siempre en la **raíz** del proyecto
-- Cambiar credenciales por defecto después del primer despliegue
+> v1.7.0 aplica migraciones al arranque (rol `compras` + estado `recibido`). No se requiere SQL manual.
+
+## Notas de producción
+
+- El archivo `.env` va en la **raíz** del proyecto
+- Cambiar secretos por defecto después del primer despliegue
 - Los archivos subidos se guardan en `backend/uploads/`
-- El reporte de status PO está disponible para roles contabilidad y admin desde el dashboard
+- `docs-generados/` y PDFs de apoyo no forman parte del paquete de deploy
 
 ## Soporte
 

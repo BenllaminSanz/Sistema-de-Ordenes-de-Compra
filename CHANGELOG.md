@@ -5,7 +5,62 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
-## [Unreleased]
+## [1.7.0] — 2026-08-03
+
+Entrega operativa: rol Compras, bandeja/notificaciones, acuse formal `recibido` y mejoras de listados/export/cotización.
+
+### Añadido
+- **Estado `recibido`** (acuse formal de Compras): `en_revisión` → **Marcar como recibido** → aprobar / incompleto / cancelar
+- Migración al arranque: ENUM `requerimientos.estado` incluye `recibido`
+- **KPI “Por recibir”** en Dashboard → `requerimientos.html?estado=en_revision`
+- **Campana de notificaciones** en el topbar (REQ en revisión/recibidos; badge; enlace al detalle)
+- **Correo a Compras/Admin** cuando un REQ pasa a `en_revisión` (usuarios rol compras/admin + opc. `EMAIL_NOTIF_COMPRAS`)
+- **Compras/Admin**: regreso a estados anteriores en el flujo pre-OC y en OC
+  - REQ: desde **aprobado** → *Regresar a recibido / pendientes*; desde **incompleto** → *Enviar a revisión* o *Cancelar REQ*
+  - OC: *Cancelar* desde **generada**; *Regresar a generada / distribuida / en proceso* en el ciclo activo
+- **Compras/Admin**: corregir **área y departamento** en un REQ ya creado (cualquier estado) desde el detalle → *Corregir*
+- **Filtro por usuario/solicitante** en listados de **Requerimientos** y **Órdenes de Compra** (compras/admin)
+- **Orden por columnas** en listados de REQ y OC: clic en cabecera con flechas ↑/↓ (asc/desc)
+- **Último estatus / nota** en detalle de REQ (p. ej. cotización enviada al proveedor con fecha); también en el historial
+- Renombre de **departamento** propaga el cambio a requerimientos históricos (igual que áreas)
+- API: `PATCH /requerimientos/:id/area-departamento`
+- API: `GET /api/notificaciones/bandeja`
+
+### Cambiado
+- Rol de usuario **`contabilidad` → `compras`** en todo el sistema (API, permisos, UI y etiquetas «Compras»)
+- Migración al arranque: usuarios con rol contabilidad pasan a compras; tokens antiguos se normalizan
+- **Export Excel de requerimientos**: incluye **proveedor** (OC → cotización → catálogo) y **detalle del REQ** en “Tipo de servicio”
+- Acciones de compras/admin alineadas al flujo de negocio (pre-OC / post-OC)
+- Al generar OC con PO **NA**, la **fecha es obligatoria**; también al editar PO→NA en el detalle de OC
+- **Exportar Excel del catálogo** respeta los filtros de la vista (proveedor, tipo, búsqueda y solo activos)
+- **Cotización / RFQ**:
+  - **SERVICIOS** (ítems de catálogo o libres) siempre pueden cotizarse y enviar correo
+  - **PARTES sin precio de referencia** habilitan cotización y RFQ
+  - El correo RFQ incluye **No. de parte** (`codigo` / `codigo_catalogo`)
+- Tras **Generar OC** se permanece en el detalle del REQ (no redirige al listado de OC)
+
+### Corregido
+- Export de catálogo descargaba el catálogo completo aunque hubiera filtro de proveedor
+- Historial de REQs no visible para solicitantes reales tras import Excel (emparejamiento de usuarios)
+- Alias fijo de import para **Jose Isai Fonseca** (`jose.fonseca@parkdalemills.com`)
+- Catálogo en REQ: al elegir proveedor no listaba sus ítems hasta buscar a mano
+
+### Limpieza
+- Eliminados ZIP de deploy y notas `DESPLIEGUE-v1.6.x.md` antiguos
+- Eliminada carpeta `docs/` (basura `node_modules`)
+- Eliminados: logo JPG duplicado, `frontend/js/pages/requerimientos.js` (obsoleto),
+  `backend/src/config/departamentos.js` (wrapper sin uso), `backend/src/utils/syncEstadosOc.js` (sin entrypoint),
+  dependencia nativa `bcrypt` (solo se usa `bcryptjs`)
+- Documentación y script de empaquetado actualizados para v1.7.0
+
+### Notas de despliegue
+- **Migraciones automáticas al arranque** (sin SQL manual):
+  1. `usuarios.rol`: `contabilidad` → `compras`
+  2. `requerimientos.estado`: se agrega valor ENUM `recibido`
+- Conservar en el servidor: `.env` y `backend/uploads/`
+- Variable opcional nueva: `EMAIL_NOTIF_COMPRAS` (correos extra al notificar REQ en revisión)
+- Tras desplegar: `cd backend && npm install --omit=dev` y reiniciar el proceso Node/PM2
+- Verificar: `GET /api/health` → `"version":"1.7.0"`
 
 ## [1.6.2] — 2026-07-24
 
@@ -77,7 +132,6 @@ Entrega post-carga histórica BASE GRAL + operación con estados de OC reales.
 - Usuarios solicitantes inexistentes se crean **inactivos** (solo nombre; sin correo real)
 - Validación de catálogo al importar: si no hay match, ítem libre + nota
 - Script `backend/scripts/cargar-base-req.mjs` (dry-run / apply; wipe solo excepcional)
-- Script `backend/scripts/sincronizar-estados-oc.mjs` para **actualizar estados de OC** desde Excel (Cerrada / Distribuida / **Parcial→en_proceso** / Cancelada)
 - Filtro **Activos / no cerrados** en listado de requerimientos
 - Paginación **fija al pie** de pantalla en REQ y OC
 - Dashboard: depto vía área del Excel, ciclo req→fecha PO, desglose OC activas, monedas USD/EUR
@@ -178,7 +232,6 @@ Patch post-reunión de entrega v1.4.0 (correcciones y mejoras de usabilidad).
 ### Corregido
 - Ajustes menores en rutas y controladores de requerimientos
 - Correcciones en catálogo y flujo de index de requerimientos
-- Actualización del manual de operaciones
 
 ## [1.2.0] — 2026-07-03
 
@@ -195,10 +248,6 @@ Patch post-reunión de entrega v1.4.0 (correcciones y mejoras de usabilidad).
 
 ## [1.1.2] — 2026-06-26
 
-### Añadido
-- Manual de operaciones (`docs/Manual-de-Operaciones-Sistema-OC.docx`)
-- Generador del manual (`docs/generar-manual-operaciones.mjs`)
-
 ### Cambiado
 - Ajustes de configuración de base de datos, entorno y SMTP
 
@@ -213,14 +262,4 @@ Patch post-reunión de entrega v1.4.0 (correcciones y mejoras de usabilidad).
 - Filtro `estado=activas` en listado de órdenes de compra
 - Configuración SMTP desde panel de administración
 - Verificación de correo al registrarse
-- Roles: Admin, Contabilidad, Solicitante
-
----
-
-[1.3.2]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/compare/v1.3.1...v1.3.2
-[1.3.1]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/compare/v1.3.0...v1.3.1
-[1.3.0]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/compare/v1.2.1...v1.3.0
-[1.2.1]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/compare/v1.2.0...v1.2.1
-[1.2.0]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/compare/v1.1.2...v1.2.0
-[1.1.2]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/compare/v1.0.0...v1.1.2
-[1.0.0]: https://github.com/BenllaminSanz/Sistema-de-Ordenes-de-Compra/releases/tag/v1.0.0
+- Roles: Admin, Contabilidad (hoy **Compras**), Solicitante

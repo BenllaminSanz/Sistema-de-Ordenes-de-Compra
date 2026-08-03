@@ -33,7 +33,11 @@ if (reqTipoSelect) {
 
       renderItemsSeleccionados();
       renderLibresResumen();
-      initFiltroProveedorReq();
+      initFiltroProveedorReq().then(() => {
+        // Si ya hay proveedor elegido, listar sus ítems del tipo actual (SERVICIOS, etc.)
+        const provId = document.getElementById('filtro-proveedor-id')?.value;
+        if (provId) buscarEnCatalogo();
+      }).catch(console.error);
     }
   });
 }
@@ -49,10 +53,15 @@ async function initFiltroProveedorReq() {
     datalistId: 'filtro-proveedores-req-list',
     placeholder: 'Proveedor (código o nombre)…',
     onChange: (id) => {
-      const cont = document.getElementById('resultados-catalogo');
-      if (!cont || !cont.innerHTML.trim() || cont.innerHTML.indexOf('Buscando') !== -1) return;
+      // Al elegir proveedor (p. ej. de servicios con costo), listar sus ítems
+      // aunque no haya búsqueda previa ni resultados en pantalla.
+      const tipo = document.getElementById('req-tipo')?.value;
+      if (!tipo) return;
       if (id || document.getElementById('busqueda-catalogo')?.value.trim()) {
         buscarEnCatalogo();
+      } else {
+        const cont = document.getElementById('resultados-catalogo');
+        if (cont) cont.innerHTML = '';
       }
     },
   });
@@ -180,6 +189,15 @@ function desbloquearFiltroProveedorCatalogo() {
 
 window.desbloquearFiltroProveedorCatalogo = desbloquearFiltroProveedorCatalogo;
 
+function _escAttrJs(str) {
+  return String(str ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\u2028|\u2029/g, ' ');
+}
+
 async function buscarEnCatalogo() {
   const input     = document.getElementById('busqueda-catalogo');
   const contenedor = document.getElementById('resultados-catalogo');
@@ -199,20 +217,40 @@ async function buscarEnCatalogo() {
     ProveedorBusqueda.resolver(provInput, provHidden);
   }
 
+  const provId = (provHidden?.value || '').trim();
+  // Sin texto ni proveedor: no listar todo el catálogo del tipo (evita listas enormes)
+  if (!busqueda && !provId) {
+    contenedor.innerHTML = `
+      <div class="cat-empty-state">
+        <div class="cat-no-results" style="padding:12px;font-size:12px;color:var(--muted);">
+          Escribe un código/descripción o elige un <strong>proveedor</strong> para ver sus ítems
+          ${(tipo || '').toUpperCase() === 'SERVICIOS' ? ' de servicio' : ''}.
+        </div>
+      </div>`;
+    return;
+  }
+
   contenedor.innerHTML = '<div style="padding:6px; font-size:12px; color:#666;">Buscando...</div>';
 
   try {
-    const params = new URLSearchParams({ tipo, busqueda, soloActivos: 'true' });
-    const provId = provHidden?.value;
+    const params = new URLSearchParams({ tipo, soloActivos: 'true' });
+    if (busqueda) params.set('busqueda', busqueda);
     if (provId) params.set('proveedor_id', provId);
 
-    const resultados = await Api.get(`/catalogo?${params.toString()}`);
+    const raw = await Api.get(`/catalogo?${params.toString()}`);
+    const resultados = Array.isArray(raw)
+      ? raw
+      : (Array.isArray(raw?.datos) ? raw.datos : (Array.isArray(raw?.items) ? raw.items : []));
 
     if (!resultados.length) {
+      const hintProv = provId
+        ? ' Este proveedor no tiene ítems activos de tipo <strong>' + UI.esc(tipo) + '</strong> en el catálogo (revisa que el ítem esté en ese tipo y con proveedor asignado).'
+        : '';
       contenedor.innerHTML = `
         <div class="cat-empty-state">
           <div class="cat-no-results">
             <strong>Sin resultados en el catálogo</strong>
+            <div style="margin-top:6px;font-size:11px;color:var(--muted);line-height:1.4;">${hintProv}</div>
             <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
               <button type="button" class="btn btn-sm btn-primary"
                       onclick="mostrarLibreInline()">
@@ -227,22 +265,31 @@ async function buscarEnCatalogo() {
     let html = '';
     resultados.forEach(item => {
       const yaSeleccionado = CarritoReq.tiene(item.id);
-      const safeDesc = item.descripcion.replace(/'/g, "\\'").replace(/"/g, '\\"');
-      const safeProvNom = (item.proveedor_nombre || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
-      const safeProvNum = (item.proveedor_num || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
-      const precio = item.costo_referencia != null
-        ? parseFloat(item.costo_referencia).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      const safeDesc = _escAttrJs(item.descripcion || '');
+      const safeCodigo = _escAttrJs(item.codigo || '');
+      const safeProvNom = _escAttrJs(item.proveedor_nombre || '');
+      const safeProvNum = _escAttrJs(item.proveedor_num || '');
+      const safeMoneda = _escAttrJs(item.moneda || 'MXN');
+      const costoNum = item.costo_referencia != null && item.costo_referencia !== ''
+        ? Number(item.costo_referencia)
+        : null;
+      const costoJs = (costoNum != null && !Number.isNaN(costoNum)) ? costoNum : 0;
+      const precio = costoNum != null && !Number.isNaN(costoNum)
+        ? costoNum.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : null;
+      const provIdItem = item.proveedor_id != null && item.proveedor_id !== ''
+        ? Number(item.proveedor_id)
         : null;
 
       html += `
         <div class="cat-result-row">
           <div class="cat-result-info">
             <div class="cat-result-top">
-              <span class="cat-result-code">${item.codigo}</span>
-              <span class="cat-result-desc">${item.descripcion}</span>
+              <span class="cat-result-code">${UI.esc(item.codigo || '')}</span>
+              <span class="cat-result-desc">${UI.esc(item.descripcion || '')}</span>
             </div>
             <div class="cat-result-meta">
-              ${precio != null ? `<span class="cat-result-price">${precio} ${item.moneda || 'MXN'}</span>` : ''}
+              ${precio != null ? `<span class="cat-result-price">${precio} ${UI.esc(item.moneda || 'MXN')}</span>` : ''}
               ${item.proveedor_nombre ? `<span class="cat-result-prov">${UI.labelProveedor(item)}</span>` : ''}
             </div>
           </div>
@@ -250,7 +297,7 @@ async function buscarEnCatalogo() {
             ${!yaSeleccionado ? `
               <input type="number" id="qty-${item.id}" class="form-control cat-qty" value="1" min="1" step="1" title="Cantidad">
               <button type="button" class="btn btn-sm btn-primary"
-                      onclick="agregarItemConCantidad(${item.id}, '${item.codigo}', '${safeDesc}', ${item.costo_referencia != null ? item.costo_referencia : 0}, '${item.moneda || 'MXN'}', ${item.proveedor_id != null ? item.proveedor_id : 'null'}, '${safeProvNom}', '${safeProvNum}')">
+                      onclick="agregarItemConCantidad(${item.id}, '${safeCodigo}', '${safeDesc}', ${costoJs}, '${safeMoneda}', ${provIdItem != null && !Number.isNaN(provIdItem) ? provIdItem : 'null'}, '${safeProvNom}', '${safeProvNum}')">
                 + Agregar
               </button>
             ` : `

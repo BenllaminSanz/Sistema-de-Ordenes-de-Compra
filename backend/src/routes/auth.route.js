@@ -24,7 +24,7 @@ import {
   verificarEmail
 } from '../controllers/authController.js';
 
-const gestionarUsuarios = autorizar('contabilidad', 'admin');
+const gestionarUsuarios = autorizar('compras', 'admin');
 
 // ─── Rutas públicas (sin token) ───────────────────────────────────────────────
 router.post('/login', validate(loginSchema), login);
@@ -39,7 +39,7 @@ router.get('/verificar-email', verificarEmail);
 router.get('/me',               autenticar, perfil);
 router.post('/cambiar-password', autenticar, validate(cambiarPasswordSchema), cambiarPassword);
 
-// ─── Gestión de usuarios (contabilidad / admin) ───────────────────────────────
+// ─── Gestión de usuarios (compras / admin) ───────────────────────────────
 router.post('/registro',
   autenticar,
   gestionarUsuarios,

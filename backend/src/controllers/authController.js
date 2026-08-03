@@ -16,19 +16,28 @@ import {
   marcarEmailVerificado
 } from '../models/usuario.js';
 
-const ROLES_VALIDOS = ['solicitante', 'contabilidad', 'admin'];
+const ROLES_VALIDOS = ['solicitante', 'compras', 'admin'];
+
+function normalizarRolAuth(rol) {
+  if (rol === 'contabilidad') return 'compras';
+  return rol;
+}
 
 function puedeGestionarUsuario(actor, target) {
   if (!actor || !target) return false;
-  if (actor.rol === 'admin') return true;
-  if (actor.rol === 'contabilidad' && target.rol !== 'admin') return true;
+  const actorRol = normalizarRolAuth(actor.rol);
+  const targetRol = normalizarRolAuth(target.rol);
+  if (actorRol === 'admin') return true;
+  if (actorRol === 'compras' && targetRol !== 'admin') return true;
   return false;
 }
 
 function puedeAsignarRol(actor, rol) {
-  if (!ROLES_VALIDOS.includes(rol)) return false;
-  if (actor.rol === 'admin') return true;
-  return actor.rol === 'contabilidad' && rol !== 'admin';
+  const r = normalizarRolAuth(rol);
+  if (!ROLES_VALIDOS.includes(r)) return false;
+  const actorRol = normalizarRolAuth(actor.rol);
+  if (actorRol === 'admin') return true;
+  return actorRol === 'compras' && r !== 'admin';
 }
 import { enviarCorreoVerificacion } from '../utils/emailService.js';
 import logger from '../utils/logger.js';
@@ -69,7 +78,7 @@ async function login(req, res) {
       id:     usuario.id,
       nombre: usuario.nombre,
       email:  usuario.email,
-      rol:    usuario.rol,
+      rol:    normalizarRolAuth(usuario.rol),
     };
 
     const jwtExpires = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRES || '8h';
@@ -85,7 +94,7 @@ async function login(req, res) {
     });
 
     // Envío oportunista de cotizaciones pendientes (solo para roles con permisos)
-    if (['contabilidad', 'admin'].includes(usuario.rol)) {
+    if (['compras', 'admin'].includes(usuario.rol)) {
       enviarCotizacionesPendientesOportunista().catch(err => {
         logger.error('[Login] Error enviando cotizaciones pendientes:', err.message);
       });
@@ -102,7 +111,7 @@ async function perfil(req, res) {
   try {
     const usuario = await buscarPorId(req.usuario.id);
     if (!usuario) return res.status(404).json({ mensaje: 'Usuario no encontrado' });
-    res.json(usuario);
+    res.json({ ...usuario, rol: normalizarRolAuth(usuario.rol) });
   } catch (err) {
     logger.error('[perfil]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -150,7 +159,7 @@ async function registro(req, res) {
       return res.status(400).json({ mensaje: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
-    const rolFinal = rol || 'solicitante';
+    const rolFinal = normalizarRolAuth(rol || 'solicitante');
     if (!ROLES_VALIDOS.includes(rolFinal)) {
       return res.status(400).json({ mensaje: `Rol inválido. Opciones: ${ROLES_VALIDOS.join(', ')}` });
     }
@@ -179,19 +188,21 @@ async function registro(req, res) {
   }
 }
 
-// ─── GET /api/auth/usuarios  (contabilidad / admin) ───────────────────────────
+// ─── GET /api/auth/usuarios  (compras / admin) ───────────────────────────
 async function listarUsuarios(req, res) {
   try {
     const { activo } = req.query;
     const usuarios = await listar({ activo });
-    res.json(usuarios);
+    res.json(
+      (usuarios || []).map((u) => ({ ...u, rol: normalizarRolAuth(u.rol) }))
+    );
   } catch (err) {
     logger.error('[listarUsuarios]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
 
-// ─── PATCH /api/auth/usuarios/:id  (contabilidad / admin) ─────────────────────
+// ─── PATCH /api/auth/usuarios/:id  (compras / admin) ─────────────────────
 async function actualizarUsuario(req, res) {
   try {
     const id = Number(req.params.id);
@@ -206,7 +217,8 @@ async function actualizarUsuario(req, res) {
       return res.status(403).json({ mensaje: 'No tienes permiso para editar este usuario' });
     }
 
-    if (!puedeAsignarRol(req.usuario, rol)) {
+    const rolFinal = normalizarRolAuth(rol);
+    if (!puedeAsignarRol(req.usuario, rolFinal)) {
       return res.status(403).json({ mensaje: 'No tienes permiso para asignar el rol administrador' });
     }
 
@@ -218,21 +230,22 @@ async function actualizarUsuario(req, res) {
     const afectados = await actualizar(id, {
       nombre: nombre.trim(),
       email: emailLimpio,
-      rol,
+      rol: rolFinal,
     });
 
     if (!afectados) {
       return res.status(404).json({ mensaje: 'Usuario no encontrado' });
     }
 
-    res.json(await buscarPorId(id));
+    const actualizado = await buscarPorId(id);
+    res.json(actualizado ? { ...actualizado, rol: normalizarRolAuth(actualizado.rol) } : actualizado);
   } catch (err) {
     logger.error('[actualizarUsuario]', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 }
 
-// ─── PATCH /api/auth/usuarios/:id/password  (contabilidad / admin) ─────────────
+// ─── PATCH /api/auth/usuarios/:id/password  (compras / admin) ─────────────
 async function restablecerPasswordUsuario(req, res) {
   try {
     const id = Number(req.params.id);
@@ -257,7 +270,7 @@ async function restablecerPasswordUsuario(req, res) {
   }
 }
 
-// ─── PATCH /api/auth/usuarios/:id/estado  (contabilidad / admin) ───────────────
+// ─── PATCH /api/auth/usuarios/:id/estado  (compras / admin) ───────────────
 async function cambiarEstadoUsuario(req, res) {
   try {
     const { activo } = req.body;

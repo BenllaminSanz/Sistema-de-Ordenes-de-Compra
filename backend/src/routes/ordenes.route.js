@@ -15,12 +15,12 @@ router.use(autenticar);
 
 router.get('/',                                                       listar);
 router.get('/:id',                                                    obtener);
-router.post('/',   autorizar('contabilidad','admin'),       crear);
-router.patch('/:id/estado', autorizar('contabilidad','admin'), cambiarEstado);
+router.post('/',   autorizar('compras','admin'),       crear);
+router.patch('/:id/estado', autorizar('compras','admin'), cambiarEstado);
 // Actualiza el número de PO / Order code de DataTextNow (se obtiene de los reportes Excel externos)
-router.patch('/:id/datatextnow', autorizar('contabilidad','admin'),   actualizarDatatextnow);
-// Notas de contabilidad (editables durante todo el ciclo de la OC)
-router.patch('/:id/notas', autorizar('contabilidad','admin'), actualizarNotas);
-router.patch('/:id/items/:catalogoId', autorizar('contabilidad','admin'), actualizarItemCatalogo);
+router.patch('/:id/datatextnow', autorizar('compras','admin'),   actualizarDatatextnow);
+// Notas de compras (editables durante todo el ciclo de la OC)
+router.patch('/:id/notas', autorizar('compras','admin'), actualizarNotas);
+router.patch('/:id/items/:catalogoId', autorizar('compras','admin'), actualizarItemCatalogo);
 
 export default router;

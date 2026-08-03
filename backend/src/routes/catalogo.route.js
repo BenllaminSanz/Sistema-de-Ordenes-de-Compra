@@ -33,16 +33,16 @@ router.use(autenticar);
 
 // Cualquier usuario autenticado puede consultar el catálogo
 router.get('/', listar);
-router.get('/export', autorizar('contabilidad', 'admin'), exportarExcel);
+router.get('/export', autorizar('compras', 'admin'), exportarExcel);
 router.get('/:id', obtener);
 
-// Solo Contabilidad y Admin pueden gestionar el catálogo
-router.post('/',     autorizar('contabilidad', 'admin'), crear);
-router.put('/:id',   autorizar('contabilidad', 'admin'), actualizar);
-router.patch('/:id/estado', autorizar('contabilidad', 'admin'), cambiarEstado);
-router.delete('/:id', autorizar('contabilidad', 'admin'), eliminar);
+// Solo Compras y Admin pueden gestionar el catálogo
+router.post('/',     autorizar('compras', 'admin'), crear);
+router.put('/:id',   autorizar('compras', 'admin'), actualizar);
+router.patch('/:id/estado', autorizar('compras', 'admin'), cambiarEstado);
+router.delete('/:id', autorizar('compras', 'admin'), eliminar);
 
 // Import masivo desde Excel (upsert por código de ítem)
-router.post('/import', autorizar('contabilidad', 'admin'), upload.single('excel'), importarExcel);
+router.post('/import', autorizar('compras', 'admin'), upload.single('excel'), importarExcel);
 
 export default router;

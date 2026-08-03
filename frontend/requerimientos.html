@@ -285,7 +285,8 @@
               <option value="">Todos los estados</option>
               <option value="activos">Activos / no cerrados</option>
               <option value="borrador">Borrador</option>
-              <option value="en_revision">En revisión</option>
+              <option value="en_revision">En revisión (pend. acuse)</option>
+              <option value="recibido">Recibido por Compras</option>
               <option value="aprobado">Aprobado</option>
               <option value="incompleto">Incompleto</option>
               <option value="rechazado">Rechazado</option>
@@ -302,6 +303,10 @@
             </select>
             <select id="fil-departamento" class="form-control">
               <option value="">Todos los deptos</option>
+            </select>
+            <select id="fil-solicitante" class="form-control" style="display:none;min-width:180px"
+                    title="Filtrar por solicitante">
+              <option value="">Todos los usuarios</option>
             </select>
             <button class="btn btn-outline btn-sm" onclick="cargarRequerimientos(1)">Filtrar</button>
           </div>
@@ -364,7 +369,7 @@
         <br><br>
         <strong>Solo se agregan REQ que aún no existan</strong> (mismo consecutivo / N° con sufijo A/B/C).
         Los que ya están en el sistema se omiten; no se borran datos.
-        El botón <strong>Exportar Excel</strong> genera el mismo layout para reimportar o compartir con Contabilidad.
+        El botón <strong>Exportar Excel</strong> genera el mismo layout para reimportar o compartir con Compras.
       </p>
       <div class="form-group">
         <label class="form-label">Archivo Excel (.xlsx)</label>
@@ -894,6 +899,7 @@
       <p style="font-size:13px; color:#475569; margin:0 0 14px; line-height:1.45;">
         Al generar la OC debes indicar si ya existe un <strong>PO en DataTextNow</strong>.
         Si no tiene PO, se registrará como <strong>NA</strong>.
+        En ambos casos la <strong>fecha es obligatoria</strong> (con PO = fecha del PO en DTN; sin PO = fecha de registro/cierre de la orden).
       </p>
       <div class="form-group">
         <label class="form-label">¿Tiene número de PO en DataTextNow?</label>
@@ -911,12 +917,12 @@
           <label class="form-label" for="po-oc-numero">Número de PO (DataTextNow) *</label>
           <input type="text" id="po-oc-numero" class="form-control" placeholder="Ej. 310006877" autocomplete="off">
         </div>
-        <div class="form-group">
-          <label class="form-label" for="po-oc-fecha">Fecha del PO en DataTextNow *</label>
-          <input type="date" id="po-oc-fecha" class="form-control">
-          <div class="form-hint" style="font-size:11px;color:#64748b;margin-top:4px;">
-            Fecha en que se creó el PO en DTN (no es la fecha del sistema).
-          </div>
+      </div>
+      <div class="form-group" id="po-oc-campo-fecha">
+        <label class="form-label" for="po-oc-fecha" id="po-oc-fecha-label">Fecha de registro / cierre *</label>
+        <input type="date" id="po-oc-fecha" class="form-control" required>
+        <div class="form-hint" id="po-oc-fecha-hint" style="font-size:11px;color:#64748b;margin-top:4px;">
+          Fecha operativa de la orden (aunque el PO sea NA).
         </div>
       </div>
     </div>
@@ -929,7 +935,38 @@
   </div>
 </div>
 
-<!-- ── Modal: Asignar ítem libre al catálogo (Contabilidad/Admin) ─────────── -->
+<!-- ── Modal: Corregir área / departamento (Compras/Admin) ─────────── -->
+<div class="modal-backdrop" id="modal-area-depto-req">
+  <div class="modal-box" style="max-width:440px;width:95vw">
+    <div class="modal-header">
+      <h3 class="modal-title">Corregir área y departamento</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-area-depto-req')">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted" style="font-size:13px;margin:0 0 12px;line-height:1.45">
+        Corrige el área y departamento del requerimiento si el solicitante no eligió el correcto.
+        El cambio aplica aunque el REQ ya no esté en borrador.
+      </p>
+      <div class="form-group">
+        <label class="form-label" for="corr-req-area">Área *</label>
+        <select id="corr-req-area" class="form-control" required
+                onchange="filtrarDeptosCorreccion(this.value)"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="corr-req-departamento">Departamento *</label>
+        <select id="corr-req-departamento" class="form-control" required></select>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-outline" onclick="UI.cerrarModal('modal-area-depto-req')">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-guardar-area-depto-req" onclick="guardarAreaDepartamentoReq()">
+        Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Asignar ítem libre al catálogo (Compras/Admin) ─────────── -->
 <div class="modal-backdrop" id="modal-asignar-catalogo">
   <div class="modal-box" style="max-width:520px;width:95vw">
     <div class="modal-header">

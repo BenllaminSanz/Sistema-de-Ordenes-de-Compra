@@ -21,7 +21,7 @@ let _editandoDeptoArea = null;
 let _editandoDeptoNombre = null;
 
 Auth.requiereAuth();
-if (!Auth.puedeHacer(['admin', 'contabilidad'])) {
+if (!Auth.puedeHacer(['admin', 'compras'])) {
   window.location.href = 'dashboard.html';
 }
 renderSidebar();
@@ -248,7 +248,7 @@ async function submitDepto(e) {
       const encoded = encodeURIComponent(_editandoDeptoNombre);
       const res = await Api.put(`/areas/${areaEnc}/departamentos/${encoded}`, body);
       if (res.requerimientos_historicos > 0) {
-        Toast.success(`Actualizado · ${res.requerimientos_historicos} req. conservan el nombre anterior`);
+        Toast.success(`Actualizado · ${res.requerimientos_historicos} req. actualizados con el nuevo nombre`);
       } else {
         Toast.success('Departamento actualizado');
       }

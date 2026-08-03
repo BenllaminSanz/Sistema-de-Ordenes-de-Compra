@@ -27,6 +27,7 @@ import unidadesRoutes from "./src/routes/unidades.route.js";
 import configRoutes from "./src/routes/config.route.js";
 import dashboardRoutes from "./src/routes/dashboard.route.js";
 import areasRoutes from "./src/routes/areas.route.js";
+import notificacionesRoutes from "./src/routes/notificaciones.route.js";
 import { runDbMigrations } from "./src/utils/dbMigrations.js";
 
 const app = express();
@@ -116,6 +117,7 @@ app.use("/api/unidades-medida", unidadesRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/areas", areasRoutes);
+app.use("/api/notificaciones", notificacionesRoutes);
 
 // ─── Health check ──────────────────────────────────────────
 // Incluye versión para verificar qué build está corriendo en cada ambiente

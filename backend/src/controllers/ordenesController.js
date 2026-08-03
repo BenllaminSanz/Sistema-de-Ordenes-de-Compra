@@ -14,7 +14,7 @@ async function listar(req, res) {
     const filtros = { ...req.query };
 
     // Regla de permisos:
-    // - Admin y Contabilidad: pueden ver TODAS las OCs.
+    // - Admin y Compras: pueden ver TODAS las OCs.
     // - Solicitante: SOLO puede ver las OCs que nacen de SUS requerimientos (usando el filtro por solicitante_id del requerimiento asociado).
     if (req.usuario.rol === 'solicitante') {
       // Forzamos el filtro al solicitante actual. Cualquier otro valor que venga en la query se sobrescribe.

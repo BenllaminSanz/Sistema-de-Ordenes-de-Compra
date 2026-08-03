@@ -269,10 +269,12 @@ function prepararConfirmacionEnvioCotizacion() {
   const esHoy    = fechaSeleccionada.getTime() === hoy.getTime();
   const esPasado = fechaSeleccionada < hoy;
 
-  const reqActual           = requerimientoActual || {};
-  const esLibres            = reqActual.items_libres && reqActual.items_libres.length > 0;
-  const esServicioReq       = (reqActual.tipo || '').toUpperCase() === 'SERVICIOS';
-  const permiteOpcionesEnvio = esLibres || esServicioReq;
+  const reqActual = requerimientoActual || {};
+  const permiteOpcionesEnvio = typeof reqNecesitaCotizacion === 'function'
+    ? reqNecesitaCotizacion(reqActual)
+    : !!(reqActual.requiere_cotizacion
+      || (reqActual.items_libres && reqActual.items_libres.length)
+      || (reqActual.tipo || '').toUpperCase() === 'SERVICIOS');
 
   body.innerHTML   = '';
   footer.innerHTML = '';

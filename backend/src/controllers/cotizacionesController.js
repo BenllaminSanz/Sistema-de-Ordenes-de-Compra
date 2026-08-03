@@ -1,8 +1,39 @@
 import * as Cotizacion from '../models/cotizaciones.js';
-import { registrarHistorial } from '../models/historialEstados.js';
+import { registrarHistorial, registrarNotaSeguimientoReq } from '../models/historialEstados.js';
 import { enviarSolicitudDeCotizacion } from '../utils/emailService.js';
 import fs from 'fs';
 import logger from '../utils/logger.js';
+
+function formatearFechaNota(d = new Date()) {
+  const x = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(x.getTime())) return '';
+  const dd = String(x.getDate()).padStart(2, '0');
+  const mm = String(x.getMonth() + 1).padStart(2, '0');
+  const yyyy = x.getFullYear();
+  const hh = String(x.getHours()).padStart(2, '0');
+  const mi = String(x.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
+/** Nota visible en el REQ: cotización enviada al proveedor con fecha. */
+async function anotarEnvioCotizacionEnReq(cotizacionId, usuarioId, { reenvio = false } = {}) {
+  try {
+    const cot = await Cotizacion.obtenerPorId(cotizacionId);
+    if (!cot?.requerimiento_id) return;
+    const proveedor = cot.proveedor_nombre
+      || (cot.proveedor_num ? `Prov. ${cot.proveedor_num}` : 'proveedor');
+    const cuando = formatearFechaNota(cot.email_sent_at || new Date());
+    const accion = reenvio ? 'Cotización reenviada' : 'Cotización enviada';
+    const notas = `${accion} al proveedor ${proveedor} por correo el ${cuando}.`;
+    await registrarNotaSeguimientoReq({
+      requerimientoId: cot.requerimiento_id,
+      usuarioId: usuarioId || 1,
+      notas,
+    });
+  } catch (err) {
+    logger.warn('[Cotizacion] No se pudo anotar envío en REQ:', err.message);
+  }
+}
 
 // Función para enviar cotizaciones pendientes de forma oportunista
 async function enviarCotizacionesPendientesOportunista() {
@@ -19,6 +50,7 @@ async function enviarCotizacionesPendientesOportunista() {
         const result = await enviarSolicitudDeCotizacion(cot.id, { idioma });
         if (result.success) {
           await Cotizacion.marcarComoEnviadaPorCorreo(cot.id);
+          await anotarEnvioCotizacionEnReq(cot.id, 1, { reenvio: false });
           logger.info(`[Email] Cotización #${cot.id} enviada (programada, idioma=${idioma})`);
         } else if (result.reason === 'no_requiere_segun_condicion') {
           // Regla de negocio: no corresponde enviar correo para este tipo de requerimiento
@@ -194,16 +226,17 @@ export const crearCotizacion = async (req, res) => {
       estado: estadoInicial
     }, items || []);
 
-    // Registrar historial
+    // Registrar historial de cotización + nota de seguimiento en el REQ
+    const notaCreacion = soloRegistro
+      ? 'Cotización registrada sin envío de correo'
+      : (esFechaAnterior ? 'Cotización registrada (fecha anterior, sin RFQ nuevo)' : 'Cotización creada');
     await registrarHistorial({
       entidad_tipo: 'cotizacion',
       entidad_id: id,
       estado_anterior: null,
       estado_nuevo: estadoInicial,
       cambiado_por: req.usuario?.id || 1,
-      notas: soloRegistro
-        ? 'Cotización registrada sin envío de correo'
-        : 'Cotización creada'
+      notas: notaCreacion,
     });
 
     let emailEnviado = false;
@@ -212,6 +245,15 @@ export const crearCotizacion = async (req, res) => {
 
     if (soloRegistro || esFechaAnterior) {
       emailOmitido = true;
+      const cotTmp = await Cotizacion.obtenerPorId(id);
+      const prov = cotTmp?.proveedor_nombre || 'proveedor';
+      await registrarNotaSeguimientoReq({
+        requerimientoId: parseInt(requerimiento_id, 10),
+        usuarioId: req.usuario?.id || 1,
+        notas: soloRegistro
+          ? `Cotización registrada (sin correo) con ${prov} el ${formatearFechaNota()}.`
+          : `Cotización registrada con ${prov} el ${formatearFechaNota()} (sin envío de RFQ).`,
+      });
       logger.info(
         `[Cotizacion] Cotización #${id} registrada sin envío de correo`
         + (soloRegistro ? ' (solo_registro)' : ' (fecha anterior)')
@@ -223,6 +265,7 @@ export const crearCotizacion = async (req, res) => {
           const result = await enviarSolicitudDeCotizacion(id, { idioma });
           if (result.success) {
             await Cotizacion.marcarComoEnviadaPorCorreo(id);
+            await anotarEnvioCotizacionEnReq(id, req.usuario?.id, { reenvio: false });
             emailEnviado = true;
             logger.info(`[Email] Solicitud de cotización enviada inmediatamente (cotización #${id}, idioma=${idioma})`);
           } else if (result.reason === 'no_requiere_segun_condicion') {
@@ -238,9 +281,19 @@ export const crearCotizacion = async (req, res) => {
           logger.error(`[Email] Error enviando solicitud de cotización #${id}:`, emailError);
         }
       } else {
+        await registrarNotaSeguimientoReq({
+          requerimientoId: parseInt(requerimiento_id, 10),
+          usuarioId: req.usuario?.id || 1,
+          notas: `Cotización programada para envío el ${formatearFechaNota(scheduledDate || finalScheduledAt)}.`,
+        });
         logger.info(`[Cotizacion] Cotización #${id} programada para hoy a las ${finalScheduledAt} (idioma=${idioma})`);
       }
     } else {
+      await registrarNotaSeguimientoReq({
+        requerimientoId: parseInt(requerimiento_id, 10),
+        usuarioId: req.usuario?.id || 1,
+        notas: `Cotización programada para envío el ${formatearFechaNota(scheduledDate || finalScheduledAt)}.`,
+      });
       logger.info(`[Cotizacion] Cotización #${id} programada para ${finalScheduledAt} (idioma=${idioma})`);
     }
 
@@ -349,6 +402,14 @@ export const seleccionarCotizacion = async (req, res) => {
         estado_nuevo: 'seleccionada',
         cambiado_por: req.usuario?.id || 1,
         notas: 'Cotización seleccionada para generar Orden de Compra'
+      });
+
+      const cotSel = await Cotizacion.obtenerPorId(id);
+      const provSel = cotSel?.proveedor_nombre || 'proveedor';
+      await registrarNotaSeguimientoReq({
+        requerimientoId: parseInt(requerimiento_id, 10),
+        usuarioId: req.usuario?.id || 1,
+        notas: `Cotización de ${provSel} seleccionada el ${formatearFechaNota()}.`,
       });
 
       res.json({
@@ -485,7 +546,10 @@ export const enviarCorreoCotizacion = async (req, res) => {
     const result = await enviarSolicitudDeCotizacion(cotId, { idioma });
 
     if (result.success) {
+      const cotPrev = await Cotizacion.obtenerPorId(cotId);
+      const yaEnviada = !!(cotPrev?.email_sent_at);
       await Cotizacion.marcarComoEnviadaPorCorreo(cotId);
+      await anotarEnvioCotizacionEnReq(cotId, req.usuario?.id, { reenvio: yaEnviada });
       return res.json({
         success: true,
         message: 'Solicitud de cotización enviada al proveedor',

@@ -65,9 +65,12 @@ async function cargarCotizaciones(reqId) {
 
       const esGestor          = puedeGestionarCotizaciones();
       const reqParaCot        = requerimientoActual || {};
-      const esLibresParaCot   = reqParaCot.items_libres && reqParaCot.items_libres.length > 0;
-      const esServicioParaCot = (reqParaCot.tipo || '').toUpperCase() === 'SERVICIOS';
-      const mostrarBotonEnviar = esGestor && (esLibresParaCot || esServicioParaCot);
+      const puedeRfq = typeof reqNecesitaCotizacion === 'function'
+        ? reqNecesitaCotizacion(reqParaCot)
+        : !!(reqParaCot.requiere_cotizacion
+          || (reqParaCot.items_libres && reqParaCot.items_libres.length)
+          || (reqParaCot.tipo || '').toUpperCase() === 'SERVICIOS');
+      const mostrarBotonEnviar = esGestor && puedeRfq;
 
       const nombreArchivo = c.archivo_url
         ? (String(c.archivo_url).split('/').pop() || 'Archivo')
@@ -283,7 +286,8 @@ async function enviarCorreoCotizacion(cotizacionId, esReenvio = false) {
     try {
       await Api.post(`/cotizaciones/${cotizacionId}/enviar`, { idioma });
       Toast.success((esReenvio ? 'Cotización reenviada' : 'Cotización enviada') + (idioma === 'en' ? ' (English)' : ' (Español)'));
-      await cargarCotizaciones(requerimientoActual.id);
+      if (requerimientoActual?.id) await abrirDetalle(requerimientoActual.id);
+      else await cargarCotizaciones(requerimientoActual.id);
     } catch (err) {
       Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
     }
@@ -326,7 +330,9 @@ async function confirmarEnvioCorreoConIdioma() {
       + (idioma === 'en' ? ' (English)' : ' (Español)')
     );
     cerrarModalIdiomaCorreo();
-    await cargarCotizaciones(requerimientoActual.id);
+    // Recargar detalle para refrescar "Último estatus" (nota con fecha de envío)
+    if (requerimientoActual?.id) await abrirDetalle(requerimientoActual.id);
+    else await cargarCotizaciones(requerimientoActual?.id);
   } catch (err) {
     Toast.error(err.mensaje || 'No se pudo enviar el correo de cotización');
   } finally {

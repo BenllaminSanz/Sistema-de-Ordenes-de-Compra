@@ -7,11 +7,28 @@ const API_BASE = `${window.location.protocol}//${window.location.host}/api`;
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 const Auth = {
+  /** Rol legacy contabilidad → compras */
+  normalizarRol(rol) {
+    if (rol === 'contabilidad') return 'compras';
+    return rol;
+  },
+  etiquetaRol(rol) {
+    const r = this.normalizarRol(rol);
+    if (r === 'compras') return 'Compras';
+    if (r === 'admin') return 'Admin';
+    if (r === 'solicitante') return 'Solicitante';
+    return r || '—';
+  },
   getToken()  { return localStorage.getItem('oc_token'); },
-  getUsuario(){ return JSON.parse(localStorage.getItem('oc_usuario') || 'null'); },
+  getUsuario(){
+    const u = JSON.parse(localStorage.getItem('oc_usuario') || 'null');
+    if (u && u.rol) u.rol = this.normalizarRol(u.rol);
+    return u;
+  },
   guardar(token, usuario) {
+    const u = usuario ? { ...usuario, rol: this.normalizarRol(usuario.rol) } : usuario;
     localStorage.setItem('oc_token',   token);
-    localStorage.setItem('oc_usuario', JSON.stringify(usuario));
+    localStorage.setItem('oc_usuario', JSON.stringify(u));
   },
   cerrar() {
     localStorage.removeItem('oc_token');
@@ -23,7 +40,9 @@ const Auth = {
   },
   puedeHacer(roles) {
     const u = this.getUsuario();
-    return u && roles.includes(u.rol);
+    if (!u) return false;
+    const rol = this.normalizarRol(u.rol);
+    return roles.some((r) => this.normalizarRol(r) === rol);
   },
 };
 
@@ -183,9 +202,25 @@ const UI = {
       .replace(/'/g, '&#39;');
   },
 
-  // Badge de estado con color
+  // Badge de estado con color y etiqueta legible
   badge(estado) {
-    return `<span class="badge badge-${estado}">${estado.replace('_', ' ')}</span>`;
+    const labels = {
+      borrador: 'Borrador',
+      en_revision: 'En revisión',
+      recibido: 'Recibido',
+      incompleto: 'Incompleto',
+      aprobado: 'Aprobado',
+      rechazado: 'Rechazado',
+      cerrado: 'Cerrado',
+      generada: 'Generada',
+      distribuida: 'Distribuida',
+      en_proceso: 'En proceso',
+      recibida: 'Recibida',
+      cancelada: 'Cancelada',
+    };
+    const e = estado || '';
+    const texto = labels[e] || String(e).replace(/_/g, ' ');
+    return `<span class="badge badge-${e}">${texto}</span>`;
   },
 
   // Formatea fecha corta
@@ -316,21 +351,196 @@ function marcarNavActivo() {
   });
 }
 
-// ─── TOPBAR: info del usuario ─────────────────────────────────────────────────
+// ─── TOPBAR: info del usuario + campana de notificaciones ───────────────────
 function renderTopbar(titulo) {
   const u = Auth.getUsuario();
   const topbar = document.getElementById('topbar');
   if (!topbar || !u) return;
   topbar.innerHTML = `
     <span class="topbar-title">${titulo}</span>
-    <span class="badge-rol">${u.rol}</span>
-    <span class="text-muted text-sm">${u.nombre}</span>
-    <button class="btn-logout" onclick="Auth.cerrar()">
-      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
-           viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3
-           3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-      Salir
-    </button>`;
+    <div class="topbar-right">
+      <div class="notif-wrap" id="notif-wrap">
+        <button type="button" class="notif-btn" id="notif-btn" title="Notificaciones"
+                onclick="toggleNotificaciones(event)" aria-expanded="false">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 01-3.46 0"/>
+          </svg>
+          <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+        </button>
+        <div class="notif-panel" id="notif-panel" style="display:none" role="menu">
+          <div class="notif-panel-head">
+            <strong id="notif-panel-title">Bandeja</strong>
+            <a href="#" id="notif-ver-todos" class="text-sm" style="color:var(--primary)">Ver todos</a>
+          </div>
+          <div class="notif-panel-body" id="notif-panel-body">
+            <p class="text-muted text-sm" style="padding:12px;margin:0">Cargando…</p>
+          </div>
+        </div>
+      </div>
+      <span class="badge-rol">${Auth.etiquetaRol(u.rol)}</span>
+      <span class="text-muted text-sm">${String(u.nombre || '').replace(/</g, '&lt;')}</span>
+      <button class="btn-logout" onclick="Auth.cerrar()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+             viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3
+             3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        Salir
+      </button>
+    </div>`;
+  initNotificaciones();
+}
+
+// ─── Notificaciones (campana) ─────────────────────────────────────────────────
+let _notifTimer = null;
+let _notifData = null;
+
+function notifStorageKey() {
+  const u = Auth.getUsuario();
+  return u ? `oc_notif_seen_${u.id}` : 'oc_notif_seen';
+}
+
+function getNotifSeenIds() {
+  try {
+    const raw = localStorage.getItem(notifStorageKey());
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markNotifSeen(ids) {
+  const seen = getNotifSeenIds();
+  (ids || []).forEach((id) => seen.add(String(id)));
+  // Conservar solo últimos 200
+  const list = [...seen].slice(-200);
+  localStorage.setItem(notifStorageKey(), JSON.stringify(list));
+}
+
+window.toggleNotificaciones = function (ev) {
+  if (ev) ev.stopPropagation();
+  const panel = document.getElementById('notif-panel');
+  const btn = document.getElementById('notif-btn');
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  if (open) {
+    panel.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  panel.style.display = 'block';
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  cargarNotificaciones(true);
+  // Marcar como vistos los que se muestran
+  if (_notifData?.items?.length) {
+    markNotifSeen(_notifData.items.map((i) => i.id));
+    actualizarBadgeNotif(_notifData);
+  }
+};
+
+async function cargarNotificaciones(renderPanel = false) {
+  const badge = document.getElementById('notif-badge');
+  const body = document.getElementById('notif-panel-body');
+  try {
+    const data = await Api.get('/notificaciones/bandeja?limite=15');
+    _notifData = data;
+    actualizarBadgeNotif(data);
+    if (renderPanel && body) renderPanelNotif(data);
+    const verTodos = document.getElementById('notif-ver-todos');
+    if (verTodos && data.link_todos) {
+      verTodos.href = data.link_todos;
+      verTodos.onclick = null;
+    }
+    const title = document.getElementById('notif-panel-title');
+    if (title) {
+      title.textContent = data.tipo === 'compras'
+        ? `Bandeja Compras${data.total != null ? ` · ${data.total} por recibir` : ''}`
+        : 'Mis pendientes';
+    }
+  } catch (err) {
+    if (badge) badge.style.display = 'none';
+    if (renderPanel && body) {
+      body.innerHTML = '<p class="text-muted text-sm" style="padding:12px;margin:0">No se pudieron cargar</p>';
+    }
+  }
+}
+
+function actualizarBadgeNotif(data) {
+  const badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  const total = Number(data?.total) || 0;
+  const seen = getNotifSeenIds();
+  const nuevos = (data?.items || []).filter((i) => !seen.has(String(i.id))).length;
+  // Preferir “nuevos no vistos”; si todos vistos, mostrar total de la bandeja si > 0
+  const n = nuevos > 0 ? nuevos : (total > 0 && data?.tipo === 'compras' ? total : nuevos);
+  if (n > 0) {
+    badge.style.display = '';
+    badge.textContent = n > 99 ? '99+' : String(n);
+  } else if (total > 0 && data?.tipo === 'compras') {
+    badge.style.display = '';
+    badge.textContent = total > 99 ? '99+' : String(total);
+    badge.classList.add('notif-badge-muted');
+  } else {
+    badge.style.display = 'none';
+    badge.classList.remove('notif-badge-muted');
+  }
+}
+
+function renderPanelNotif(data) {
+  const body = document.getElementById('notif-panel-body');
+  if (!body) return;
+  const items = data.items || [];
+  if (!items.length) {
+    body.innerHTML = `<p class="text-muted text-sm" style="padding:14px;margin:0;text-align:center">
+      ${data.tipo === 'compras' ? 'No hay requerimientos en revisión' : 'Sin pendientes'}
+    </p>`;
+    return;
+  }
+  const seen = getNotifSeenIds();
+  const esc = (s) => (typeof UI !== 'undefined' && UI.esc ? UI.esc(s) : String(s || '').replace(/</g, '&lt;'));
+  body.innerHTML = items.map((it) => {
+    const isNew = !seen.has(String(it.id));
+    const label = it.consecutivo || `REQ #${it.id}`;
+    const sub = [
+      it.solicitante_nombre,
+      it.tipo,
+      it.estado === 'incompleto' ? 'Incompleto'
+        : it.estado === 'recibido' ? 'Recibido'
+        : it.estado === 'en_revision' ? 'Por recibir' : null,
+    ].filter(Boolean).join(' · ');
+    const detalle = (it.titulo_solicitud || '').slice(0, 80);
+    return `
+      <a class="notif-item${isNew ? ' notif-item-new' : ''}" href="requerimientos.html?id=${it.id}">
+        <div class="notif-item-top">
+          <strong>${esc(label)}</strong>
+          ${isNew ? '<span class="notif-dot-new">Nuevo</span>' : ''}
+        </div>
+        <div class="notif-item-sub">${esc(sub)}</div>
+        ${detalle ? `<div class="notif-item-detail">${esc(detalle)}</div>` : ''}
+      </a>`;
+  }).join('');
+}
+
+function initNotificaciones() {
+  if (!document.getElementById('notif-btn')) return;
+  cargarNotificaciones(false);
+  if (_notifTimer) clearInterval(_notifTimer);
+  _notifTimer = setInterval(() => cargarNotificaciones(false), 60000);
+
+  // Cerrar al clic fuera
+  if (!document.body.dataset.notifOutside) {
+    document.body.dataset.notifOutside = '1';
+    document.addEventListener('click', (e) => {
+      const wrap = document.getElementById('notif-wrap');
+      const panel = document.getElementById('notif-panel');
+      if (!wrap || !panel || panel.style.display === 'none') return;
+      if (!wrap.contains(e.target)) {
+        panel.style.display = 'none';
+        const btn = document.getElementById('notif-btn');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
 }
 
 // ─── SIDEBAR HTML (compartido en todas las páginas) ───────────────────────────
@@ -339,7 +549,7 @@ function renderSidebar() {
   if (!u) return;
 
   // Menús visibles por rol
-  const esContabilidad = ['contabilidad','admin'].includes(u.rol);
+  const esCompras = ['compras','admin'].includes(u.rol);
   // Nota: "Órdenes de Compra" ahora es visible para TODOS (incluyendo solicitantes),
   // pero el backend limita a los solicitantes para que solo vean las OCs de sus propios requerimientos.
 
@@ -380,7 +590,7 @@ function renderSidebar() {
              viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
         Catálogo
       </a>
-      ${esContabilidad ? `
+      ${esCompras ? `
       <a href="proveedores.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
              viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10
@@ -389,7 +599,7 @@ function renderSidebar() {
         Proveedores
       </a>` : ''}
 
-      ${esContabilidad ? `
+      ${esCompras ? `
       <span class="nav-section">Administración</span>
       <a href="usuarios.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
@@ -503,6 +713,7 @@ window.Toast  = Toast;
 window.UI     = UI;
 window.renderSidebar = renderSidebar;
 window.renderTopbar  = renderTopbar;
+window.toggleNotificaciones = window.toggleNotificaciones;
 
 // Nuevas utilidades expuestas
 window.debounce = debounce;

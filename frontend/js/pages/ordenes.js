@@ -199,6 +199,8 @@ function aplicarFiltrosDesdeUrl() {
   const tipo = params.get('tipo');
   const sinPo = params.get('sin_po');
   const busqueda = params.get('busqueda');
+  const solicitante = params.get('solicitante_id') || params.get('usuario');
+  const orden = params.get('orden');
 
   if (estado) {
     const sel = document.getElementById('fil-estado');
@@ -216,6 +218,100 @@ function aplicarFiltrosDesdeUrl() {
     const inp = document.getElementById('fil-busqueda-oc');
     if (inp) inp.value = busqueda;
   }
+  // Orden por columna vía URL
+  if (typeof aplicarOrdenOcDesdeUrl === 'function') {
+    aplicarOrdenOcDesdeUrl(params);
+  }
+  // Valor preferido para el select de usuarios (se aplica al cargar el catálogo)
+  if (solicitante) {
+    window._filSolicitanteOcPreferido = solicitante;
+  }
+}
+
+/** Orden activo por cabecera de columna (flechas ↑/↓). null = default del backend. */
+let _ordenOc = { por: null, dir: 'desc' };
+
+const OC_COLS_ORDENABLES = {
+  fecha_po: 'Fecha PO',
+  numero_oc: 'No. OC',
+  tipo: 'Tipo',
+  proveedor: 'Proveedor',
+  solicitante: 'Solicitante',
+  autorizado: 'Autorizado por',
+  estado: 'Estado',
+  updated_at: 'Últ. modificación',
+  fecha: 'Fecha',
+};
+
+function aplicarOrdenOcDesdeUrl(params) {
+  const por = params.get('ordenar_por') || params.get('sort');
+  const dir = params.get('orden') || params.get('dir');
+  if (por && OC_COLS_ORDENABLES[por]) _ordenOc.por = por;
+  if (dir === 'asc' || dir === 'desc') _ordenOc.dir = dir;
+}
+
+function thSortableOc(colKey, label) {
+  const activa = _ordenOc.por === colKey;
+  const ind = !activa ? '↕' : (_ordenOc.dir === 'asc' ? '↑' : '↓');
+  const cls = activa ? 'th-sortable th-sorted' : 'th-sortable';
+  const title = activa
+    ? `Orden: ${ _ordenOc.dir === 'asc' ? 'ascendente' : 'descendente' }. Clic para invertir.`
+    : `Ordenar por ${label}`;
+  return `<th class="${cls}" data-sort="${colKey}" title="${title}">${label}<span class="sort-ind">${ind}</span></th>`;
+}
+
+window.ordenarOrdenesPor = function(colKey) {
+  if (!OC_COLS_ORDENABLES[colKey]) return;
+  if (_ordenOc.por === colKey) {
+    _ordenOc.dir = _ordenOc.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _ordenOc.por = colKey;
+    _ordenOc.dir = (colKey === 'fecha' || colKey === 'fecha_po' || colKey === 'updated_at' || colKey === 'numero_oc')
+      ? 'desc'
+      : 'asc';
+  }
+  cargarOrdenes(1);
+};
+
+/** Select de solicitante solo para compras/admin. */
+async function cargarFiltroSolicitantesOc() {
+  const sel = document.getElementById('fil-solicitante-oc');
+  if (!sel) return;
+  if (!Auth.puedeHacer(['compras', 'admin'])) {
+    sel.style.display = 'none';
+    sel.value = '';
+    return;
+  }
+  sel.style.display = '';
+  if (sel.dataset.loaded === '1') {
+    if (window._filSolicitanteOcPreferido) {
+      sel.value = String(window._filSolicitanteOcPreferido);
+      window._filSolicitanteOcPreferido = null;
+    }
+    return;
+  }
+  try {
+    const usuarios = await Api.get('/auth/usuarios');
+    const lista = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
+    const preferido = window._filSolicitanteOcPreferido || sel.value;
+    sel.innerHTML = '<option value="">Todos los usuarios</option>';
+    lista
+      .slice()
+      .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
+      .forEach((u) => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        const inactivo = u.activo === 0 || u.activo === false ? ' (inactivo)' : '';
+        opt.textContent = `${u.nombre || u.email}${inactivo}`;
+        sel.appendChild(opt);
+      });
+    if (preferido) sel.value = String(preferido);
+    window._filSolicitanteOcPreferido = null;
+    sel.dataset.loaded = '1';
+    sel.onchange = () => cargarOrdenes(1);
+  } catch (err) {
+    console.warn('No se pudieron cargar usuarios para filtro OC:', err);
+  }
 }
 
 // Delegación para la tabla de órdenes
@@ -225,23 +321,29 @@ if (tablaOC) {
     const id = btn.dataset.id;
     if (id) abrirDetalle(id);
   });
+  window.delegate(tablaOC, 'th.th-sortable', 'click', (e, th) => {
+    const col = th.dataset.sort;
+    if (col) ordenarOrdenesPor(col);
+  });
 }
 
 // ── LISTA ─────────────────────────────────────────────────────
 async function exportarOrdenesExcel(btn) {
-  if (!Auth.puedeHacer(['contabilidad', 'admin'])) {
-    return Toast.error('Solo Contabilidad/Admin pueden exportar OCs');
+  if (!Auth.puedeHacer(['compras', 'admin'])) {
+    return Toast.error('Solo Compras/Admin pueden exportar OCs');
   }
   const estado   = document.getElementById('fil-estado')?.value || '';
   const tipo     = document.getElementById('fil-tipo')?.value || '';
   const sinPo    = document.getElementById('fil-sin-po')?.checked;
   const busqueda = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
+  const solicitante = document.getElementById('fil-solicitante-oc')?.value || '';
 
   const qs = new URLSearchParams({ libre: '1' });
   if (estado) qs.set('estado', estado);
   if (tipo) qs.set('tipo_req', tipo);
   if (sinPo) qs.set('sin_po', 'true');
   if (busqueda) qs.set('busqueda', busqueda);
+  if (solicitante) qs.set('solicitante_id', solicitante);
 
   const targetBtn = btn || document.getElementById('btn-exportar-oc');
   if (window.ExcelUI?.descargar) {
@@ -302,21 +404,34 @@ async function cargarOrdenes(pagina) {
     }
   }
 
+  // Asegura el filtro de usuario cargado (compras/admin)
+  if (esAdminOContab && typeof cargarFiltroSolicitantesOc === 'function') {
+    await cargarFiltroSolicitantesOc();
+  }
+
   const estado    = document.getElementById('fil-estado')?.value || '';
   const tipo      = document.getElementById('fil-tipo')?.value || '';
   const sinPo     = document.getElementById('fil-sin-po')?.checked;
   const busqueda  = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
+  const solicitante = esAdminOContab
+    ? (document.getElementById('fil-solicitante-oc')?.value || '')
+    : '';
   let qs = `?pagina=${pagina}&limite=15`;
   if (estado)   qs += `&estado=${encodeURIComponent(estado)}`;
   if (tipo)     qs += `&tipo=${encodeURIComponent(tipo)}`;
   if (sinPo)    qs += '&sin_po=true';
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
+  if (solicitante) qs += `&solicitante_id=${encodeURIComponent(solicitante)}`;
+  if (_ordenOc.por) {
+    qs += `&ordenar_por=${encodeURIComponent(_ordenOc.por)}`;
+    qs += `&orden=${encodeURIComponent(_ordenOc.dir || 'desc')}`;
+  }
 
   try {
     const { datos, total, limite } = await Api.get('/ordenes-compra' + qs);
 
     if (!datos.length) {
-      const hayFiltros = estado || tipo || sinPo || busqueda;
+      const hayFiltros = estado || tipo || sinPo || busqueda || solicitante;
       let msg = esSolicitante
         ? 'No tienes órdenes de compra que coincidan con el filtro.'
         : 'No hay órdenes de compra que coincidan con el filtro.';
@@ -328,6 +443,8 @@ async function cargarOrdenes(pagina) {
         msg = 'No hay órdenes de compra activas / no concluidas.';
       } else if (sinPo) {
         msg = 'No hay órdenes sin PO DataTextNow con los filtros seleccionados.';
+      } else if (solicitante) {
+        msg = 'No hay órdenes de compra de ese usuario con los filtros actuales.';
       }
       UI.empty(contenedor, msg);
       document.getElementById('paginacion-oc').innerHTML = '';
@@ -335,8 +452,9 @@ async function cargarOrdenes(pagina) {
     }
 
     // Columna dinámica según rol:
-    // - Admin/Contabilidad: mostrar "Solicitante" (quien lo pidió)
+    // - Admin/Compras: mostrar "Solicitante" (quien lo pidió)
     // - Solicitante: mostrar "Autorizado por" (quien autorizó la OC)
+    const colPersonaKey = esAdminOContab ? 'solicitante' : 'autorizado';
     const columnaHeader = esAdminOContab ? 'Solicitante' : 'Autorizado por';
     const getColumnaValor = (o) => esAdminOContab 
       ? (o.solicitante_nombre || '—') 
@@ -358,9 +476,16 @@ async function cargarOrdenes(pagina) {
             <col class="col-acciones">
           </colgroup>
           <thead><tr>
-            <th>PO DTN</th><th>Fecha PO</th><th>No. OC</th><th>Tipo</th>
-            <th>Proveedor</th><th>Monto</th><th>${columnaHeader}</th>
-            <th>Estado</th><th>Últ. modificación</th><th></th>
+            <th>PO DTN</th>
+            ${thSortableOc('fecha_po', 'Fecha PO')}
+            ${thSortableOc('numero_oc', 'No. OC')}
+            ${thSortableOc('tipo', 'Tipo')}
+            ${thSortableOc('proveedor', 'Proveedor')}
+            <th>Monto</th>
+            ${thSortableOc(colPersonaKey, columnaHeader)}
+            ${thSortableOc('estado', 'Estado')}
+            ${thSortableOc('updated_at', 'Últ. modificación')}
+            <th></th>
           </tr></thead>
           <tbody>${datos.map(o => {
             const poRaw = (o.datatextnow_id && String(o.datatextnow_id).trim())
@@ -373,7 +498,7 @@ async function cargarOrdenes(pagina) {
             return `
             <tr>
               <td class="fw-600 col-po-dtn"${poTitle}>${poTxt}</td>
-              <td class="text-muted small col-fecha-po">${o.fecha_po ? fechaPoUi(o.fecha_po) : (esPoNa(o.datatextnow_id) ? 'NA' : '—')}</td>
+              <td class="text-muted small col-fecha-po">${o.fecha_po ? fechaPoUi(o.fecha_po) : '—'}</td>
               <td class="fw-600 col-no-oc" title="${UI.esc(o.numero_oc || '')}">${o.numero_oc || '—'}</td>
               <td class="col-tipo">${o.tipo}</td>
               <td class="col-proveedor" title="${UI.esc(provTxt)}">${provTxt}</td>
@@ -433,7 +558,7 @@ function volverLista() {
   history.replaceState(null, '', window.location.pathname);
 }
 
-function mostrarEditorNotasContabilidad(ocId) {
+function mostrarEditorNotasCompras(ocId) {
   const vista = document.getElementById('oc-notas-vista');
   const editor = document.getElementById('oc-notas-editor');
   const ta = document.getElementById('oc-notas-textarea');
@@ -444,21 +569,21 @@ function mostrarEditorNotasContabilidad(ocId) {
   setTimeout(() => ta.focus(), 40);
 }
 
-function cancelarEditorNotasContabilidad() {
+function cancelarEditorNotasCompras() {
   const vista = document.getElementById('oc-notas-vista');
   const editor = document.getElementById('oc-notas-editor');
   if (vista) vista.style.display = 'block';
   if (editor) editor.style.display = 'none';
 }
 
-async function guardarNotasContabilidadOC(ocId) {
+async function guardarNotasComprasOC(ocId) {
   const ta = document.getElementById('oc-notas-textarea');
   if (!ta) return;
   const btn = document.getElementById('oc-notas-btn-guardar');
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
     const updated = await Api.patch(`/ordenes-compra/${ocId}/notas`, { notas: ta.value });
-    Toast.success('Notas de contabilidad actualizadas');
+    Toast.success('Notas de compras actualizadas');
     ocActual = updated;
     renderDetalle(updated);
   } catch (err) {
@@ -467,9 +592,9 @@ async function guardarNotasContabilidadOC(ocId) {
   }
 }
 
-/** @deprecated usar mostrarEditorNotasContabilidad */
-async function editarNotasContabilidadOC(ocId) {
-  mostrarEditorNotasContabilidad(ocId);
+/** @deprecated usar mostrarEditorNotasCompras */
+async function editarNotasComprasOC(ocId) {
+  mostrarEditorNotasCompras(ocId);
 }
 
 // Editar PO DataTextNow + fecha_po de la OC
@@ -478,12 +603,13 @@ async function editarDataTextNowOC(ocId, valorActual, fechaActual) {
   const esNaActual = esPoNa(actual);
   const tienePo = confirm(
     esNaActual || !actual
-      ? '¿Esta OC tiene número de PO en DataTextNow?\n\nAceptar = Sí (capturar PO y fecha)\nCancelar = No (registrar como NA)'
-      : `PO actual: ${actual}\n\nAceptar = Editar número y fecha de PO\nCancelar = Marcar como NA (sin PO)`
+      ? '¿Esta OC tiene número de PO en DataTextNow?\n\nAceptar = Sí (capturar PO y fecha)\nCancelar = No (registrar como NA + fecha)'
+      : `PO actual: ${actual}\n\nAceptar = Editar número y fecha de PO\nCancelar = Marcar como NA (sin PO, con fecha de registro)`
   );
 
   let datatextnow_id = 'NA';
   let fecha_po = null;
+  const fechaSug = formatearFechaPoInput(fechaActual) || new Date().toISOString().slice(0, 10);
 
   if (tienePo) {
     const sugerido = esNaActual ? '' : actual;
@@ -494,21 +620,28 @@ async function editarDataTextNowOC(ocId, valorActual, fechaActual) {
       Toast.error('El número de PO no puede quedar vacío (usa Cancelar en el primer paso para marcar NA)');
       return;
     }
-    const fechaSug = formatearFechaPoInput(fechaActual) || new Date().toISOString().slice(0, 10);
     const fechaIn = prompt('Fecha del PO en DataTextNow (YYYY-MM-DD):', fechaSug);
     if (fechaIn === null) return;
     fecha_po = (fechaIn || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_po)) {
-      Toast.error('La fecha debe tener formato YYYY-MM-DD');
-      return;
-    }
+  } else {
+    // NA: la fecha sigue siendo obligatoria (registro/cierre de la orden)
+    const fechaIn = prompt(
+      'Fecha de registro/cierre (YYYY-MM-DD).\nObligatoria aunque el PO sea NA:',
+      fechaSug
+    );
+    if (fechaIn === null) return;
+    fecha_po = (fechaIn || '').trim();
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_po || '')) {
+    Toast.error('La fecha debe tener formato YYYY-MM-DD');
+    return;
   }
 
   try {
-    const payload = { datatextnow_id };
-    if (fecha_po) payload.fecha_po = fecha_po;
+    const payload = { datatextnow_id, fecha_po };
     const updated = await Api.patch(`/ordenes-compra/${ocId}/datatextnow`, payload);
-    Toast.success(datatextnow_id === 'NA' ? 'PO marcado como NA' : 'PO de DataTextNow actualizado');
+    Toast.success(datatextnow_id === 'NA' ? 'PO marcado como NA (con fecha)' : 'PO de DataTextNow actualizado');
     ocActual = updated;
     renderDetalle(updated);
   } catch (err) {
@@ -520,7 +653,7 @@ function renderDetalle(oc) {
   document.getElementById('detalle-titulo').textContent = oc.numero_oc;
 
   // En el detalle de OC (según rol):
-  // - Admin/Contabilidad: mostrar "Solicitante" (quién lo solicitó)  [en vez de Autorizado por]
+  // - Admin/Compras: mostrar "Solicitante" (quién lo solicitó)  [en vez de Autorizado por]
   // - Solicitante: mostrar "Autorizado por" (quién autorizó)
   const u = Auth.getUsuario();
   const esSol = u?.rol === 'solicitante';
@@ -560,7 +693,7 @@ function renderDetalle(oc) {
       <tr><td style="padding:6px 0;color:#6b7280">PO en DataTextNow</td>
           <td>
             ${oc.datatextnow_id || '—'}
-            ${Auth.puedeHacer(['contabilidad','admin']) 
+            ${Auth.puedeHacer(['compras','admin']) 
               ? (() => {
                   const safe = String(oc.datatextnow_id || '').replace(/'/g, "\\'");
                   const safeFecha = formatearFechaPoInput(oc.fecha_po);
@@ -575,7 +708,7 @@ function renderDetalle(oc) {
               : ''}
           </td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Fecha del PO (DTN)</td>
-          <td>${oc.fecha_po ? fechaPoUi(oc.fecha_po) : (esPoNa(oc.datatextnow_id) ? 'NA (sin PO)' : '—')}</td></tr>
+          <td>${oc.fecha_po ? fechaPoUi(oc.fecha_po) : '—'}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">PDF de Cotización</td>
           <td>
             ${oc.archivo_url 
@@ -586,12 +719,12 @@ function renderDetalle(oc) {
 
     ${(() => {
       const tieneNotas = !!(oc.notas && String(oc.notas).trim());
-      const puedeEditarNotas = Auth.puedeHacer(['contabilidad', 'admin']);
+      const puedeEditarNotas = Auth.puedeHacer(['compras', 'admin']);
       const textoNotas = tieneNotas
         ? UI.esc(oc.notas)
-        : '<em style="color:#92400e;opacity:.85;">Sin notas de contabilidad todavía. Usa este espacio para informar al solicitante durante el ciclo de la OC.</em>';
+        : '<em style="color:#92400e;opacity:.85;">Sin notas de compras todavía. Usa este espacio para informar al solicitante durante el ciclo de la OC.</em>';
       return `
-    <div id="oc-notas-contabilidad-panel" style="
+    <div id="oc-notas-compras-panel" style="
       margin-top:16px;
       border-radius:10px;
       border:2px solid #f59e0b;
@@ -610,26 +743,26 @@ function renderDetalle(oc) {
             display:inline-flex; align-items:center; justify-content:center;
             width:34px; height:34px; border-radius:8px;
             background:#b45309; color:#fff; font-size:16px; flex-shrink:0;
-          " title="Notas de contabilidad">📝</span>
+          " title="Notas de compras">📝</span>
           <div>
             <div style="font-size:14px; font-weight:800; color:#78350f; letter-spacing:.2px;">
-              Notas de contabilidad
+              Notas de compras
             </div>
             <div style="font-size:11px; color:#92400e; margin-top:1px;">
-              Visibles durante todo el ciclo de la OC · editables por Contabilidad
+              Visibles durante todo el ciclo de la OC · editables por Compras
             </div>
           </div>
         </div>
         ${puedeEditarNotas ? `
         <button type="button" class="btn btn-sm"
                 style="background:#b45309; color:#fff; border:none; font-weight:600; padding:6px 12px;"
-                onclick="mostrarEditorNotasContabilidad(${oc.id})">
+                onclick="mostrarEditorNotasCompras(${oc.id})">
           ✎ Editar notas
         </button>` : ''}
       </div>
 
       <div id="oc-notas-vista" style="padding:14px 16px;">
-        <div id="oc-notas-contabilidad-texto" style="
+        <div id="oc-notas-compras-texto" style="
           white-space:pre-wrap; line-height:1.55; font-size:14px; color:#451a03;
           min-height:2.2em;
           ${tieneNotas ? 'font-weight:500;' : ''}
@@ -644,10 +777,10 @@ function renderDetalle(oc) {
           style="font-size:14px; line-height:1.5; border:1px solid #f59e0b; background:#fffef7;"
           placeholder="Ej. En espera de factura del proveedor, PO capturado en DTN, etc."></textarea>
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="cancelarEditorNotasContabilidad()">Cancelar</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="cancelarEditorNotasCompras()">Cancelar</button>
           <button type="button" class="btn btn-sm" id="oc-notas-btn-guardar"
                   style="background:#b45309; color:#fff; border:none; font-weight:600;"
-                  onclick="guardarNotasContabilidadOC(${oc.id})">Guardar notas</button>
+                  onclick="guardarNotasComprasOC(${oc.id})">Guardar notas</button>
         </div>
       </div>
     </div>`;
@@ -660,7 +793,7 @@ function renderDetalle(oc) {
 
     ${oc.items && oc.items.length > 0 ? (() => {
       const esCatalogo  = !oc.cotizacion_id;
-      const puedeEditar = esCatalogo && Auth.puedeHacer(['contabilidad', 'admin']);
+      const puedeEditar = esCatalogo && Auth.puedeHacer(['compras', 'admin']);
       const moneda      = oc.moneda || 'MXN';
       const labelTotal = 'Total';
       const nota = oc.cotizacion_id
@@ -857,7 +990,7 @@ function renderDetalle(oc) {
 
   // Mostrar botón recepción solo cuando aplica
   const btnRec = document.getElementById('btn-nueva-recepcion');
-  const puedeRecepcionar = Auth.puedeHacer(['contabilidad','admin']) &&
+  const puedeRecepcionar = Auth.puedeHacer(['compras','admin']) &&
     ['distribuida','en_proceso'].includes(oc.estado);
   btnRec.style.display = puedeRecepcionar ? '' : 'none';
 }
@@ -866,18 +999,24 @@ function renderAcciones(oc) {
   const panel = document.getElementById('panel-acciones');
   const u = Auth.getUsuario();
 
+  // Avance, regreso a estados anteriores y cancelación en el ciclo activo.
+  // Cerrada/cancelada son terminales (sin regreso desde UI).
   const TRANSICIONES = {
-    generada:    [{ label:'Distribuir',         estado:'distribuida', clase:'btn-primary' }],
-    distribuida: [{ label:'Registrar entrega',  accion:'abrirRecepcion', clase:'btn-success' },
-                  { label:'Cancelar OC',        estado:'cancelada',   clase:'btn-danger'  }],
-    en_proceso:  [{ label:'Registrar entrega',  accion:'abrirRecepcion', clase:'btn-success' },
-                  { label:'Cerrar OC',          estado:'cerrada',     clase:'btn-primary' },
-                  { label:'Cancelar OC',        estado:'cancelada',   clase:'btn-danger'  }],
-    recibida:    [{ label:'Cerrar OC',          estado:'cerrada',     clase:'btn-success' }],
+    generada:    [{ label:'Distribuir',              estado:'distribuida',  clase:'btn-primary' },
+                  { label:'Cancelar OC',             estado:'cancelada',    clase:'btn-danger'  }],
+    distribuida: [{ label:'Registrar entrega',       accion:'abrirRecepcion', clase:'btn-success' },
+                  { label:'Regresar a generada',     estado:'generada',     clase:'btn-outline' },
+                  { label:'Cancelar OC',             estado:'cancelada',    clase:'btn-danger'  }],
+    en_proceso:  [{ label:'Registrar entrega',       accion:'abrirRecepcion', clase:'btn-success' },
+                  { label:'Cerrar OC',               estado:'cerrada',      clase:'btn-primary' },
+                  { label:'Regresar a distribuida',  estado:'distribuida',  clase:'btn-outline' },
+                  { label:'Cancelar OC',             estado:'cancelada',    clase:'btn-danger'  }],
+    recibida:    [{ label:'Cerrar OC',               estado:'cerrada',      clase:'btn-success' },
+                  { label:'Regresar a en proceso',   estado:'en_proceso',   clase:'btn-outline' }],
   };
 
   const opciones = TRANSICIONES[oc.estado];
-  const puedeActuar = ['contabilidad','admin'].includes(u.rol);
+  const puedeActuar = ['compras','admin'].includes(u.rol);
 
   if (!opciones || !puedeActuar) { panel.style.display = 'none'; return; }
 
@@ -1084,7 +1223,7 @@ async function abrirRecepcion(recepcion = null) {
 }
 
 async function editarRecepcion(recId) {
-  if (!Auth.puedeHacer(['contabilidad', 'admin'])) return;
+  if (!Auth.puedeHacer(['compras', 'admin'])) return;
   if (ocBloqueaRecepciones()) {
     return Toast.error('La OC está cerrada o cancelada. No se pueden modificar recepciones.');
   }
@@ -1094,7 +1233,7 @@ async function editarRecepcion(recId) {
 }
 
 async function eliminarRecepcion(recId) {
-  if (!Auth.puedeHacer(['contabilidad', 'admin'])) return;
+  if (!Auth.puedeHacer(['compras', 'admin'])) return;
   if (ocBloqueaRecepciones()) {
     return Toast.error('La OC está cerrada o cancelada. No se pueden eliminar recepciones.');
   }
@@ -1188,7 +1327,10 @@ async function abrirModalCierreOc({ anticipado = false } = {}) {
 }
 
 function prepararCambioEstado(estado, label) {
-  if (estado === 'distribuida') {
+  const desde = ocActual?.estado;
+
+  // Solo al avanzar generada → distribuida: ofrecer registrar recepción
+  if (estado === 'distribuida' && desde === 'generada') {
     const registrar = confirm(
       '¿Deseas registrar una recepción ahora?\n\n'
       + '• Aceptar: marcar como distribuida y abrir el registro de recepción (la OC pasará a "En proceso").\n'
@@ -1247,7 +1389,7 @@ async function cargarRecepciones(ocId) {
     recepcionesActuales = recs;
     await cargarResumenItemsOc(ocId);
 
-    const esContab = Auth.puedeHacer(['contabilidad', 'admin']);
+    const esComprasUser = Auth.puedeHacer(['compras', 'admin']);
 
     if (!recs.length) {
       contenedor.innerHTML = '<p class="text-muted text-sm">Sin recepciones registradas</p>';
@@ -1263,12 +1405,12 @@ async function cargarRecepciones(ocId) {
             </ul>`
           : '';
 
-        const puedeEditarRec = esContab && !ocBloqueaRecepciones(ocActual);
-        const accionesContab = puedeEditarRec ? `
+        const puedeEditarRec = esComprasUser && !ocBloqueaRecepciones(ocActual);
+        const accionesComprasUser = puedeEditarRec ? `
           <div class="d-flex gap-1 mt-2">
             <button class="btn btn-sm btn-outline" data-action="editar-recepcion" data-rec-id="${r.id}">Editar</button>
             <button class="btn btn-sm btn-danger" data-action="eliminar-recepcion" data-rec-id="${r.id}">Eliminar</button>
-          </div>` : (esContab && ocBloqueaRecepciones(ocActual)
+          </div>` : (esComprasUser && ocBloqueaRecepciones(ocActual)
             ? '<div class="text-muted text-sm mt-2">OC cerrada — recepciones bloqueadas</div>'
             : '');
 
@@ -1284,7 +1426,7 @@ async function cargarRecepciones(ocId) {
           </div>
           ${r.notas ? `<div class="text-sm text-muted mt-2">${r.notas}</div>` : ''}
           ${itemsHtml}
-          ${accionesContab}
+          ${accionesComprasUser}
         </div>`;
       }).join('');
     }
@@ -1515,10 +1657,10 @@ window.abrirRecepcion = abrirRecepcion;
 window.cerrarModalRecepcion = cerrarModalRecepcion;
 window.editarRecepcion = editarRecepcion;
 window.editarDataTextNowOC = editarDataTextNowOC;
-window.editarNotasContabilidadOC = editarNotasContabilidadOC;
-window.mostrarEditorNotasContabilidad = mostrarEditorNotasContabilidad;
-window.cancelarEditorNotasContabilidad = cancelarEditorNotasContabilidad;
-window.guardarNotasContabilidadOC = guardarNotasContabilidadOC;
+window.editarNotasComprasOC = editarNotasComprasOC;
+window.mostrarEditorNotasCompras = mostrarEditorNotasCompras;
+window.cancelarEditorNotasCompras = cancelarEditorNotasCompras;
+window.guardarNotasComprasOC = guardarNotasComprasOC;
 window.exportarOrdenesExcel = exportarOrdenesExcel;
 window.cargarOrdenes = cargarOrdenes;
 window.volverLista = volverLista;

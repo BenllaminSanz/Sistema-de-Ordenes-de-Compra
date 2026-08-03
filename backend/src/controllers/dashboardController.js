@@ -10,7 +10,7 @@ import {
  * ?anio=YYYY filtra métricas de año (default: año actual).
  *
  * Alcance por rol:
- * - admin / contabilidad → global
+ * - admin / compras → global
  * - solicitante → solo sus REQ y OC (vía r.solicitante_id)
  *
  * Notas post-carga histórica:
@@ -159,7 +159,7 @@ export async function getStats(req, res, next) {
                COUNT(*) AS total,
                SUM(CASE WHEN r.estado NOT IN ('rechazado','borrador') THEN 1 ELSE 0 END) AS aprobados,
                SUM(CASE WHEN r.estado = 'cerrado' THEN 1 ELSE 0 END) AS cerrados,
-               SUM(CASE WHEN r.estado IN ('en_revision','aprobado','incompleto','borrador') THEN 1 ELSE 0 END) AS abiertos
+               SUM(CASE WHEN r.estado IN ('en_revision','recibido','aprobado','incompleto','borrador') THEN 1 ELSE 0 END) AS abiertos
         FROM requerimientos r
         WHERE ${deptoExpr} IS NOT NULL
           AND YEAR(r.created_at) = ?
@@ -189,7 +189,7 @@ export async function getStats(req, res, next) {
         WHERE dias IS NOT NULL AND dias >= 0
       `, [anio, ...pSol]),
 
-      // 7. Aging: REQ en_revision / aprobado / incompleto más antiguos
+      // 7. Aging: pendientes de acuse / recibidos / incompleto / aprobado más antiguos
       //    IMPORTANTE: filtrar por r.solicitante_id cuando es solicitante
       //    area/departamento crudos; se normalizan con catálogo antes de responder
       pool.query(`
@@ -202,10 +202,15 @@ export async function getStats(req, res, next) {
                DATEDIFF(NOW(), r.created_at) AS dias_espera
         FROM requerimientos r
         JOIN usuarios u ON u.id = r.solicitante_id
-        WHERE r.estado IN ('en_revision', 'aprobado', 'incompleto')
+        WHERE r.estado IN ('en_revision', 'recibido', 'aprobado', 'incompleto')
           ${filtroR}
         ORDER BY
-          CASE r.estado WHEN 'en_revision' THEN 0 WHEN 'incompleto' THEN 1 ELSE 2 END,
+          CASE r.estado
+            WHEN 'en_revision' THEN 0
+            WHEN 'recibido' THEN 1
+            WHEN 'incompleto' THEN 2
+            ELSE 3
+          END,
           dias_espera DESC
         LIMIT 12
       `, [...pSol]),

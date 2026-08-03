@@ -1,9 +1,10 @@
-import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, cambiarEstado as _cambiarEstado, eliminar as _eliminar, asignarCatalogoAItemLibre as _asignarCatalogoAItemLibre } from '../models/requerimientos.js';
+import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, actualizarAreaDepartamento as _actualizarAreaDepartamento, cambiarEstado as _cambiarEstado, eliminar as _eliminar, asignarCatalogoAItemLibre as _asignarCatalogoAItemLibre } from '../models/requerimientos.js';
 import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
-import { validarMismoProveedorCatalogo } from '../utils/catalogoItems.js';
+import { validarMismoProveedorCatalogo, calcularRequiereCotizacion } from '../utils/catalogoItems.js';
 import { parseExcelRequerimientos, generarExcelRequerimientos } from '../utils/excelRequerimientos.js';
 import { importarBaseRequerimientos } from '../utils/importBaseReq.js';
+import { notificarComprasReqEnRevision } from '../utils/emailService.js';
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 
@@ -20,11 +21,13 @@ const TRANSICIONES_POR_ROL = {
     borrador: ['en_revision'],
     incompleto: ['en_revision'],
   },
-  contabilidad: {
+  compras: {
+    // Compras: acusa recibo (recibido), decide y puede regresar/cancelar pre-OC
     borrador: ['en_revision'],
-    incompleto: ['en_revision'],
-    en_revision: ['aprobado', 'incompleto', 'rechazado'],
-    aprobado: ['cerrado', 'rechazado'],
+    incompleto: ['en_revision', 'rechazado'],
+    en_revision: ['recibido', 'rechazado'],
+    recibido: ['aprobado', 'incompleto', 'rechazado', 'en_revision'],
+    aprobado: ['cerrado', 'rechazado', 'recibido', 'en_revision'],
   },
 };
 
@@ -37,7 +40,10 @@ function puedeCambiarEstadoRequerimiento(rol, estadoActual, estadoNuevo) {
 // ─── GET /requerimientos ──────────────────────────────────────────────────────
 async function listar(req, res) {
   try {
-    const { titulo_solicitud, estado, area, departamento, tipo, busqueda, pagina, limite } = req.query;
+    const {
+      titulo_solicitud, estado, area, departamento, tipo, busqueda,
+      orden, ordenar_por, pagina, limite,
+    } = req.query;
 
     // Los solicitantes solo ven sus propios requerimientos
     const solicitante_id =
@@ -51,6 +57,8 @@ async function listar(req, res) {
       tipo,
       busqueda,
       solicitante_id,
+      orden,
+      ordenar_por,
       pagina,
       limite,
     });
@@ -121,9 +129,6 @@ async function crear(req, res) {
       });
     }
 
-    // Forzar requiere_cotizacion=true si hay ítems libres (regla de negocio: solo ellos necesitan cotización para alta en catálogo)
-    const requiereCotFinal = tieneItemsLibres ? true : (requiere_cotizacion || false);
-
     const valAreaDepto = await validarAreaDeptoReq(area, departamento);
     if (!valAreaDepto.ok) {
       return res.status(422).json({ mensaje: valAreaDepto.mensaje });
@@ -143,6 +148,13 @@ async function crear(req, res) {
         mensaje: `Máximo 15 ítems por requerimiento. Tienes ${totalItems}. Crea otro REQ para el resto.`,
       });
     }
+
+    // Libres / SERVICIOS / PARTES sin precio de referencia → cotizar
+    const requiereCotFinal = await calcularRequiereCotizacion({
+      tipo,
+      items: tieneItemsEstructurados ? items : [],
+      items_libres: tieneItemsLibres ? items_libres : [],
+    });
 
     const id = await _crear(
       { 
@@ -217,17 +229,26 @@ async function actualizar(req, res) {
       });
     }
 
-    // Forzar requiere_cotizacion=true cuando se usan items_libres (libres siempre requieren cotización)
-    const requiereCotFinal = tieneItemsLibres ? true : (requiere_cotizacion || false);
+    const reqActualPrev = await obtenerPorId(req.params.id);
+    if (!reqActualPrev) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
 
-    const reqActualPrev = (area !== undefined || departamento !== undefined || req.usuario.rol === 'solicitante')
-      ? await obtenerPorId(req.params.id)
-      : null;
+    // Recalcular cotización: libres / SERVICIOS / PARTES sin precio
+    const itemsParaCot = Array.isArray(items)
+      ? items
+      : (reqActualPrev.items || []).map((i) => ({ catalogo_id: i.catalogo_id, cantidad: i.cantidad }));
+    const libresParaCot = Array.isArray(items_libres)
+      ? items_libres
+      : (reqActualPrev.items_libres || []);
+    const tipoParaCot = tipo || reqActualPrev.tipo;
+    const requiereCotFinal = await calcularRequiereCotizacion({
+      tipo: tipoParaCot,
+      items: itemsParaCot,
+      items_libres: libresParaCot,
+    });
 
     if (area !== undefined || departamento !== undefined) {
-      if (!reqActualPrev) {
-        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
-      }
       const valAreaDepto = await validarAreaDeptoReq(
         area ?? reqActualPrev.area,
         departamento ?? reqActualPrev.departamento
@@ -239,11 +260,7 @@ async function actualizar(req, res) {
 
     // Los solicitantes solo pueden editar sus propios requerimientos
     if (req.usuario.rol === 'solicitante') {
-      const reqActual = reqActualPrev || await obtenerPorId(req.params.id);
-      if (!reqActual) {
-        return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
-      }
-      if (reqActual.solicitante_id !== req.usuario.id) {
+      if (reqActualPrev.solicitante_id !== req.usuario.id) {
         return res.status(403).json({ mensaje: 'No puedes editar requerimientos de otros usuarios' });
       }
     }
@@ -290,36 +307,47 @@ async function cambiarEstado(req, res) {
     }
 
     if (!puedeCambiarEstadoRequerimiento(req.usuario.rol, reqActual.estado, estado)) {
-      const rolLabel = req.usuario.rol === 'contabilidad' ? 'contabilidad' : req.usuario.rol;
+      const rolLabel = req.usuario.rol === 'compras' ? 'Compras' : req.usuario.rol;
       return res.status(403).json({
         mensaje: `Tu rol (${rolLabel}) no puede cambiar el requerimiento de '${reqActual.estado}' a '${estado}'`,
       });
     }
 
-    if (estado === 'rechazado' && reqActual.estado === 'aprobado') {
-      if (reqActual.orden_compra_id || reqActual.oc_id) {
-        return res.status(422).json({
-          mensaje: 'No se puede cancelar un requerimiento que ya tiene una orden de compra generada.',
-        });
-      }
+    // Cancelar o regresar solo si aún no hay OC (con OC el ciclo sigue en la orden)
+    const tieneOc = !!(reqActual.orden_compra_id || reqActual.oc_id);
+    if (tieneOc && (estado === 'rechazado' || estado === 'en_revision' || estado === 'recibido')) {
+      const msg =
+        estado === 'rechazado'
+          ? 'No se puede cancelar un requerimiento que ya tiene una orden de compra generada. Cancela la OC en su lugar.'
+          : estado === 'recibido'
+            ? 'No se puede regresar a recibido un requerimiento que ya tiene una orden de compra generada.'
+            : 'No se puede regresar a revisión un requerimiento que ya tiene una orden de compra generada.';
+      return res.status(422).json({ mensaje: msg });
     }
 
     // === VALIDACIÓN PARA APROBAR REQUERIMIENTOS QUE NECESITAN COTIZACIÓN ===
     if (estado === 'aprobado') {
-      if (reqActual.requiere_cotizacion) {
+      const necesitaCot = await calcularRequiereCotizacion({
+        tipo: reqActual.tipo,
+        items: (reqActual.items || []).map((i) => ({ catalogo_id: i.catalogo_id })),
+        items_libres: reqActual.items_libres || [],
+      }) || !!reqActual.requiere_cotizacion;
+
+      if (necesitaCot) {
         const cotizaciones = await CotizacionModel.listarPorRequerimiento(req.params.id);
-        const seleccionada = cotizaciones.find(c => 
+        const seleccionada = cotizaciones.find(c =>
           c.seleccionada === 1 || c.estado === 'seleccionada'
         );
 
         if (!seleccionada) {
-          return res.status(400).json({ 
-            mensaje: 'Este requerimiento requiere cotización. Debes seleccionar una cotización ganadora antes de aprobar.' 
+          return res.status(400).json({
+            mensaje: 'Este requerimiento requiere cotización. Debes seleccionar una cotización ganadora antes de aprobar.',
           });
         }
-
       }
     }
+
+    const estadoAnterior = reqActual.estado;
 
     await _cambiarEstado(
       req.params.id,
@@ -329,6 +357,20 @@ async function cambiarEstado(req, res) {
     );
 
     const actualizado = await obtenerPorId(req.params.id);
+
+    // Aviso a Compras: REQ entró a la bandeja de revisión (no bloquea la respuesta)
+    if (
+      estado === 'en_revision'
+      && estadoAnterior !== 'en_revision'
+      && actualizado
+    ) {
+      notificarComprasReqEnRevision(actualizado, {
+        excluirEmail: req.usuario?.email,
+      }).catch((err) => {
+        logger.warn('[cambiarEstado] Notificación Compras falló:', err?.message || err);
+      });
+    }
+
     res.json(actualizado);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
@@ -390,6 +432,8 @@ async function subirReferenciaItem(req, res) {
 // ─── GET /requerimientos/exportar ────────────────────────────────────────────
 async function exportarExcel(req, res) {
   try {
+    // Proveedor: OC → cotización seleccionada → primer ítem de catálogo del REQ
+    // Detalle: título + notas + resumen de ítems (no solo el tipo PARTES/SERVICIOS)
     const [reqs] = await pool.query(`
       SELECT
         r.id, r.consecutivo, r.tipo, r.titulo_solicitud, r.notas,
@@ -397,17 +441,54 @@ async function exportarExcel(req, res) {
         u.nombre  AS solicitante_nombre,
         oc.numero_oc             AS oc_numero,
         oc.estado                AS oc_estado,
-        oc.monto_total           AS oc_monto_total,
-        oc.moneda                AS oc_moneda,
+        COALESCE(oc.monto_total, cot.monto_total) AS oc_monto_total,
+        COALESCE(oc.moneda, cot.moneda)           AS oc_moneda,
         oc.datatextnow_id        AS oc_datatextnow_id,
         oc.fecha_po              AS oc_fecha_po,
         oc.fecha_autorizacion    AS oc_fecha_autorizacion,
-        p.num_proveedor          AS proveedor_num,
-        p.nombre                 AS proveedor_nombre
+        COALESCE(p_oc.num_proveedor, p_cot.num_proveedor, p_cat.num_proveedor) AS proveedor_num,
+        COALESCE(p_oc.nombre, p_cot.nombre, p_cat.nombre) AS proveedor_nombre,
+        (
+          SELECT GROUP_CONCAT(
+            CONCAT(
+              IF(c.codigo IS NOT NULL AND TRIM(c.codigo) <> '', CONCAT(c.codigo, ' — '), ''),
+              COALESCE(c.descripcion, ''),
+              IF(ri.cantidad IS NOT NULL, CONCAT(' x', ri.cantidad), '')
+            )
+            ORDER BY ri.id
+            SEPARATOR '; '
+          )
+          FROM requerimiento_items ri
+          JOIN catalogo c ON c.id = ri.catalogo_id
+          WHERE ri.requerimiento_id = r.id
+        ) AS items_resumen,
+        (
+          SELECT GROUP_CONCAT(
+            CONCAT(
+              COALESCE(ril.descripcion, ''),
+              IF(ril.cantidad IS NOT NULL, CONCAT(' x', ril.cantidad), '')
+            )
+            ORDER BY ril.id
+            SEPARATOR '; '
+          )
+          FROM requerimiento_items_libres ril
+          WHERE ril.requerimiento_id = r.id
+        ) AS items_libres_resumen
       FROM requerimientos r
       JOIN usuarios u ON u.id = r.solicitante_id
       LEFT JOIN ordenes_compra oc ON oc.id = r.orden_compra_id
-      LEFT JOIN proveedores p    ON p.id  = oc.proveedor_id
+      LEFT JOIN cotizaciones cot ON cot.requerimiento_id = r.id
+        AND (cot.seleccionada = 1 OR cot.estado = 'seleccionada')
+      LEFT JOIN proveedores p_oc  ON p_oc.id  = oc.proveedor_id
+      LEFT JOIN proveedores p_cot ON p_cot.id = cot.proveedor_id
+      LEFT JOIN proveedores p_cat ON p_cat.id = (
+        SELECT cat.proveedor_id
+        FROM requerimiento_items ri2
+        JOIN catalogo cat ON cat.id = ri2.catalogo_id
+        WHERE ri2.requerimiento_id = r.id
+          AND cat.proveedor_id IS NOT NULL
+        LIMIT 1
+      )
       ORDER BY r.tipo ASC, r.created_at ASC
     `);
 
@@ -504,4 +585,42 @@ async function asignarCatalogoItemLibre(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel, asignarCatalogoItemLibre };
+/**
+ * PATCH /requerimientos/:id/area-departamento
+ * Compras/Admin corrigen área y departamento aunque el REQ no sea borrador.
+ */
+async function actualizarAreaDepartamento(req, res) {
+  try {
+    let { area, departamento } = req.body || {};
+    area = String(area || '').trim().toUpperCase();
+    departamento = String(departamento || '').trim().toUpperCase();
+
+    const val = await validarAreaDeptoReq(area, departamento);
+    if (!val.ok) {
+      return res.status(422).json({ mensaje: val.mensaje });
+    }
+
+    const existente = await obtenerPorId(req.params.id);
+    if (!existente) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
+
+    // Guardar IDs/nombres canónicos del catálogo
+    const areaCanon = val.area?.id || area;
+    const deptoCanon = val.departamento?.nombre || departamento;
+
+    const afectados = await _actualizarAreaDepartamento(req.params.id, areaCanon, deptoCanon);
+    if (!afectados) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
+
+    const actualizado = await obtenerPorId(req.params.id);
+    res.json(actualizado);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
+    logger.error('[actualizarAreaDepartamento]', err);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+}
+
+export { listar, obtener, crear, actualizar, actualizarAreaDepartamento, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel, asignarCatalogoItemLibre };

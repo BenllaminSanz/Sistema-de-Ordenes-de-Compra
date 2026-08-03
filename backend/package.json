@@ -1,7 +1,7 @@
 {
   "name": "sistema-de-ordenes-de-compra",
-  "version": "1.6.2",
-  "description": "",
+  "version": "1.7.0",
+  "description": "Sistema de Órdenes de Compra — API y frontend",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
@@ -14,8 +14,6 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "xlsx": "npm:@e965/xlsx@^0.20.3",
-    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
@@ -24,6 +22,7 @@
     "multer": "^2.2.0",
     "mysql2": "^3.22.0",
     "nodemailer": "^9.0.3",
+    "xlsx": "npm:@e965/xlsx@^0.20.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

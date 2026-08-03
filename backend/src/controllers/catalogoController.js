@@ -393,8 +393,14 @@ async function exportarExcel(req, res) {
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
     const fecha = new Date().toISOString().slice(0, 10);
+    const sufijos = [];
+    if (req.query.proveedor_id) sufijos.push(`prov${req.query.proveedor_id}`);
+    if (req.query.tipo) sufijos.push(String(req.query.tipo).toLowerCase());
+    const nombre = sufijos.length
+      ? `catalogo_${fecha}_${sufijos.join('_')}.xlsx`
+      : `catalogo_${fecha}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="catalogo_${fecha}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(buffer);
   } catch (err) {
     logger.error('[exportarExcel catalogo]', err);

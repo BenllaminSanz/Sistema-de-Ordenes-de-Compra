@@ -8,6 +8,7 @@ import {
   obtener,
   crear,
   actualizar,
+  actualizarAreaDepartamento,
   cambiarEstado,
   eliminar,
   subirReferenciaItem,
@@ -20,6 +21,7 @@ import { validate } from '../validations/validationMiddleware.js';
 import {
   crearRequerimientoSchema,
   actualizarRequerimientoSchema,
+  actualizarAreaDepartamentoSchema,
   cambiarEstadoRequerimientoSchema
 } from '../validations/schemas.js';
 
@@ -76,7 +78,7 @@ router.get('/exportar', exportarExcel);
 
 router.post(
   '/importar',
-  autorizar('contabilidad', 'admin'),
+  autorizar('compras', 'admin'),
   (req, res, next) => {
     uploadExcel.single('archivo')(req, res, (err) => {
       if (err) return res.status(400).json({ mensaje: err.message || 'Archivo no válido' });
@@ -88,7 +90,7 @@ router.post(
 
 router.post(
   '/referencia-item',
-  autorizar('solicitante', 'contabilidad', 'admin'),
+  autorizar('solicitante', 'compras', 'admin'),
   (req, res, next) => {
     uploadReferenciaItem.single('archivo')(req, res, (err) => {
       if (err) {
@@ -104,35 +106,43 @@ router.get('/:id', obtener);
 
 router.post(
   '/',
-  autorizar('solicitante', 'contabilidad', 'admin'),
+  autorizar('solicitante', 'compras', 'admin'),
   validate(crearRequerimientoSchema),
   crear
 );
 
 router.put(
   '/:id',
-  autorizar('solicitante', 'contabilidad', 'admin'),
+  autorizar('solicitante', 'compras', 'admin'),
   validate(actualizarRequerimientoSchema),
   actualizar
 );
 
+// Compras/Admin: corregir área y departamento en REQ ya creados (cualquier estado)
+router.patch(
+  '/:id/area-departamento',
+  autorizar('compras', 'admin'),
+  validate(actualizarAreaDepartamentoSchema),
+  actualizarAreaDepartamento
+);
+
 router.patch(
   '/:id/estado',
-  autorizar('solicitante', 'contabilidad', 'admin'),
+  autorizar('solicitante', 'compras', 'admin'),
   validate(cambiarEstadoRequerimientoSchema),
   cambiarEstado
 );
 
-// Borrador: solicitante (propio), contabilidad o admin
+// Borrador: solicitante (propio), compras o admin
 router.delete(
   '/:id',
-  autorizar('solicitante', 'contabilidad', 'admin'),
+  autorizar('solicitante', 'compras', 'admin'),
   eliminar
 );
 
 router.patch(
   '/:id/items-libres/:libreId/catalogo',
-  autorizar('contabilidad', 'admin'),
+  autorizar('compras', 'admin'),
   asignarCatalogoItemLibre
 );
 

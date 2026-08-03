@@ -77,8 +77,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderTopbar('Catálogo');
 
   const usuario = Auth.getUsuario();
-  esAdminCatalogo = ['contabilidad', 'admin'].includes(usuario?.rol);
-  puedeSolicitarReq = Auth.puedeHacer(['solicitante', 'contabilidad', 'admin']);
+  esAdminCatalogo = ['compras', 'admin'].includes(usuario?.rol);
+  puedeSolicitarReq = Auth.puedeHacer(['solicitante', 'compras', 'admin']);
 
   const adminActions = document.getElementById('admin-actions');
   if (adminActions) {
@@ -713,18 +713,49 @@ async function cargarCatalogoDesdeExcel(input) {
   }
 }
 
+/** Query string de export: respeta los mismos filtros de la vista (proveedor, tipo, búsqueda, activos). */
+function queryExportCatalogo() {
+  const params = new URLSearchParams();
+  const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
+  if (soloActivos) params.set('soloActivos', 'true');
+
+  const tipo = document.getElementById('filtro-tipo')?.value || '';
+  if (tipo) params.set('tipo', tipo);
+
+  const proveedor_id = (document.getElementById('filtro-proveedor-id')?.value || '').trim();
+  if (proveedor_id) params.set('proveedor_id', proveedor_id);
+
+  const busqueda = (document.getElementById('busqueda')?.value || '').trim();
+  if (busqueda) params.set('busqueda', busqueda);
+
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function mensajeExitoExportCatalogo() {
+  const partes = [];
+  const tipo = document.getElementById('filtro-tipo')?.value || '';
+  const provLabel = (document.getElementById('filtro-proveedor-busqueda')?.value || '').trim();
+  const busqueda = (document.getElementById('busqueda')?.value || '').trim();
+  if (provLabel) partes.push(`proveedor: ${provLabel}`);
+  if (tipo) partes.push(`tipo: ${tipo}`);
+  if (busqueda) partes.push(`búsqueda: «${busqueda}»`);
+  if (!partes.length) return 'Catálogo exportado (completo)';
+  return `Catálogo exportado (filtrado: ${partes.join(', ')})`;
+}
+
 async function exportarCatalogoExcel(btn) {
   if (!esAdminCatalogo) {
     Toast.error('No tienes permisos para exportar el catálogo');
     return;
   }
-  const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
-  const qs = soloActivos ? '?soloActivos=true' : '';
+  const qs = queryExportCatalogo();
+  const successMsg = mensajeExitoExportCatalogo();
   const targetBtn = btn || document.getElementById('btn-exportar-catalogo');
   if (window.ExcelUI?.descargar) {
     await ExcelUI.descargar(`/catalogo/export${qs}`, {
       btn: targetBtn,
-      successMsg: 'Catálogo exportado',
+      successMsg,
       loadingText: 'Generando…',
     });
     return;
@@ -748,7 +779,7 @@ async function exportarCatalogoExcel(btn) {
     a.click();
     a.remove();
     URL.revokeObjectURL(a.href);
-    Toast.success('Excel descargado (mismo formato de carga)');
+    Toast.success(successMsg);
   } catch (err) {
     Toast.error(err.mensaje || 'Error al exportar el catálogo');
   }

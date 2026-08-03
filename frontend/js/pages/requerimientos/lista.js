@@ -1,5 +1,84 @@
 // ── LISTA DE REQUERIMIENTOS ───────────────────────────────────
 
+/** Orden activo por cabecera de columna (flechas ↑/↓). */
+let _ordenReq = { por: 'fecha', dir: 'desc' };
+
+const REQ_COLS_ORDENABLES = {
+  consecutivo: 'Consecutivo',
+  tipo: 'Tipo',
+  area: 'Área',
+  departamento: 'Depto',
+  solicitante: 'Solicitante',
+  estado: 'Estado',
+  fecha: 'Fecha',
+};
+
+function aplicarOrdenReqDesdeUrl(params) {
+  const por = params.get('ordenar_por') || params.get('sort');
+  const dir = params.get('orden') || params.get('dir');
+  if (por && REQ_COLS_ORDENABLES[por]) _ordenReq.por = por;
+  if (dir === 'asc' || dir === 'desc') _ordenReq.dir = dir;
+}
+
+function thSortableReq(colKey, label) {
+  const activa = _ordenReq.por === colKey;
+  const ind = !activa ? '↕' : (_ordenReq.dir === 'asc' ? '↑' : '↓');
+  const cls = activa ? 'th-sortable th-sorted' : 'th-sortable';
+  const title = activa
+    ? `Orden: ${ _ordenReq.dir === 'asc' ? 'ascendente' : 'descendente' }. Clic para invertir.`
+    : `Ordenar por ${label}`;
+  return `<th class="${cls}" data-sort="${colKey}" title="${title}">${label}<span class="sort-ind">${ind}</span></th>`;
+}
+
+window.ordenarRequerimientosPor = function(colKey) {
+  if (!REQ_COLS_ORDENABLES[colKey]) return;
+  if (_ordenReq.por === colKey) {
+    _ordenReq.dir = _ordenReq.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _ordenReq.por = colKey;
+    // Fecha y consecutivo: primer clic = más nuevas / mayor primero (desc)
+    _ordenReq.dir = (colKey === 'fecha' || colKey === 'consecutivo') ? 'desc' : 'asc';
+  }
+  cargarRequerimientos(1);
+};
+
+/** Carga el select de solicitantes (solo compras/admin). */
+async function cargarFiltroSolicitantesReq(valorPreferido) {
+  const sel = document.getElementById('fil-solicitante');
+  if (!sel) return;
+  if (!Auth.puedeHacer(['compras', 'admin'])) {
+    sel.style.display = 'none';
+    sel.value = '';
+    return;
+  }
+  sel.style.display = '';
+  if (sel.dataset.loaded === '1') {
+    if (valorPreferido) sel.value = String(valorPreferido);
+    return;
+  }
+  try {
+    const usuarios = await Api.get('/auth/usuarios');
+    const lista = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
+    const actual = valorPreferido || sel.value;
+    sel.innerHTML = '<option value="">Todos los usuarios</option>';
+    lista
+      .slice()
+      .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
+      .forEach((u) => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        const inactivo = u.activo === 0 || u.activo === false ? ' (inactivo)' : '';
+        opt.textContent = `${u.nombre || u.email}${inactivo}`;
+        sel.appendChild(opt);
+      });
+    if (actual) sel.value = String(actual);
+    sel.dataset.loaded = '1';
+    sel.onchange = () => cargarRequerimientos(1);
+  } catch (err) {
+    console.warn('No se pudieron cargar usuarios para filtro:', err);
+  }
+}
+
 async function cargarRequerimientos(pagina) {
   paginaActual = pagina;
   const contenedor = document.getElementById('tabla-reqs');
@@ -10,6 +89,9 @@ async function cargarRequerimientos(pagina) {
   const tipo     = document.getElementById('fil-tipo').value;
   const area     = document.getElementById('fil-area').value;
   const depto    = document.getElementById('fil-departamento').value;
+  const solicitante = Auth.puedeHacer(['compras', 'admin'])
+    ? (document.getElementById('fil-solicitante')?.value || '')
+    : '';
 
   let qs = `?pagina=${pagina}&limite=15`;
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
@@ -17,14 +99,18 @@ async function cargarRequerimientos(pagina) {
   if (tipo)     qs += `&tipo=${tipo}`;
   if (area)     qs += `&area=${encodeURIComponent(area)}`;
   if (depto)    qs += `&departamento=${encodeURIComponent(depto)}`;
+  if (solicitante) qs += `&solicitante_id=${encodeURIComponent(solicitante)}`;
+  if (_ordenReq.por) qs += `&ordenar_por=${encodeURIComponent(_ordenReq.por)}`;
+  if (_ordenReq.dir) qs += `&orden=${encodeURIComponent(_ordenReq.dir)}`;
 
   try {
     const { datos, total, limite } = await Api.get('/requerimientos' + qs);
 
     if (!datos.length) {
-      const msg = estado === 'activos'
+      let msg = estado === 'activos'
         ? 'No hay requerimientos activos (sin estado cerrado) con los filtros actuales.'
         : 'No se encontraron requerimientos';
+      if (solicitante) msg = 'No hay requerimientos de ese usuario con los filtros actuales.';
       UI.empty(contenedor, msg);
       document.getElementById('paginacion-reqs').innerHTML = '';
       return;
@@ -34,8 +120,16 @@ async function cargarRequerimientos(pagina) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Consecutivo</th><th>Tipo</th><th>Área</th><th>Depto</th><th>Notas / Detalles</th>
-            <th>Solicitante</th><th>Cotización</th><th>Estado</th><th>Fecha</th><th></th>
+            ${thSortableReq('consecutivo', 'Consecutivo')}
+            ${thSortableReq('tipo', 'Tipo')}
+            ${thSortableReq('area', 'Área')}
+            ${thSortableReq('departamento', 'Depto')}
+            <th>Notas / Detalles</th>
+            ${thSortableReq('solicitante', 'Solicitante')}
+            <th>Cotización</th>
+            ${thSortableReq('estado', 'Estado')}
+            ${thSortableReq('fecha', 'Fecha')}
+            <th></th>
           </tr></thead>
           <tbody>
             ${datos.map(r => `
@@ -75,6 +169,10 @@ async function cargarRequerimientos(pagina) {
       window.delegate(tablaReqs, 'button[data-action="ver"]', 'click', (e, btn) => {
         const id = btn.dataset.id;
         if (id) abrirDetalle(id);
+      });
+      window.delegate(tablaReqs, 'th.th-sortable', 'click', (e, th) => {
+        const col = th.dataset.sort;
+        if (col) ordenarRequerimientosPor(col);
       });
     }
 

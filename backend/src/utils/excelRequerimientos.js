@@ -135,6 +135,15 @@ export function mapearEstadoExcel(estadoRaw) {
   if (e.includes('revision') || e.includes('revisión')) {
     return { reqEstado: 'en_revision', crearOc: false, ocEstado: null };
   }
+  // Acuse formal de Compras (no usar "recibida": en Excel histórico es estado de OC)
+  if (
+    e === 'recibido'
+    || e.includes('recibido por compras')
+    || e.includes('acuse de recibo')
+    || e.includes('acuse formal')
+  ) {
+    return { reqEstado: 'recibido', crearOc: false, ocEstado: null };
+  }
   if (e === 'aprobado' || e === 'aprobada') {
     return { reqEstado: 'aprobado', crearOc: false, ocEstado: null };
   }
@@ -698,6 +707,7 @@ export function estadoExcelDesdeSistema({ estado, oc_estado } = {}) {
   }
   if (estado === 'borrador') return 'Borrador';
   if (estado === 'en_revision') return 'En revisión';
+  if (estado === 'recibido') return 'Recibido';
   if (estado === 'incompleto') return 'Incompleto';
   if (estado === 'aprobado') return 'Aprobado';
   if (estado === 'cerrado') return 'Cerrado';
@@ -811,20 +821,49 @@ export function generarExcelBaseGral(filas = [], opts = {}) {
 /**
  * Export de requerimientos → layout BASE GRAL unificado (igual que General y OC).
  */
+/**
+ * Detalle del REQ para columna "Tipo de servicio" del BASE GRAL.
+ * Incluye título, notas de solicitud e ítems (código + descripción + cantidad).
+ * No usa solo el tipo PARTES/SERVICIOS (eso va en columna "Tipo").
+ */
+export function detalleRequerimientoExport(req = {}) {
+  const partes = [];
+  const titulo = String(req.titulo_solicitud || '').trim();
+  if (titulo) partes.push(titulo);
+
+  const itemsCat = String(req.items_resumen || '').trim();
+  const itemsLib = String(req.items_libres_resumen || '').trim();
+  const items = [itemsCat, itemsLib].filter(Boolean).join('; ');
+  if (items) partes.push(items);
+
+  let notas = String(req.notas || '').trim();
+  // Quitar bitácora Status:… (va a columna Status) y ruido de import
+  notas = notas
+    .replace(/\s*\|\s*Status:\s*.+$/i, '')
+    .replace(/^Status:\s*.+?(?:\s*\|\s*Import:.*)?$/i, '')
+    .replace(/\s*\|\s*Import:.*$/i, '')
+    .trim();
+  if (notas && notas !== titulo && !partes.includes(notas)) {
+    // Evitar repetir si las notas ya están en el resumen de ítems
+    if (!items || !items.includes(notas.slice(0, Math.min(40, notas.length)))) {
+      partes.push(notas);
+    }
+  }
+
+  return partes.filter(Boolean).join(' | ') || titulo || items || '';
+}
+
 export function generarExcelRequerimientos(reqs) {
   const indice = construirIndiceAreasDeptosSync();
   const filas = (reqs || []).map((req) => {
-    const statusNotas = (() => {
-      const n = String(req.notas || '');
-      // Si las notas guardan "Status: …" del import, preferir solo esa bitácora
-      const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
-      if (m) return m[1].trim();
-      // Evitar duplicar la descripción completa en Status si ya va en Tipo de servicio
-      if (n && n !== (req.titulo_solicitud || '')) return n;
-      return '';
-    })();
+    const n = String(req.notas || '');
+    // Status: bitácora del import o notas de seguimiento (no el detalle completo del REQ)
+    let statusNotas = '';
+    const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
+    if (m) statusNotas = m[1].trim();
 
     const ad = resolverAreaDepartamentoVista(req.area, req.departamento, indice);
+    const detalle = detalleRequerimientoExport(req);
 
     return {
       orden_compra: req.oc_datatextnow_id || '',
@@ -832,8 +871,8 @@ export function generarExcelRequerimientos(reqs) {
       consecutivo: req.consecutivo,
       created_at: req.created_at,
       tipo: req.tipo || '',
-      proveedor_num: req.proveedor_num,
-      proveedor_nombre: req.proveedor_nombre,
+      proveedor_num: req.proveedor_num || '',
+      proveedor_nombre: req.proveedor_nombre || '',
       oc_monto_total: req.oc_monto_total,
       oc_moneda: req.oc_moneda || '',
       solicitante_nombre: req.solicitante_nombre || '',
@@ -842,7 +881,11 @@ export function generarExcelRequerimientos(reqs) {
       oc_estado: req.oc_estado,
       area: ad.area || '',
       departamento: ad.departamento || '',
-      titulo_solicitud: req.titulo_solicitud || '',
+      // Columna "Tipo de servicio" = detalle del requerimiento (no el tipo PARTES/SERVICIOS)
+      tipo_servicio: detalle,
+      titulo_solicitud: detalle,
+      descripcion: detalle,
+      notas: detalle,
       status: statusNotas,
       _fill: fillPorEstadoSistema({ estado: req.estado, oc_estado: req.oc_estado }),
     };

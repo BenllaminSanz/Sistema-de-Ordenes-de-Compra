@@ -1,12 +1,10 @@
 node_modules/
-docs/node_modules/
 .env
 *.log
 terminals/
 .claude/
 deploy-oc-*.zip
 *.zip
-!docs/**/*.zip
 _Respaldos/
 Thumbs.db
 .DS_Store
@@ -16,3 +14,6 @@ backend/uploads/items-referencia/*
 !backend/uploads/cotizaciones/.gitkeep
 !backend/uploads/referencias/.gitkeep
 !backend/uploads/items-referencia/.gitkeep
+# Material de apoyo / cliente (no desplegar)
+docs-generados/*.pdf
+Gmail*.pdf

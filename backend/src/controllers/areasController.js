@@ -265,6 +265,14 @@ export async function actualizarDepartamento(req, res) {
 
     await guardarConfig(data);
 
+    // Propagar renombre a REQs históricos (igual que al renombrar área)
+    if (nombreNorm !== nombreActual) {
+      await pool.query(
+        'UPDATE requerimientos SET departamento = ? WHERE area = ? AND departamento = ?',
+        [nombreNorm, id, nombreActual]
+      );
+    }
+
     await registrarHistorial({
       usuario: req.usuario,
       accion: 'departamento_actualizado',

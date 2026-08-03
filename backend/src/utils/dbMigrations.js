@@ -109,7 +109,100 @@ export async function runDbMigrations() {
     "VARCHAR(80) NULL COMMENT 'No. de recibo de la entrega para este ítem' AFTER unidad"
   );
 
+  // Rol operativo: contabilidad → compras (todo el sistema)
+  await migrarRolContabilidadACompras();
+
+  // Estado intermedio: acuse formal de Compras (en_revision → recibido → aprobado/…)
+  await asegurarEstadoRecibidoRequerimientos();
+
   logger.info('[migrate] Migraciones aplicadas');
+}
+
+/**
+ * Amplía requerimientos.estado para incluir `recibido` (acuse formal de Compras).
+ * Flujo: en_revision → recibido → aprobado | incompleto | rechazado.
+ */
+async function asegurarEstadoRecibidoRequerimientos() {
+  if (!(await tableExists('requerimientos'))) return;
+  if (!(await columnExists('requerimientos', 'estado'))) return;
+
+  const colType = await getColumnType('requerimientos', 'estado');
+  if (!colType) return;
+
+  const lower = String(colType).toLowerCase();
+  if (lower.includes("'recibido'")) return;
+
+  if (lower.startsWith('enum(')) {
+    // Insertar 'recibido' después de 'en_revision' si existe; si no, al final del ENUM
+    let newEnum = colType;
+    if (/en_revision/i.test(colType)) {
+      newEnum = colType.replace(/('en_revision')/i, "$1,'recibido'");
+    } else {
+      newEnum = colType.replace(/\)$/, ",'recibido')");
+    }
+    try {
+      await pool.query(
+        `ALTER TABLE requerimientos MODIFY COLUMN estado ${newEnum} NOT NULL DEFAULT 'borrador'`
+      );
+      logger.info('[migrate] requerimientos.estado ENUM actualizado con recibido');
+    } catch (err) {
+      logger.warn('[migrate] No se pudo agregar recibido al ENUM estado:', err.message);
+    }
+    return;
+  }
+
+  // Si es VARCHAR u otro tipo libre, no hace falta ALTER
+  logger.info('[migrate] requerimientos.estado no es ENUM; recibido se acepta por validación de app');
+}
+
+/**
+ * Renombra el rol de usuario `contabilidad` a `compras`.
+ * Actualiza filas y, si `usuarios.rol` es ENUM, amplía/redefine el tipo.
+ */
+async function migrarRolContabilidadACompras() {
+  if (!(await tableExists('usuarios'))) return;
+  if (!(await columnExists('usuarios', 'rol'))) return;
+
+  const colType = await getColumnType('usuarios', 'rol');
+  if (colType && String(colType).toLowerCase().startsWith('enum(')) {
+    // Asegurar que 'compras' exista en el ENUM (y mantener contabilidad temporalmente)
+    const lower = String(colType).toLowerCase();
+    if (!lower.includes("'compras'")) {
+      let newEnum = colType;
+      if (lower.includes("'contabilidad'")) {
+        newEnum = colType.replace(/'contabilidad'/gi, "'contabilidad','compras'");
+      } else {
+        // enum('a','b') → insertar compras antes del cierre
+        newEnum = colType.replace(/\)$/, ",'compras')");
+      }
+      try {
+        await pool.query(`ALTER TABLE usuarios MODIFY COLUMN rol ${newEnum} NOT NULL`);
+        logger.info('[migrate] usuarios.rol ENUM actualizado para incluir compras');
+      } catch (err) {
+        logger.warn('[migrate] No se pudo alterar ENUM usuarios.rol:', err.message);
+      }
+    }
+  }
+
+  const [result] = await pool.query(
+    `UPDATE usuarios SET rol = 'compras' WHERE rol = 'contabilidad'`
+  );
+  if (result.affectedRows > 0) {
+    logger.info(`[migrate] ${result.affectedRows} usuario(s) rol contabilidad → compras`);
+  }
+
+  // Opcional: dejar ENUM solo con valores finales
+  if (colType && String(colType).toLowerCase().startsWith('enum(')) {
+    try {
+      await pool.query(
+        `ALTER TABLE usuarios MODIFY COLUMN rol ENUM('solicitante','compras','admin') NOT NULL`
+      );
+      logger.info('[migrate] usuarios.rol ENUM final: solicitante, compras, admin');
+    } catch (err) {
+      // Si aún hay filas con valor viejo u otro ENUM, no bloquear arranque
+      logger.warn('[migrate] ENUM final usuarios.rol no aplicado:', err.message);
+    }
+  }
 }
 
 /**
