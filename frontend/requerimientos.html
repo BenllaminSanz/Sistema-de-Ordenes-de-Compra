@@ -272,43 +272,66 @@
             </div>
           </div>
 
-          <div class="filters-bar">
-            <div class="search-wrap">
-              <svg class="search-icon" width="14" height="14" fill="none"
-                   stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input type="text" id="fil-busqueda" class="form-control search-input"
-                     placeholder="Buscar por consecutivo o descripción…">
+          <div class="filters-panel" id="filtros-req">
+            <div class="filters-bar filters-bar-primary">
+              <div class="search-wrap">
+                <svg class="search-icon" width="14" height="14" fill="none"
+                     stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="search" id="fil-busqueda" class="form-control search-input"
+                       placeholder="Buscar consecutivo o descripción…"
+                       autocomplete="off">
+              </div>
+              <select id="fil-estado" class="form-control fil-estado" title="Estado">
+                <option value="">Estado: todos</option>
+                <option value="activos">Activos / no cerrados</option>
+                <option value="borrador">Borrador</option>
+                <option value="en_revision">En revisión (pend. acuse)</option>
+                <option value="recibido">Recibido por Compras</option>
+                <option value="aprobado">Aprobado</option>
+                <option value="incompleto">Incompleto</option>
+                <option value="rechazado">Rechazado</option>
+                <option value="cerrado">Cerrado</option>
+              </select>
+              <select id="fil-tipo" class="form-control fil-tipo" title="Tipo">
+                <option value="">Tipo: todos</option>
+                <option value="PARTES">Partes</option>
+                <option value="SERVICIOS">Servicios</option>
+                <option value="FLETES">Fletes</option>
+              </select>
+              <button type="button" class="btn btn-outline btn-sm filters-more-btn" id="btn-filtros-mas"
+                      onclick="toggleFiltrosAvanzadosReq()"
+                      title="Área, departamento y usuario"
+                      aria-expanded="false" aria-controls="filtros-req-avanzados">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/>
+                  <circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="10" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+                </svg>
+                Más filtros
+                <span class="filters-badge" id="fil-avanzados-badge" hidden>0</span>
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-limpiar-filtros"
+                      onclick="limpiarFiltrosReq()" title="Quitar todos los filtros"
+                      style="display:none">
+                Limpiar
+              </button>
             </div>
-            <select id="fil-estado" class="form-control">
-              <option value="">Todos los estados</option>
-              <option value="activos">Activos / no cerrados</option>
-              <option value="borrador">Borrador</option>
-              <option value="en_revision">En revisión (pend. acuse)</option>
-              <option value="recibido">Recibido por Compras</option>
-              <option value="aprobado">Aprobado</option>
-              <option value="incompleto">Incompleto</option>
-              <option value="rechazado">Rechazado</option>
-              <option value="cerrado">Cerrado</option>
-            </select>
-            <select id="fil-tipo" class="form-control">
-              <option value="">Todos los tipos</option>
-              <option value="PARTES">Partes</option>
-              <option value="SERVICIOS">Servicios</option>
-              <option value="FLETES">Fletes</option>
-            </select>
-            <select id="fil-area" class="form-control" onchange="filtrarFiltroDeptosPorArea(this.value)">
-              <option value="">Todas las áreas</option>
-            </select>
-            <select id="fil-departamento" class="form-control">
-              <option value="">Todos los deptos</option>
-            </select>
-            <select id="fil-solicitante" class="form-control" style="display:none;min-width:180px"
-                    title="Filtrar por solicitante">
-              <option value="">Todos los usuarios</option>
-            </select>
-            <button class="btn btn-outline btn-sm" onclick="cargarRequerimientos(1)">Filtrar</button>
+
+            <div class="filters-advanced" id="filtros-req-avanzados" hidden>
+              <select id="fil-area" class="form-control" title="Área"
+                      onchange="filtrarFiltroDeptosPorArea(this.value); if (typeof onFiltroReqChange === 'function') onFiltroReqChange();">
+                <option value="">Área: todas</option>
+              </select>
+              <select id="fil-departamento" class="form-control" title="Departamento"
+                      onchange="if (typeof onFiltroReqChange === 'function') onFiltroReqChange();">
+                <option value="">Depto: todos</option>
+              </select>
+              <select id="fil-solicitante" class="form-control fil-solicitante" style="display:none"
+                      title="Solicitante">
+                <option value="">Usuario: todos</option>
+              </select>
+            </div>
           </div>
 
           <div id="tabla-reqs"></div>

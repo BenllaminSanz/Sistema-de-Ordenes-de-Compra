@@ -241,6 +241,62 @@ async function toggleActivo(id, activo) {
   }
 }
 
+function queryExportProveedores() {
+  const params = new URLSearchParams();
+  const soloActivos = document.getElementById('chk-activos')?.checked;
+  if (soloActivos) params.set('activos', 'true');
+  const busq = document.getElementById('busq-proveedor')?.value?.trim();
+  if (busq) params.set('busqueda', busq);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+async function exportarProveedoresExcel(btn) {
+  const qs = queryExportProveedores();
+  const targetBtn = btn || document.getElementById('btn-exportar-proveedores');
+  const busq = document.getElementById('busq-proveedor')?.value?.trim();
+  const soloActivos = document.getElementById('chk-activos')?.checked;
+  const partes = [];
+  if (soloActivos) partes.push('solo activos');
+  if (busq) partes.push(`búsqueda «${busq}»`);
+  const successMsg = partes.length
+    ? `Excel de proveedores descargado (${partes.join(', ')})`
+    : 'Excel de proveedores descargado';
+
+  if (window.ExcelUI?.descargar) {
+    await ExcelUI.descargar(`/proveedores/export${qs}`, {
+      btn: targetBtn,
+      successMsg,
+      loadingText: 'Generando…',
+    });
+    return;
+  }
+
+  try {
+    Toast.info('Generando Excel de proveedores…');
+    const token = Auth.getToken();
+    const res = await fetch(`${API_BASE}/proveedores/export${qs}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      let msg = 'Error al exportar';
+      try { const j = await res.json(); msg = j.mensaje || msg; } catch (_) { /* ignore */ }
+      throw { mensaje: msg };
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `proveedores_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    Toast.success(successMsg);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al exportar proveedores');
+  }
+}
+
 async function cargarProveedoresDesdeExcel(input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -262,3 +318,4 @@ async function cargarProveedoresDesdeExcel(input) {
 
 // Exponer para el onclick
 window.cargarProveedoresDesdeExcel = cargarProveedoresDesdeExcel;
+window.exportarProveedoresExcel = exportarProveedoresExcel;

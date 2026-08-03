@@ -54,13 +54,14 @@ async function cargarFiltroSolicitantesReq(valorPreferido) {
   sel.style.display = '';
   if (sel.dataset.loaded === '1') {
     if (valorPreferido) sel.value = String(valorPreferido);
+    actualizarUiFiltrosReq();
     return;
   }
   try {
     const usuarios = await Api.get('/auth/usuarios');
     const lista = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
     const actual = valorPreferido || sel.value;
-    sel.innerHTML = '<option value="">Todos los usuarios</option>';
+    sel.innerHTML = '<option value="">Usuario: todos</option>';
     lista
       .slice()
       .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
@@ -73,11 +74,107 @@ async function cargarFiltroSolicitantesReq(valorPreferido) {
       });
     if (actual) sel.value = String(actual);
     sel.dataset.loaded = '1';
-    sel.onchange = () => cargarRequerimientos(1);
+    sel.onchange = () => onFiltroReqChange();
+    if (actual) abrirFiltrosAvanzadosReq(true);
+    actualizarUiFiltrosReq();
   } catch (err) {
     console.warn('No se pudieron cargar usuarios para filtro:', err);
   }
 }
+
+function contarFiltrosAvanzadosReq() {
+  let n = 0;
+  if (document.getElementById('fil-area')?.value) n++;
+  if (document.getElementById('fil-departamento')?.value) n++;
+  if (
+    Auth.puedeHacer(['compras', 'admin'])
+    && document.getElementById('fil-solicitante')?.value
+  ) n++;
+  return n;
+}
+
+function hayFiltrosActivosReq() {
+  return !!(
+    document.getElementById('fil-busqueda')?.value?.trim()
+    || document.getElementById('fil-estado')?.value
+    || document.getElementById('fil-tipo')?.value
+    || contarFiltrosAvanzadosReq() > 0
+  );
+}
+
+function actualizarUiFiltrosReq() {
+  const n = contarFiltrosAvanzadosReq();
+  const badge = document.getElementById('fil-avanzados-badge');
+  const btnMas = document.getElementById('btn-filtros-mas');
+  const btnLimpiar = document.getElementById('btn-limpiar-filtros');
+  if (badge) {
+    if (n > 0) {
+      badge.hidden = false;
+      badge.textContent = String(n);
+    } else {
+      badge.hidden = true;
+    }
+  }
+  if (btnMas) {
+    btnMas.classList.toggle('is-open', !document.getElementById('filtros-req-avanzados')?.hidden);
+    btnMas.title = n > 0
+      ? `${n} filtro(s) adicional(es) activo(s)`
+      : 'Área, departamento y usuario';
+  }
+  if (btnLimpiar) {
+    btnLimpiar.style.display = hayFiltrosActivosReq() ? '' : 'none';
+  }
+}
+
+function abrirFiltrosAvanzadosReq(abrir) {
+  const panel = document.getElementById('filtros-req-avanzados');
+  const btn = document.getElementById('btn-filtros-mas');
+  if (!panel) return;
+  const open = abrir === true || (abrir !== false && panel.hidden);
+  panel.hidden = !open;
+  if (btn) {
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.classList.toggle('is-open', open);
+  }
+  actualizarUiFiltrosReq();
+}
+
+function toggleFiltrosAvanzadosReq() {
+  const panel = document.getElementById('filtros-req-avanzados');
+  if (!panel) return;
+  abrirFiltrosAvanzadosReq(panel.hidden);
+}
+
+function onFiltroReqChange() {
+  actualizarUiFiltrosReq();
+  cargarRequerimientos(1);
+}
+
+function limpiarFiltrosReq() {
+  const busq = document.getElementById('fil-busqueda');
+  if (busq) busq.value = '';
+  const estado = document.getElementById('fil-estado');
+  if (estado) estado.value = '';
+  const tipo = document.getElementById('fil-tipo');
+  if (tipo) tipo.value = '';
+  const area = document.getElementById('fil-area');
+  if (area) area.value = '';
+  if (typeof filtrarFiltroDeptosPorArea === 'function') {
+    filtrarFiltroDeptosPorArea('', false);
+  }
+  const depto = document.getElementById('fil-departamento');
+  if (depto) depto.value = '';
+  const sol = document.getElementById('fil-solicitante');
+  if (sol) sol.value = '';
+  abrirFiltrosAvanzadosReq(false);
+  actualizarUiFiltrosReq();
+  cargarRequerimientos(1);
+}
+
+window.toggleFiltrosAvanzadosReq = toggleFiltrosAvanzadosReq;
+window.limpiarFiltrosReq = limpiarFiltrosReq;
+window.onFiltroReqChange = onFiltroReqChange;
+window.actualizarUiFiltrosReq = actualizarUiFiltrosReq;
 
 async function cargarRequerimientos(pagina) {
   paginaActual = pagina;
@@ -182,10 +279,19 @@ async function cargarRequerimientos(pagina) {
   }
 }
 
-// Búsqueda con debounce
+// Filtros principales: aplican al cambiar (sin botón «Filtrar»)
 const busquedaInput = document.getElementById('fil-busqueda');
 if (busquedaInput) {
   busquedaInput.addEventListener('input', window.debounce(() => {
-    cargarRequerimientos(1);
+    onFiltroReqChange();
   }, 350));
+}
+['fil-estado', 'fil-tipo'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', () => onFiltroReqChange());
+});
+// Si ya hay filtros avanzados (p. ej. URL), mostrar panel y badge
+if (typeof actualizarUiFiltrosReq === 'function') {
+  if (contarFiltrosAvanzadosReq() > 0) abrirFiltrosAvanzadosReq(true);
+  else actualizarUiFiltrosReq();
 }

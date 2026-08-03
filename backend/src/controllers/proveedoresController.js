@@ -223,4 +223,67 @@ async function importarExcel(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, cambiarEstado, importarExcel };
+/**
+ * Exporta proveedores a Excel.
+ * Primeras 3 columnas = formato de carga (No. Proveedor, Nombre, Email).
+ * Columnas extra del sistema: Teléfono, RFC, Notas, Activo.
+ * Query: activos=true | busqueda=texto
+ */
+async function exportarExcel(req, res) {
+  try {
+    const soloActivos = req.query.activos === 'true';
+    const busqueda = String(req.query.busqueda || '').trim().toLowerCase();
+
+    let provs = await _listar(soloActivos);
+    if (busqueda) {
+      provs = provs.filter((p) =>
+        (p.nombre || '').toLowerCase().includes(busqueda)
+        || (p.num_proveedor || '').toLowerCase().includes(busqueda)
+        || (p.email || '').toLowerCase().includes(busqueda)
+        || (p.rfc || '').toLowerCase().includes(busqueda)
+        || (p.telefono || '').toLowerCase().includes(busqueda)
+      );
+    }
+
+    const data = [
+      ['No. Proveedor', 'Nombre', 'Email', 'Teléfono', 'RFC', 'Notas', 'Activo'],
+      ...provs.map((p) => [
+        p.num_proveedor || '',
+        p.nombre || '',
+        p.email || '',
+        p.telefono || '',
+        p.rfc || '',
+        p.notas || '',
+        p.activo ? 'Sí' : 'No',
+      ]),
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    // Anchos legibles
+    ws['!cols'] = [
+      { wch: 14 },
+      { wch: 36 },
+      { wch: 32 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 28 },
+      { wch: 8 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    const nombre = soloActivos
+      ? `proveedores_activos_${fecha}.xlsx`
+      : `proveedores_${fecha}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  } catch (err) {
+    logger.error('[exportarExcel proveedores]', err);
+    res.status(500).json({ mensaje: 'Error al exportar proveedores' });
+  }
+}
+
+export { listar, obtener, crear, actualizar, cambiarEstado, importarExcel, exportarExcel };

@@ -19,11 +19,16 @@
           <div>
             <h2 class="page-title">Proveedores</h2>
           </div>
-          <div class="page-header-actions">
-            <label class="chk-label">
-              <input type="checkbox" id="chk-activos" checked onchange="cargarProveedores()">
-              Solo activos
-            </label>
+          <div class="page-header-actions" style="flex-wrap:wrap; gap:6px;">
+            <button type="button" id="btn-exportar-proveedores" class="btn btn-outline btn-sm"
+                    onclick="exportarProveedoresExcel(this)"
+                    title="Descargar Excel de proveedores (respeta filtro Solo activos y búsqueda)">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Exportar Excel
+            </button>
             <button type="button" id="btn-cargar-proveedores" class="btn btn-outline btn-sm"
                     onclick="document.getElementById('input-excel-proveedores').click()"
                     title="Cargar proveedores desde Excel">
@@ -51,6 +56,10 @@
                    placeholder="Buscar por nombre, N°, RFC o email…"
                    oninput="filtrarProveedores(this.value)">
           </div>
+          <label class="chk-label">
+            <input type="checkbox" id="chk-activos" checked onchange="cargarProveedores()">
+            Solo activos
+          </label>
           <span id="prov-contador" class="filter-count"></span>
         </div>
 
