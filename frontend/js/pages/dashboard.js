@@ -143,7 +143,7 @@ function renderKPIs(s) {
       icon: `<svg width="16" height="16" fill="none" stroke="#c2410c" stroke-width="2" viewBox="0 0 24 24">
                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
              </svg>`,
-      link: 'requerimientos.html?estado=en_revision',
+      link: 'dashboard.html#bandeja',
       highlight: porRecibir > 0,
     },
     {
@@ -165,7 +165,8 @@ function renderKPIs(s) {
       icon: `<svg width="16" height="16" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24">
                <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
              </svg>`,
-      link: 'ordenes.html?estado=activas',
+      link: 'dashboard.html#bandeja-oc',
+      highlight: ocEnVuelo > 0,
     },
     {
       label: mio ? `Mi gasto MXN ${s.anio}` : `Gasto MXN ${s.anio}`,
@@ -302,132 +303,487 @@ function renderTopDepartamentos(s) {
   }).join('');
 }
 
-// ─── Aging ────────────────────────────────────────────────────
-function renderAging(s) {
-  const el    = document.getElementById('tabla-aging');
-  const count = document.getElementById('aging-count');
-  if (!el) return;
+// ─── Bandeja de trabajo (Dashboard) ───────────────────────────
+// Si se entra con #bandeja (KPI / campana), abrir cola de acuse
+let _bandejaCola = (!esSolicitante && location.hash === '#bandeja') ? 'por_recibir' : null;
+let _bandejaData = null;
 
-  // Red de seguridad en cliente: si es solicitante, solo filas de su id
-  let rows = s.aging_reqs || [];
-  if (esSolicitante || s.alcance === 'propio') {
-    const uid = Number(Auth.getUsuario()?.id);
-    if (Number.isFinite(uid) && uid > 0) {
-      rows = rows.filter((r) => {
-        // Si el backend no mandó solicitante_id, no confiar en la fila ajena:
-        // solo mostrar si coincide o si no hay id (no debería pasar tras el fix)
-        if (r.solicitante_id == null || r.solicitante_id === '') return false;
-        return Number(r.solicitante_id) === uid;
-      });
-    } else {
-      rows = [];
+const COLAS_COMPRAS = [
+  { id: 'por_recibir', label: 'Por recibir' },
+  { id: 'en_proceso', label: 'En proceso' },
+  { id: 'incompletos', label: 'Incompletos' },
+  { id: 'listos_oc', label: 'Listos para OC' },
+];
+
+const COLAS_SOLICITANTE = [
+  { id: 'pendientes', label: 'En curso' },
+  { id: 'incompletos', label: 'Incompletos' },
+];
+
+function tabsBandeja() {
+  return esSolicitante ? COLAS_SOLICITANTE : COLAS_COMPRAS;
+}
+
+function countCola(contadores, colaId) {
+  const c = contadores || {};
+  if (colaId === 'pendientes') {
+    return (c.por_recibir || 0) + (c.en_proceso || 0) + (c.incompletos || 0);
+  }
+  return Number(c[colaId]) || 0;
+}
+
+function renderBandejaTabs(data) {
+  const el = document.getElementById('bandeja-tabs');
+  if (!el) return;
+  const colaActiva = data.cola || _bandejaCola || tabsBandeja()[0].id;
+  _bandejaCola = colaActiva;
+  el.innerHTML = tabsBandeja().map((t) => {
+    const n = countCola(data.contadores, t.id);
+    const active = t.id === colaActiva ? ' active' : '';
+    const has = n > 0 ? ' has-items' : '';
+    return `<button type="button" class="bandeja-tab${active}${has}" data-cola="${t.id}"
+                    role="tab" aria-selected="${t.id === colaActiva}">
+      ${UI.esc(t.label)}
+      <span class="bandeja-tab-count">${n}</span>
+    </button>`;
+  }).join('');
+
+  if (!el.dataset.bound) {
+    el.dataset.bound = '1';
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cola]');
+      if (!btn) return;
+      _bandejaCola = btn.dataset.cola;
+      cargarBandeja();
+    });
+  }
+}
+
+function accionesBandeja(item) {
+  const id = item.id;
+  const estado = item.estado;
+  const btns = [];
+
+  if (!esSolicitante) {
+    if (estado === 'en_revision') {
+      btns.push(
+        `<button type="button" class="btn btn-sm btn-primary" data-bandeja-accion="recibido" data-id="${id}"
+                 title="Acuse formal de Compras">Recibido</button>`
+      );
+    }
+    if (estado === 'recibido') {
+      btns.push(
+        `<button type="button" class="btn btn-sm btn-outline" data-bandeja-accion="incompleto" data-id="${id}"
+                 title="Devolver al solicitante por información faltante">Incompleto</button>`
+      );
+    }
+    if (estado === 'aprobado') {
+      btns.push(
+        `<a href="requerimientos.html?id=${id}" class="btn btn-sm btn-primary">Generar OC</a>`
+      );
     }
   }
-  if (count) {
-    count.textContent = rows.length || '';
-    count.style.display = rows.length ? '' : 'none';
-  }
 
-  if (!rows.length) {
+  btns.push(`<a href="requerimientos.html?id=${id}" class="btn btn-sm btn-outline">Ver</a>`);
+  return `<div class="bandeja-actions">${btns.join('')}</div>`;
+}
+
+function renderBandejaTabla(data) {
+  const el = document.getElementById('tabla-bandeja');
+  if (!el) return;
+  const items = data.items || [];
+
+  if (!items.length) {
+    const msgs = {
+      por_recibir: 'No hay requerimientos pendientes de acuse',
+      en_proceso: 'No hay requerimientos recibidos en proceso',
+      incompletos: esSolicitante
+        ? 'No tienes requerimientos incompletos'
+        : 'No hay requerimientos incompletos',
+      listos_oc: 'No hay requerimientos aprobados listos para OC',
+      pendientes: 'No tienes requerimientos en curso',
+    };
     el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 0;
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 0;
                   font-size:13px;color:var(--muted)">
         <svg width="16" height="16" fill="none" stroke="#1D9E75" stroke-width="2" viewBox="0 0 24 24">
           <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
-        ${esSolicitante ? 'No tienes requerimientos pendientes' : 'Sin requerimientos pendientes (revisión / aprobado / incompleto)'}
+        ${msgs[data.cola] || 'Sin pendientes en esta cola'}
       </div>`;
     return;
   }
 
-  const colSolicitante = esSolicitante
-    ? ''
-    : '<th>Solicitante</th>';
+  const colSol = esSolicitante ? '' : '<th>Solicitante</th>';
   el.innerHTML = `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:8px;gap:8px;flex-wrap:wrap">
-      <a href="requerimientos.html?estado=activos" class="btn btn-sm btn-outline">${esSolicitante ? 'Mis REQ activos →' : 'Ver REQ activos →'}</a>
-    </div>
     <div class="table-wrap">
       <table class="table-sm">
         <thead><tr>
-          <th>Consecutivo</th><th>Tipo</th><th>Estado</th>
-          <th>Área / Depto</th>${colSolicitante}<th>Espera</th><th></th>
+          <th>Consecutivo</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th>Área / Depto</th>
+          ${colSol}
+          <th>Espera</th>
+          <th style="text-align:right">Acciones</th>
         </tr></thead>
-        <tbody>${rows.map(r => {
-          const area = r.area || '';
-          const depto = r.departamento || '';
-          const areaDepto = [area, depto].filter(Boolean).join(' / ') || '—';
-          return `
-          <tr>
-            <td class="fw-600">${r.consecutivo || '—'}</td>
-            <td>${r.tipo || '—'}</td>
-            <td>${UI.badge(r.estado || 'en_revision')}</td>
-            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                title="${UI.esc(areaDepto)}">${UI.esc(areaDepto)}</td>
-            ${esSolicitante ? '' : `<td>${UI.esc(r.solicitante || '—')}</td>`}
-            <td>${badgeDias(r.dias_espera)}</td>
-            <td><a href="requerimientos.html?id=${r.id}" class="btn btn-sm btn-outline">Ver</a></td>
-          </tr>`;
-        }).join('')}
+        <tbody>
+          ${items.map((r) => {
+            const areaDepto = [r.area, r.departamento].filter(Boolean).join(' / ') || '—';
+            const titulo = r.titulo_solicitud || '';
+            return `
+            <tr>
+              <td class="fw-600" title="${UI.esc(titulo)}">${UI.esc(r.consecutivo || '—')}</td>
+              <td>${UI.esc(r.tipo || '—')}</td>
+              <td>${UI.badge(r.estado)}</td>
+              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${UI.esc(areaDepto)}">${UI.esc(areaDepto)}</td>
+              ${esSolicitante ? '' : `<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${UI.esc(r.solicitante_nombre || '')}">${UI.esc(r.solicitante_nombre || '—')}</td>`}
+              <td>${badgeDias(Number(r.dias_espera) || 0)}</td>
+              <td>${accionesBandeja(r)}</td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>`;
 }
 
-// ─── OC activas ───────────────────────────────────────────────
-async function renderOCActivas() {
-  const el    = document.getElementById('tabla-oc');
-  const count = document.getElementById('oc-activas-count');
+function actualizarCabeceraBandeja(data) {
+  const titulo = document.getElementById('bandeja-titulo');
+  const count = document.getElementById('bandeja-count');
+  const link = document.getElementById('bandeja-link-todos');
+  if (titulo) {
+    titulo.textContent = esSolicitante ? 'Mis pendientes' : 'Bandeja Compras';
+  }
+  const c = data.contadores || {};
+  const totalTrabajo = esSolicitante
+    ? countCola(c, 'pendientes')
+    : (c.por_recibir || 0) + (c.en_proceso || 0) + (c.incompletos || 0) + (c.listos_oc || 0);
+  if (count) {
+    if (totalTrabajo > 0) {
+      count.style.display = '';
+      count.textContent = String(totalTrabajo);
+    } else {
+      count.style.display = 'none';
+    }
+  }
+  if (link && data.link_todos) {
+    link.href = data.link_todos;
+    link.textContent = esSolicitante ? 'Mis REQ →' : 'Ver en listado →';
+  }
+}
+
+async function cargarBandeja() {
+  const el = document.getElementById('tabla-bandeja');
   if (!el) return;
   UI.spinner(el);
   try {
-    const { datos, total } = await Api.get('/ordenes-compra?estado=activas&limite=20');
-    if (count) {
-      count.textContent = total || '';
-      count.style.display = total ? '' : 'none';
+    const cola = _bandejaCola ? `&cola=${encodeURIComponent(_bandejaCola)}` : '';
+    const data = await Api.get(`/notificaciones/bandeja?limite=25${cola}`);
+    _bandejaData = data;
+    _bandejaCola = data.cola || _bandejaCola;
+    actualizarCabeceraBandeja(data);
+    renderBandejaTabs(data);
+    renderBandejaTabla(data);
+  } catch (err) {
+    el.innerHTML = `<p class="text-muted text-sm" style="margin:8px 0">No se pudo cargar la bandeja</p>`;
+    console.error(err);
+  }
+}
+
+async function accionRapidaBandeja(id, estado) {
+  let notas = null;
+  if (estado === 'incompleto') {
+    notas = window.prompt('¿Qué información falta? (se enviará como nota al solicitante)');
+    if (notas === null) return; // canceló
+    notas = String(notas).trim() || 'Marcado incompleto desde la bandeja';
+  } else if (estado === 'recibido') {
+    if (!window.confirm('¿Marcar como recibido por Compras?')) return;
+    notas = 'Acuse formal de recibo (bandeja Dashboard)';
+  }
+
+  try {
+    await Api.patch(`/requerimientos/${id}/estado`, { estado, notas });
+    Toast.success(
+      estado === 'recibido'
+        ? 'Acuse de recibo registrado'
+        : 'Requerimiento marcado como incompleto'
+    );
+    // Refrescar bandeja y KPIs del año
+    await cargarBandeja();
+    try {
+      const s = await Api.get(`/dashboard/stats?anio=${anioActual}`);
+      renderKPIs(s);
+    } catch (_) { /* ignore */ }
+    // Actualizar campana si está en el topbar
+    if (typeof cargarNotificaciones === 'function') {
+      cargarNotificaciones(false);
     }
-    if (!datos.length) {
-      el.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;padding:10px 0;
-                    font-size:13px;color:var(--muted)">
-          <svg width="16" height="16" fill="none" stroke="#1D9E75" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          ${esSolicitante ? 'No tienes órdenes de compra activas' : 'Sin órdenes de compra activas'}
-        </div>`;
-      return;
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo actualizar el estado');
+  }
+}
+
+function initBandejaActions() {
+  const el = document.getElementById('tabla-bandeja');
+  if (!el || el.dataset.bound) return;
+  el.dataset.bound = '1';
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-bandeja-accion]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.id, 10);
+    const accion = btn.dataset.bandejaAccion;
+    if (!id || !accion) return;
+    accionRapidaBandeja(id, accion);
+  });
+}
+
+function focusBandejaSiHash() {
+  if (location.hash !== '#bandeja') return;
+  const card = document.getElementById('card-bandeja');
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  card.classList.add('bandeja-focus');
+  setTimeout(() => card.classList.remove('bandeja-focus'), 2200);
+  // Si se llega desde KPI "Por recibir", abrir esa cola (sin recargar si ya está)
+  if (!esSolicitante && _bandejaCola !== 'por_recibir') {
+    _bandejaCola = 'por_recibir';
+    cargarBandeja();
+  }
+}
+
+// ─── Bandeja OC (colas por estado) ────────────────────────────
+let _bandejaOcCola = (location.hash === '#bandeja-oc') ? 'generada' : null;
+let _bandejaOcData = null;
+
+const COLAS_OC = [
+  { id: 'generada', label: 'Generadas' },
+  { id: 'distribuida', label: 'Distribuidas' },
+  { id: 'en_proceso', label: 'En proceso' },
+  { id: 'recibida', label: 'Recibidas' },
+  { id: 'sin_po', label: 'Sin PO' },
+];
+
+function renderBandejaOcTabs(data) {
+  const el = document.getElementById('bandeja-oc-tabs');
+  if (!el) return;
+  const colaActiva = data.cola || _bandejaOcCola || 'generada';
+  _bandejaOcCola = colaActiva;
+  const c = data.contadores || {};
+  el.innerHTML = COLAS_OC.map((t) => {
+    const n = Number(c[t.id]) || 0;
+    const active = t.id === colaActiva ? ' active' : '';
+    const has = n > 0 ? ' has-items' : '';
+    return `<button type="button" class="bandeja-tab${active}${has}" data-cola-oc="${t.id}"
+                    role="tab" aria-selected="${t.id === colaActiva}">
+      ${UI.esc(t.label)}
+      <span class="bandeja-tab-count">${n}</span>
+    </button>`;
+  }).join('');
+
+  if (!el.dataset.bound) {
+    el.dataset.bound = '1';
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cola-oc]');
+      if (!btn) return;
+      _bandejaOcCola = btn.dataset.colaOc;
+      cargarBandejaOc();
+    });
+  }
+}
+
+function accionesBandejaOc(item) {
+  const id = item.id;
+  const estado = item.estado;
+  const btns = [];
+
+  if (!esSolicitante) {
+    if (estado === 'generada') {
+      btns.push(
+        `<button type="button" class="btn btn-sm btn-primary" data-oc-accion="distribuida" data-id="${id}"
+                 title="Marcar como distribuida al proveedor">Distribuir</button>`
+      );
     }
+    if (estado === 'distribuida') {
+      btns.push(
+        `<button type="button" class="btn btn-sm btn-primary" data-oc-accion="en_proceso" data-id="${id}"
+                 title="Pasar a en proceso / entrega parcial">En proceso</button>`
+      );
+    }
+    // Cierre y recepción se hacen en el detalle (validaciones de PO / recepciones)
+  }
+
+  btns.push(`<a href="ordenes.html?id=${id}" class="btn btn-sm btn-outline">Ver</a>`);
+  return `<div class="bandeja-actions">${btns.join('')}</div>`;
+}
+
+function celdaPoOc(o) {
+  const po = o.datatextnow_id != null ? String(o.datatextnow_id).trim() : '';
+  if (!po || po.toUpperCase() === 'NA') {
+    return '<span style="color:#b45309;font-size:12px;font-weight:600">Sin PO</span>';
+  }
+  return `<span class="fw-600">${UI.esc(po)}</span>`;
+}
+
+function renderBandejaOcTabla(data) {
+  const el = document.getElementById('tabla-oc');
+  if (!el) return;
+  const items = data.items || [];
+
+  if (!items.length) {
+    const msgs = {
+      generada: esSolicitante ? 'No tienes OC generadas pendientes' : 'No hay OC generadas pendientes',
+      distribuida: 'No hay OC distribuidas en esta cola',
+      en_proceso: 'No hay OC en proceso',
+      recibida: 'No hay OC recibidas pendientes de cierre',
+      sin_po: 'Todas las OC activas tienen PO de DataTextNow',
+    };
     el.innerHTML = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <a href="ordenes.html?estado=activas" class="btn btn-sm btn-outline">${esSolicitante ? 'Ver mis órdenes →' : 'Ver todas en Órdenes →'}</a>
-      </div>
-      <div class="table-wrap">
-        <table class="table-sm">
-          <thead><tr>
-            <th>PO DTN</th><th>Req.</th><th>Tipo</th><th>Proveedor</th>
-            <th>Monto</th><th>Estado</th><th></th>
-          </tr></thead>
-          <tbody>${datos.map(o => `
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 0;
+                  font-size:13px;color:var(--muted)">
+        <svg width="16" height="16" fill="none" stroke="#1D9E75" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        ${msgs[data.cola] || 'Sin órdenes en esta cola'}
+      </div>`;
+    return;
+  }
+
+  const colSol = esSolicitante ? '' : '<th>Solicitante</th>';
+  el.innerHTML = `
+    <div class="table-wrap">
+      <table class="table-sm">
+        <thead><tr>
+          <th>PO DTN</th>
+          <th>No. OC</th>
+          <th>Tipo</th>
+          <th>Proveedor</th>
+          ${colSol}
+          <th>Monto</th>
+          <th>Estado</th>
+          <th>Espera</th>
+          <th style="text-align:right">Acciones</th>
+        </tr></thead>
+        <tbody>
+          ${items.map((o) => {
+            const prov = (typeof UI.labelProveedor === 'function')
+              ? UI.labelProveedor(o)
+              : UI.esc(o.proveedor_nombre || '—');
+            return `
             <tr>
-              <td class="fw-600">${o.datatextnow_id
-                ? UI.esc(String(o.datatextnow_id))
-                : '<span style="color:#b45309;font-size:12px">Sin PO</span>'}</td>
-              <td>${o.consecutivo || o.numero_oc || '—'}</td>
-              <td>${o.tipo || '—'}</td>
+              <td>${celdaPoOc(o)}</td>
+              <td class="fw-600">${UI.esc(o.numero_oc || o.consecutivo || '—')}</td>
+              <td>${UI.esc(o.tipo || '—')}</td>
               <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${UI.esc(o.proveedor_nombre || '')}">${UI.labelProveedor(o)}</td>
+                  title="${UI.esc(o.proveedor_nombre || '')}">${prov}</td>
+              ${esSolicitante ? '' : `<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${UI.esc(o.solicitante_nombre || '')}">${UI.esc(o.solicitante_nombre || '—')}</td>`}
               <td class="fw-600" style="white-space:nowrap">
-                ${o.monto_total
+                ${o.monto_total != null
                   ? `<span style="color:var(--primary)">${fmt(o.monto_total, o.moneda || 'MXN')}</span>`
                   : '<span style="color:var(--muted)">—</span>'}
               </td>
               <td>${UI.badge(o.estado)}</td>
-              <td><a href="ordenes.html?id=${o.id}" class="btn btn-sm btn-outline">Ver</a></td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-  } catch { UI.empty(el, 'Error al cargar órdenes activas'); }
+              <td>${badgeDias(Number(o.dias_espera) || 0)}</td>
+              <td>${accionesBandejaOc(o)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function actualizarCabeceraBandejaOc(data) {
+  const titulo = document.getElementById('oc-activas-titulo');
+  const count = document.getElementById('oc-activas-count');
+  const link = document.getElementById('bandeja-oc-link-todos');
+  if (titulo) {
+    titulo.textContent = esSolicitante ? 'Mis OC activas' : 'Bandeja OC';
+  }
+  const total = Number(data.contadores?.activas) || 0;
+  if (count) {
+    if (total > 0) {
+      count.style.display = '';
+      count.textContent = String(total);
+    } else {
+      count.style.display = 'none';
+    }
+  }
+  if (link) {
+    link.href = data.link_todos || 'ordenes.html?estado=activas';
+    link.textContent = esSolicitante ? 'Mis órdenes →' : 'Ver en listado →';
+  }
+}
+
+async function cargarBandejaOc() {
+  const el = document.getElementById('tabla-oc');
+  if (!el) return;
+  UI.spinner(el);
+  try {
+    const cola = _bandejaOcCola ? `&cola=${encodeURIComponent(_bandejaOcCola)}` : '';
+    const data = await Api.get(`/notificaciones/bandeja-oc?limite=25${cola}`);
+    _bandejaOcData = data;
+    _bandejaOcCola = data.cola || _bandejaOcCola;
+    actualizarCabeceraBandejaOc(data);
+    renderBandejaOcTabs(data);
+    renderBandejaOcTabla(data);
+  } catch (err) {
+    el.innerHTML = `<p class="text-muted text-sm" style="margin:8px 0">No se pudo cargar la bandeja de OC</p>`;
+    console.error(err);
+  }
+}
+
+async function accionRapidaOc(id, estado) {
+  const labels = {
+    distribuida: '¿Marcar esta OC como distribuida?',
+    en_proceso: '¿Pasar esta OC a en proceso?',
+  };
+  if (!window.confirm(labels[estado] || '¿Cambiar estado de la OC?')) return;
+
+  const notas = estado === 'distribuida'
+    ? 'Distribuida desde bandeja Dashboard'
+    : 'En proceso desde bandeja Dashboard';
+
+  try {
+    await Api.patch(`/ordenes-compra/${id}/estado`, { estado, notas });
+    Toast.success(estado === 'distribuida' ? 'OC marcada como distribuida' : 'OC en proceso');
+    await cargarBandejaOc();
+    try {
+      const s = await Api.get(`/dashboard/stats?anio=${anioActual}`);
+      renderKPIs(s);
+    } catch (_) { /* ignore */ }
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo actualizar la OC');
+  }
+}
+
+function initBandejaOcActions() {
+  const el = document.getElementById('tabla-oc');
+  if (!el || el.dataset.boundOc) return;
+  el.dataset.boundOc = '1';
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-oc-accion]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.id, 10);
+    const accion = btn.dataset.ocAccion;
+    if (!id || !accion) return;
+    accionRapidaOc(id, accion);
+  });
+}
+
+function focusBandejaOcSiHash() {
+  if (location.hash !== '#bandeja-oc') return;
+  const card = document.getElementById('card-bandeja-oc');
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  card.classList.add('bandeja-focus');
+  setTimeout(() => card.classList.remove('bandeja-focus'), 2200);
+  // Desde KPI: priorizar generadas; si no hay, la API elige
+  if (_bandejaOcCola !== 'generada' && _bandejaOcCola !== 'sin_po') {
+    _bandejaOcCola = 'generada';
+    cargarBandejaOc();
+  }
 }
 
 // ─── Export BASE GRAL (solo compras/admin) ───────────────
@@ -454,13 +810,12 @@ function inicializarReporteStatus() {
 // Ajustes de textos de secciones según rol
 (function ajustarTitulosSolicitante() {
   if (!esSolicitante) return;
-  const aging = document.getElementById('aging-titulo');
+  const bandejaTit = document.getElementById('bandeja-titulo');
   const ocTit = document.getElementById('oc-activas-titulo');
-  if (aging) aging.textContent = 'Mis REQ pendientes (revisión / aprobado)';
-  if (ocTit) ocTit.textContent = 'Mis OC activas / no concluidas';
+  if (bandejaTit) bandejaTit.textContent = 'Mis pendientes';
+  if (ocTit) ocTit.textContent = 'Mis OC activas';
   const topProvCard = document.querySelector('#top-proveedores')?.closest('.card')?.querySelector('.card-title');
   if (topProvCard) {
-    // Conservar el SVG y cambiar solo el texto visible
     const svg = topProvCard.querySelector('svg');
     topProvCard.innerHTML = '';
     if (svg) topProvCard.appendChild(svg);
@@ -491,14 +846,21 @@ async function cargarDashboard() {
     renderDistribucionTipo(s);
     renderTopProveedores(s);
     renderTopDepartamentos(s);
-    renderAging(s);
   } catch (err) {
     Toast.error('Error al cargar estadísticas del dashboard');
     console.error(err);
   }
 
-  renderOCActivas();
+  await Promise.all([cargarBandeja(), cargarBandejaOc()]);
+  focusBandejaSiHash();
+  focusBandejaOcSiHash();
 }
 
+initBandejaActions();
+initBandejaOcActions();
 cargarDashboard();
 inicializarReporteStatus();
+window.addEventListener('hashchange', () => {
+  focusBandejaSiHash();
+  focusBandejaOcSiHash();
+});

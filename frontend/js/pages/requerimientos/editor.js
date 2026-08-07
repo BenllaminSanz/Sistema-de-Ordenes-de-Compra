@@ -351,10 +351,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       const idAEditar = editandoId;
       resultado = await Api.put(`/requerimientos/${idAEditar}`, payload);
       editandoId = null;
-      CarritoReq.vaciar();
-      ReqDraft.clear();
-      UI.cerrarModal('modal-req');
-      if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
+      cerrarEditorRequerimientoLimpio();
       Toast.success('Requerimiento actualizado');
       if (requerimientoActual && requerimientoActual.id === idAEditar) {
         abrirDetalle(idAEditar);
@@ -362,10 +359,7 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     } else {
       resultado = await Api.post('/requerimientos', payload);
       editandoId = null;
-      CarritoReq.vaciar();
-      ReqDraft.clear();
-      UI.cerrarModal('modal-req');
-      if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
+      cerrarEditorRequerimientoLimpio();
       const label = resultado.consecutivo
         ? `Requerimiento ${resultado.consecutivo} creado (borrador)`
         : 'Borrador creado (el consecutivo se asigna al enviar a revisión)';
@@ -378,3 +372,18 @@ document.getElementById('form-req').addEventListener('submit', async e => {
     btn.disabled = false;
   }
 });
+
+/** Cierra el modal de REQ y limpia ítems/form sin ningún confirm. */
+function cerrarEditorRequerimientoLimpio() {
+  window._reqCerrandoEditor = true;
+  try {
+    if (typeof CarritoReq !== 'undefined') CarritoReq.vaciar();
+    ReqDraft.clear();
+    if (typeof cerrarModalItemsLibres === 'function') cerrarModalItemsLibres();
+    UI.cerrarModal('modal-req');
+  } finally {
+    // Tras el reset del form, soltar el flag en el siguiente tick
+    setTimeout(() => { window._reqCerrandoEditor = false; }, 0);
+  }
+}
+window.cerrarEditorRequerimientoLimpio = cerrarEditorRequerimientoLimpio;

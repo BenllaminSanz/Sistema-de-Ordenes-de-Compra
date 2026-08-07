@@ -81,11 +81,8 @@ function rellenarSelectUnidadCotizacion(selectEl, selected = '') {
     const opts = ['<option value="">— Unidad —</option>'];
     (unidades || []).forEach((u) => {
       const cod = u.codigo || u.nombre || '';
-      const label = u.codigo && u.nombre && u.codigo !== u.nombre
-        ? `${u.codigo} — ${u.nombre}`
-        : (u.nombre || u.codigo);
       const esc = (typeof UI !== 'undefined' && UI.esc) ? UI.esc : (s) => String(s ?? '');
-      opts.push(`<option value="${esc(cod)}">${esc(label)}</option>`);
+      opts.push(`<option value="${esc(cod)}" title="${esc(u.nombre || cod)}">${esc(cod)}</option>`);
     });
     selectEl.innerHTML = opts.join('');
     if (val) {
@@ -433,10 +430,11 @@ function configurarToggleDesglose(requerimiento, cotizacion = null) {
   const newCheckbox = checkbox.cloneNode(true);
   checkbox.parentNode.replaceChild(newCheckbox, checkbox);
 
-  const tieneItems         = cotizacion && cotizacion.items && cotizacion.items.length > 0;
-  const forzarItemsPorTipo = ['PARTES', 'SERVICIOS'].includes(requerimiento.tipo || '');
+  const tieneItems = cotizacion && cotizacion.items && cotizacion.items.length > 0;
+  const hayItemsCotizables = (Array.isArray(requerimiento.items_libres) && requerimiento.items_libres.length > 0)
+    || (Array.isArray(requerimiento.items) && requerimiento.items.some((item) => costoCatalogoEsVariable(item.costo_referencia)));
 
-  newCheckbox.checked = tieneItems || forzarItemsPorTipo;
+  newCheckbox.checked = tieneItems || hayItemsCotizables;
 
   if (newCheckbox.checked) {
     simpleDiv.style.display = 'none';
@@ -479,6 +477,12 @@ function configurarModalSegunTipo(requerimiento) {
   document.getElementById('cotizacion-tipo-items').style.display  = 'none';
 }
 
+function costoCatalogoEsVariable(costo) {
+  if (costo == null || String(costo).trim() === '') return true;
+  const precio = Number(costo);
+  return !Number.isFinite(precio) || precio === 0;
+}
+
 function prellenarItemsCotizacionDesdeReq(req) {
   const tbody     = document.querySelector('#tabla-items-cot tbody');
   const itemsDiv  = document.getElementById('cotizacion-tipo-items');
@@ -500,7 +504,7 @@ function prellenarItemsCotizacionDesdeReq(req) {
 
   const itemsFuente = tieneLibres
     ? req.items_libres.map(l => ({ descripcion: l.descripcion || '', cantidad: Math.max(1, Math.round(l.cantidad || 1)), unidad: l.unidad || 'pieza', precio_unitario: '' }))
-    : req.items.map(i => ({
+    : req.items.filter(i => costoCatalogoEsVariable(i.costo_referencia)).map(i => ({
         descripcion: i.descripcion || i.codigo || '',
         cantidad: Math.max(1, Math.round(i.cantidad || 1)),
         unidad: i.unidad || 'pieza',

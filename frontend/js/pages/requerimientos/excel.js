@@ -1,10 +1,19 @@
 // ── EXPORT / IMPORT EXCEL ────────────────────────────────────────────────────
 
 async function exportarRequerimientos(btn) {
+  Reportes.solicitarPeriodoExportacion({
+    titulo: 'Exportar requerimientos',
+    btn,
+    alConfirmar: ({ modo, anio }, boton) => descargarRequerimientosExcel(boton, modo, anio),
+  });
+}
+
+async function descargarRequerimientosExcel(btn, modo, anio) {
+  const params = modo === 'anio' ? `?anio=${encodeURIComponent(anio)}` : '';
   if (window.ExcelUI?.descargar) {
-    await ExcelUI.descargar('/requerimientos/exportar', {
+    await ExcelUI.descargar(`/requerimientos/exportar${params}`, {
       btn,
-      successMsg: 'BASE GRAL de requerimientos descargado',
+      successMsg: `BASE GRAL de requerimientos ${modo === 'anio' ? `de ${anio}` : 'completo'} descargado`,
       loadingText: 'Generando…',
     });
     return;
@@ -12,7 +21,7 @@ async function exportarRequerimientos(btn) {
   // Fallback sin ExcelUI
   try {
     setButtonLoading?.(btn, true, 'Generando…');
-    const response = await fetch('/api/requerimientos/exportar', {
+    const response = await fetch(`/api/requerimientos/exportar${params}`, {
       headers: { Authorization: `Bearer ${Auth.getToken()}` },
     });
     if (!response.ok) {

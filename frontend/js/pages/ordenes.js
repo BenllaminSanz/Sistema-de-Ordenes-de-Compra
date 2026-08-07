@@ -332,24 +332,23 @@ async function exportarOrdenesExcel(btn) {
   if (!Auth.puedeHacer(['compras', 'admin'])) {
     return Toast.error('Solo Compras/Admin pueden exportar OCs');
   }
-  const estado   = document.getElementById('fil-estado')?.value || '';
-  const tipo     = document.getElementById('fil-tipo')?.value || '';
-  const sinPo    = document.getElementById('fil-sin-po')?.checked;
-  const busqueda = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
-  const solicitante = document.getElementById('fil-solicitante-oc')?.value || '';
+  Reportes.solicitarPeriodoExportacion({
+    titulo: 'Exportar órdenes de compra',
+    btn,
+    alConfirmar: ({ modo, anio }, boton) => descargarOrdenesExcel(boton, modo, anio),
+  });
+}
 
-  const qs = new URLSearchParams({ libre: '1' });
-  if (estado) qs.set('estado', estado);
-  if (tipo) qs.set('tipo_req', tipo);
-  if (sinPo) qs.set('sin_po', 'true');
-  if (busqueda) qs.set('busqueda', busqueda);
-  if (solicitante) qs.set('solicitante_id', solicitante);
+async function descargarOrdenesExcel(btn, modo, anio) {
+  const qs = modo === 'anio'
+    ? new URLSearchParams({ periodo: 'anual', anio: String(anio) })
+    : new URLSearchParams({ libre: '1' });
 
   const targetBtn = btn || document.getElementById('btn-exportar-oc');
   if (window.ExcelUI?.descargar) {
     await ExcelUI.descargar(`/reportes/ordenes-compra?${qs.toString()}`, {
       btn: targetBtn,
-      successMsg: 'BASE GRAL de OC descargado',
+      successMsg: `BASE GRAL de OC ${modo === 'anio' ? `de ${anio}` : 'completo'} descargado`,
       loadingText: 'Generando…',
     });
     return;
@@ -1666,5 +1665,3 @@ window.cargarOrdenes = cargarOrdenes;
 window.volverLista = volverLista;
 window.eliminarRecepcion = eliminarRecepcion;
 window.abrirEditarItemProveedor = abrirEditarItemProveedor;
-
-

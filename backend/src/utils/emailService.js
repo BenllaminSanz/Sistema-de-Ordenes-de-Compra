@@ -88,15 +88,16 @@ export async function enviarSolicitudDeCotizacion(cotizacionId, opts = {}) {
       return { success: false, reason: 'sin_requerimiento' };
     }
 
-    const tipo = (req.tipo || '').toUpperCase();
-    const esServicio = tipo === 'SERVICIOS';
     const tieneLibres = Array.isArray(req.items_libres) && req.items_libres.length > 0;
     const requiereCot = !!(req.requiere_cotizacion);
     const partesSinPrecio = Array.isArray(req.items) && req.items.some(
-      (i) => i.costo_referencia == null || i.costo_referencia === ''
+      (i) => i.costo_referencia == null
+        || String(i.costo_referencia).trim() === ''
+        || !Number.isFinite(Number(i.costo_referencia))
+        || Number(i.costo_referencia) === 0
     );
 
-    if (!esServicio && !tieneLibres && !requiereCot && !partesSinPrecio) {
+    if (!tieneLibres && !requiereCot && !partesSinPrecio) {
       console.log(`[Email] Cotización #${cotizacionId} — NO se envía (PARTES/FLETES con precio de catálogo; no requiere RFQ).`);
       return { success: false, reason: 'no_requiere_segun_condicion' };
     }
@@ -111,7 +112,7 @@ export async function enviarSolicitudDeCotizacion(cotizacionId, opts = {}) {
           descripcion: l.descripcion,
           cantidad: l.cantidad,
           unidad: l.unidad,
-          codigo_catalogo: null,
+          codigo_catalogo: l.codigo_catalogo || l.catalogo_codigo || l.codigo || null,
         }));
       } else if (Array.isArray(req.items) && req.items.length) {
         items = req.items.map((i) => ({
@@ -130,12 +131,13 @@ export async function enviarSolicitudDeCotizacion(cotizacionId, opts = {}) {
           const numParte = String(
             item.codigo_catalogo || item.codigo || ''
           ).trim();
+          const descripcion = String(item.descripcion || '').trim();
+          const concepto = numParte
+            ? `${numParte}${descripcion ? ` - ${descripcion}` : ''}`
+            : (descripcion || '—');
           return `
             <div style="margin:0 0 14px;">
-              ${numParte
-                ? `<p style="margin:0 0 4px; color:#1e40af; font-size:14px; font-weight:700;"><strong>${t.numParte}:</strong> ${numParte}</p>`
-                : ''}
-              <p style="margin:0 0 4px; color:#334155; font-size:15px; line-height:1.55;">${item.descripcion || '—'}</p>
+              <p style="margin:0 0 4px; color:#334155; font-size:15px; line-height:1.55;">${concepto}</p>
               <p style="margin:0; color:#334155; font-size:15px;"><strong>${t.cantidad}:</strong> ${qty}${unit}</p>
             </div>`;
         }).join('')
@@ -196,8 +198,11 @@ export async function enviarSolicitudDeCotizacion(cotizacionId, opts = {}) {
           const qty = formatCantidadEmail(item.cantidad, item.unidad);
           const unit = item.unidad ? ` ${item.unidad}` : '';
           const numParte = String(item.codigo_catalogo || item.codigo || '').trim();
-          const lineaParte = numParte ? `${t.numParte}: ${numParte}\n` : '';
-          return `${lineaParte}${item.descripcion || '—'}\n${t.cantidad}: ${qty}${unit}`;
+          const descripcion = String(item.descripcion || '').trim();
+          const concepto = numParte
+            ? `${numParte}${descripcion ? ` - ${descripcion}` : ''}`
+            : (descripcion || '—');
+          return `${concepto}\n${t.cantidad}: ${qty}${unit}`;
         }).join('\n\n')
       : t.sinConceptos;
 

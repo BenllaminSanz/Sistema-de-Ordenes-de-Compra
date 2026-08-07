@@ -152,6 +152,67 @@
     /* ── tabla compacta ───────────────────────────────────────── */
     .table-sm td, .table-sm th { padding: 7px 10px; font-size: 12.5px; }
     .table-sm th { font-size: 11px; }
+
+    /* ── Bandeja de trabajo (Dashboard) ───────────────────────── */
+    .bandeja-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .bandeja-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .bandeja-tab:hover { border-color: #93c5fd; color: var(--primary); }
+    .bandeja-tab.active {
+      background: #e6f1fb;
+      border-color: #93c5fd;
+      color: #185FA5;
+    }
+    .bandeja-tab-count {
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 18px;
+      text-align: center;
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .bandeja-tab.active .bandeja-tab-count {
+      background: #185FA5;
+      color: #fff;
+    }
+    .bandeja-tab.has-items:not(.active) .bandeja-tab-count {
+      background: #ffedd5;
+      color: #c2410c;
+    }
+    .bandeja-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+    .bandeja-actions .btn { white-space: nowrap; }
+    #card-bandeja:target,
+    #card-bandeja.bandeja-focus,
+    #card-bandeja-oc:target,
+    #card-bandeja-oc.bandeja-focus {
+      box-shadow: 0 0 0 2px #fdba74, var(--card-shadow);
+    }
   </style>
 </head>
 <body>
@@ -191,33 +252,39 @@
         <!-- Columna izquierda: lo accionable primero -->
         <div>
 
-          <!-- Aging de revisión -->
-          <div class="card" style="margin-bottom:16px">
-            <div class="card-title">
+          <!-- Bandeja de trabajo (Compras / Mis pendientes) -->
+          <div class="card" id="card-bandeja" style="margin-bottom:16px">
+            <div class="card-title" style="flex-wrap:wrap; gap:8px;">
               <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-                   viewBox="0 0 24 24" style="color:#b45309">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                   viewBox="0 0 24 24" style="color:#c2410c">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
               </svg>
-              <span id="aging-titulo">REQ pendientes (revisión / aprobado)</span>
-              <span id="aging-count"
-                    style="margin-left:4px;font-size:11px;background:#fef3c7;color:#92400e;
-                           padding:1px 7px;border-radius:999px;font-weight:600"></span>
+              <span id="bandeja-titulo">Bandeja Compras</span>
+              <span id="bandeja-count"
+                    style="margin-left:2px;font-size:11px;background:#ffedd5;color:#c2410c;
+                           padding:1px 7px;border-radius:999px;font-weight:600;display:none"></span>
+              <a href="requerimientos.html?estado=activos" id="bandeja-link-todos"
+                 class="btn btn-sm btn-outline" style="margin-left:auto">Ver en listado →</a>
             </div>
-            <div id="tabla-aging"></div>
+            <div class="bandeja-tabs" id="bandeja-tabs" role="tablist"></div>
+            <div id="tabla-bandeja"></div>
           </div>
 
-          <!-- OC activas -->
-          <div class="card" style="margin-bottom:0">
-            <div class="card-title">
+          <!-- Bandeja OC (colas por estado) -->
+          <div class="card" id="card-bandeja-oc" style="margin-bottom:0">
+            <div class="card-title" style="flex-wrap:wrap; gap:8px;">
               <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-                   viewBox="0 0 24 24" style="color:var(--primary)">
+                   viewBox="0 0 24 24" style="color:#7c3aed">
                 <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
               </svg>
-              <span id="oc-activas-titulo">OC activas / no concluidas</span>
+              <span id="oc-activas-titulo">Bandeja OC</span>
               <span id="oc-activas-count"
-                    style="margin-left:4px;font-size:11px;background:#dbeafe;color:#1e40af;
-                           padding:1px 7px;border-radius:999px;font-weight:600"></span>
+                    style="margin-left:2px;font-size:11px;background:#ede9fe;color:#5b21b6;
+                           padding:1px 7px;border-radius:999px;font-weight:600;display:none"></span>
+              <a href="ordenes.html?estado=activas" id="bandeja-oc-link-todos"
+                 class="btn btn-sm btn-outline" style="margin-left:auto">Ver en listado →</a>
             </div>
+            <div class="bandeja-tabs" id="bandeja-oc-tabs" role="tablist"></div>
             <div id="tabla-oc"></div>
           </div>
 

@@ -447,14 +447,17 @@ async function cargarNotificaciones(renderPanel = false) {
     actualizarBadgeNotif(data);
     if (renderPanel && body) renderPanelNotif(data);
     const verTodos = document.getElementById('notif-ver-todos');
-    if (verTodos && data.link_todos) {
-      verTodos.href = data.link_todos;
+    if (verTodos) {
+      // Preferir Dashboard bandeja; fallback al listado de la cola
+      verTodos.href = data.link_dashboard || data.link_todos || 'dashboard.html#bandeja';
+      verTodos.textContent = 'Abrir bandeja';
       verTodos.onclick = null;
     }
     const title = document.getElementById('notif-panel-title');
     if (title) {
+      const n = data.contadores?.por_recibir ?? data.total;
       title.textContent = data.tipo === 'compras'
-        ? `Bandeja Compras${data.total != null ? ` · ${data.total} por recibir` : ''}`
+        ? `Bandeja Compras${n != null ? ` · ${n} por recibir` : ''}`
         : 'Mis pendientes';
     }
   } catch (err) {
@@ -555,10 +558,7 @@ function renderSidebar() {
 
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-brand">
-      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
-           viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0
-           002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2
-           2 0 012 2m-6 9l2 2 4-4"/></svg>
+      <img class="parkdale-logo parkdale-logo-sidebar" src="img/topLogoParkdale.png" alt="Parkdale">
       Sistema OC
     </div>
     <nav>
@@ -811,6 +811,82 @@ const ExcelUI = {
 
 /** Reportes de operación en layout BASE GRAL */
 const Reportes = {
+  _exportacionPendiente: null,
+
+  solicitarPeriodoExportacion({ titulo = 'Exportar reporte', btn, alConfirmar }) {
+    const modalId = 'modal-periodo-exportacion';
+    let modal = document.getElementById(modalId);
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = modalId;
+      modal.className = 'modal-backdrop';
+      modal.innerHTML = `
+        <div class="modal-box" style="max-width:420px;">
+          <div class="modal-header">
+            <h3 class="modal-title" id="periodo-exportacion-titulo"></h3>
+            <button type="button" class="modal-close" aria-label="Cerrar">×</button>
+          </div>
+          <div class="modal-body">
+            <p style="margin:0 0 16px;color:#475569;font-size:13px;line-height:1.5;">Selecciona el periodo que deseas incluir en el archivo Excel.</p>
+            <label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;margin-bottom:8px;">
+              <input type="radio" name="periodo-exportacion" value="anio" checked style="margin-top:2px;">
+              <span><strong style="display:block;font-size:13px;">Un año particular</strong><small class="text-muted">Exporta únicamente los registros del año seleccionado.</small></span>
+            </label>
+            <div id="periodo-exportacion-anio-wrap" class="form-group" style="margin:0 0 12px 30px;">
+              <label class="form-label" for="periodo-exportacion-anio">Año</label>
+              <input type="number" id="periodo-exportacion-anio" class="form-control" min="2000" step="1" required>
+            </div>
+            <label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;">
+              <input type="radio" name="periodo-exportacion" value="completo" style="margin-top:2px;">
+              <span><strong style="display:block;font-size:13px;">Reporte completo</strong><small class="text-muted">Exporta todos los registros disponibles.</small></span>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-accion="cancelar">Cancelar</button>
+            <button type="button" class="btn btn-primary" data-accion="exportar">Exportar Excel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      const actualizarEstado = () => {
+        const esAnio = modal.querySelector('input[name="periodo-exportacion"]:checked')?.value === 'anio';
+        modal.querySelector('#periodo-exportacion-anio').disabled = !esAnio;
+        modal.querySelector('#periodo-exportacion-anio-wrap').style.opacity = esAnio ? '1' : '.5';
+      };
+      modal.querySelectorAll('input[name="periodo-exportacion"]').forEach((input) => input.addEventListener('change', actualizarEstado));
+      modal.querySelector('.modal-close').addEventListener('click', () => this.cerrarPeriodoExportacion());
+      modal.querySelector('[data-accion="cancelar"]').addEventListener('click', () => this.cerrarPeriodoExportacion());
+      modal.querySelector('[data-accion="exportar"]').addEventListener('click', () => this.confirmarPeriodoExportacion());
+      modal.addEventListener('click', (event) => { if (event.target === modal) this.cerrarPeriodoExportacion(); });
+    }
+    modal.querySelector('#periodo-exportacion-titulo').textContent = titulo;
+    modal.querySelector('input[value="anio"]').checked = true;
+    modal.querySelector('#periodo-exportacion-anio').value = new Date().getFullYear();
+    modal.querySelector('#periodo-exportacion-anio').disabled = false;
+    modal.querySelector('#periodo-exportacion-anio-wrap').style.opacity = '1';
+    this._exportacionPendiente = { btn, alConfirmar };
+    modal.classList.add('show');
+  },
+
+  cerrarPeriodoExportacion() {
+    document.getElementById('modal-periodo-exportacion')?.classList.remove('show');
+    this._exportacionPendiente = null;
+  },
+
+  async confirmarPeriodoExportacion() {
+    const pendiente = this._exportacionPendiente;
+    const modal = document.getElementById('modal-periodo-exportacion');
+    if (!pendiente || !modal) return;
+    const modo = modal.querySelector('input[name="periodo-exportacion"]:checked')?.value || 'anio';
+    const anio = Number.parseInt(modal.querySelector('#periodo-exportacion-anio')?.value, 10);
+    if (modo === 'anio' && (!Number.isInteger(anio) || anio < 2000 || anio > new Date().getFullYear() + 1)) {
+      Toast.error('Ingresa un año válido.');
+      return;
+    }
+    modal.classList.remove('show');
+    this._exportacionPendiente = null;
+    await pendiente.alConfirmar({ modo, anio }, pendiente.btn);
+  },
+
   /** Dashboard: BASE GRAL del año seleccionado */
   async descargarBaseGral(anio, btn) {
     const year = parseInt(anio) || new Date().getFullYear();

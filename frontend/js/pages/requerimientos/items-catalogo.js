@@ -3,6 +3,9 @@
 const reqTipoSelect = document.getElementById('req-tipo');
 if (reqTipoSelect) {
   reqTipoSelect.addEventListener('change', () => {
+    // form.reset() del modal también dispara change: no tratarlo como cambio de tipo del usuario
+    if (window._reqCerrandoEditor) return;
+
     const seccion    = document.getElementById('seccion-items-catalogo');
     const selector   = document.getElementById('selector-items-nuevos');
     const provWrapper = document.getElementById('filtro-proveedor-wrapper');
@@ -331,11 +334,18 @@ window.agregarItemConCantidad = function(catalogo_id, codigo, descripcion, costo
   const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
 
   if (tieneLibres) {
-    if (!confirm('Ya tienes ítems nuevos/libres.\n\n¿Limpiarlos y volver a usar solo catálogo?')) return;
+    const n = (window.requerimientoItemsLibres || []).length;
+    const msg = n === 1
+      ? 'Este requerimiento tiene 1 ítem nuevo (fuera de catálogo).\n\nNo se pueden mezclar con ítems del catálogo.\n¿Eliminarlo y agregar este del catálogo?'
+      : `Este requerimiento tiene ${n} ítems nuevos (fuera de catálogo).\n\nNo se pueden mezclar con ítems del catálogo.\n¿Eliminarlos y agregar este del catálogo?`;
+    if (!confirm(msg)) return;
     window.requerimientoItemsLibres = [];
-    if (typeof ocultarLibreInline === 'function') ocultarLibreInline();
+    if (typeof ocultarLibreInline === 'function') ocultarLibreInline(true);
     const checkbox = document.getElementById('usar-items-nuevos');
     if (checkbox) checkbox.checked = false;
+    if (typeof window.seleccionarModoItems === 'function') {
+      window.seleccionarModoItems('catalogo', true);
+    }
   }
 
   const qtyInput = document.getElementById(`qty-${catalogo_id}`);

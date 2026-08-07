@@ -5,6 +5,18 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+### Añadido
+- **Bandeja de trabajo en el Dashboard** (sin menú nuevo): colas Por recibir / En proceso / Incompletos / Listos para OC
+- Acciones rápidas desde Dashboard: **Recibido** (acuse) e **Incompleto** (con nota)
+- Antigüedad en días (FIFO) y contadores por cola; campana enlaza a `dashboard.html#bandeja`
+- **Bandeja OC en Dashboard**: colas Generadas / Distribuidas / En proceso / Recibidas / Sin PO
+- Acciones rápidas OC: **Distribuir** y **En proceso**; KPI OC → `dashboard.html#bandeja-oc`
+- API `GET /api/notificaciones/bandeja-oc`
+- Export Excel de proveedores (`GET /api/proveedores/export`)
+- Filtros de REQ simplificados (Más filtros + Limpiar)
+
 ## [1.7.0] — 2026-08-03
 
 Entrega operativa: rol Compras, bandeja/notificaciones, acuse formal `recibido` y mejoras de listados/export/cotización.

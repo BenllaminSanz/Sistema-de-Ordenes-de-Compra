@@ -250,7 +250,7 @@
             <div class="page-header-actions">
               <button type="button" class="btn btn-outline btn-sm" id="btn-exportar"
                       onclick="exportarRequerimientos(this)"
-                      title="Exportar requerimientos en layout BASE GRAL">
+                      title="Exportar requerimientos completos o por año en layout BASE GRAL">
                 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
                   <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -422,7 +422,7 @@
 
     <div class="modal-header">
       <h3 class="modal-title">Nuevo requerimiento</h3>
-      <button class="modal-close" onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">×</button>
+      <button class="modal-close" type="button" onclick="if (typeof cerrarEditorRequerimientoLimpio === 'function') cerrarEditorRequerimientoLimpio(); else { UI.cerrarModal('modal-req'); cerrarModalItemsLibres(); }">×</button>
     </div>
 
     <form id="form-req">
@@ -545,6 +545,7 @@
                 Ítem nuevo — no está en el catálogo
               </span>
               <button type="button" onclick="ocultarLibreInline()"
+                      title="Cerrar formulario (los ítems ya agregados se conservan)"
                       style="background:none; border:none; cursor:pointer; color:var(--muted); font-size:16px; line-height:1; padding:0;">×</button>
             </div>
             <div class="libre-form-row" style="margin-bottom:10px;">
@@ -628,7 +629,7 @@
 
       <div class="modal-footer">
         <button type="button" class="btn btn-outline"
-                onclick="UI.cerrarModal('modal-req'); cerrarModalItemsLibres();">Cancelar</button>
+                onclick="if (typeof cerrarEditorRequerimientoLimpio === 'function') cerrarEditorRequerimientoLimpio(); else { UI.cerrarModal('modal-req'); cerrarModalItemsLibres(); }">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="btn-guardar-req">Guardar requerimiento</button>
       </div>
     </form>
@@ -1071,31 +1072,47 @@ async function cargarAreasEnForm() {
 window.cargarAreasEnForm = cargarAreasEnForm;
 
 // ── Selector de modo: catálogo vs ítem nuevo ─────────────────
+// Un REQ es solo catálogo O solo ítems nuevos (nunca mezclados).
 window.seleccionarModoItems = function(modo, silencioso = false) {
   const btnCat    = document.getElementById('mode-btn-catalogo');
   const btnLib    = document.getElementById('mode-btn-libre');
   const secCat    = document.getElementById('seccion-items-catalogo');
   const secLib    = document.getElementById('libre-inline-section');
   const resCat    = document.getElementById('resultados-catalogo');
+  const libres    = window.requerimientoItemsLibres || [];
+  const catalogo  = window.requerimientoItemsSeleccionados || [];
+  const yaEnCatalogo = btnCat?.classList.contains('active-cat') && secCat?.style.display !== 'none';
+  const yaEnLibre    = btnLib?.classList.contains('active-lib') && secLib?.style.display !== 'none';
 
   if (modo === 'catalogo') {
-    // Verificar si hay ítems libres y pedir confirmación
-    const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
-    if (tieneLibres) {
-      if (!silencioso && !confirm('Tienes ítems nuevos en la lista. ¿Limpiarlos y cambiar a catálogo?')) return;
+    // Ya en catálogo: solo asegurar UI
+    if (yaEnCatalogo && libres.length === 0) {
+      if (secCat) secCat.style.display = 'block';
+      if (secLib) secLib.style.display = 'none';
+      return;
+    }
+
+    // Hay ítems nuevos: no se pueden mezclar con catálogo
+    // (solo al cambiar de modo a propósito; silencioso = limpieza interna, sin diálogo)
+    if (libres.length > 0) {
+      if (!silencioso) {
+        const n = libres.length;
+        const msg = n === 1
+          ? 'Este requerimiento tiene 1 ítem nuevo (fuera de catálogo).\n\nNo se pueden mezclar con ítems del catálogo.\n¿Eliminar ese ítem y pasar a buscar en catálogo?'
+          : `Este requerimiento tiene ${n} ítems nuevos (fuera de catálogo).\n\nNo se pueden mezclar con ítems del catálogo.\n¿Eliminarlos y pasar a buscar en catálogo?`;
+        if (!confirm(msg)) return;
+      }
       window.requerimientoItemsLibres = [];
       const cb = document.getElementById('usar-items-nuevos');
       if (cb) cb.checked = false;
     }
 
-    // UI: activar catálogo
     btnCat.classList.add('active-cat');   btnCat.classList.remove('active-lib');
     btnLib.classList.remove('active-lib'); btnLib.classList.remove('active-cat');
     if (secCat) secCat.style.display = 'block';
     if (secLib) secLib.style.display = 'none';
     if (resCat) resCat.innerHTML = '';
 
-    // Limpiar el formulario de ítem libre
     const descEl = document.getElementById('libre-descripcion');
     const cantEl = document.getElementById('libre-cantidad');
     const unidEl = document.getElementById('libre-unidad');
@@ -1110,20 +1127,31 @@ window.seleccionarModoItems = function(modo, silencioso = false) {
     }, 80);
 
   } else { // 'libre'
-    // Combo de unidades estandarizadas (misma fuente que catálogo)
     if (typeof window.cargarUnidadesMedidaReq === 'function') {
       window.cargarUnidadesMedidaReq().catch(() => {});
     }
-    // Verificar si hay ítems del catálogo y pedir confirmación
-    const tieneCatalogo = (window.requerimientoItemsSeleccionados || []).length > 0;
-    if (tieneCatalogo) {
-      if (!silencioso && !confirm('Tienes ítems del catálogo en la lista. ¿Limpiarlos y cambiar a ítem nuevo?')) return;
+
+    // Reabrir formulario de ítem nuevo (mismo modo): no tocar la lista
+    if (yaEnLibre && catalogo.length === 0) {
+      if (secCat) secCat.style.display = 'none';
+      if (secLib) secLib.style.display = 'block';
+      setTimeout(() => document.getElementById('libre-descripcion')?.focus(), 80);
+      return;
+    }
+
+    if (catalogo.length > 0) {
+      if (!silencioso) {
+        const n = catalogo.length;
+        const msg = n === 1
+          ? 'Este requerimiento tiene 1 ítem del catálogo.\n\nNo se pueden mezclar con ítems nuevos.\n¿Eliminar el del catálogo y solicitar ítems nuevos?'
+          : `Este requerimiento tiene ${n} ítems del catálogo.\n\nNo se pueden mezclar con ítems nuevos.\n¿Eliminarlos y solicitar ítems nuevos?`;
+        if (!confirm(msg)) return;
+      }
       window.requerimientoItemsSeleccionados = [];
       if (typeof desbloquearFiltroProveedorCatalogo === 'function') desbloquearFiltroProveedorCatalogo();
       if (resCat) resCat.innerHTML = '';
     }
 
-    // UI: activar libre
     btnLib.classList.add('active-lib');   btnLib.classList.remove('active-cat');
     btnCat.classList.remove('active-cat'); btnCat.classList.remove('active-lib');
     if (secCat) secCat.style.display = 'none';
@@ -1137,7 +1165,6 @@ window.seleccionarModoItems = function(modo, silencioso = false) {
     }, 80);
   }
 
-  // Siempre re-renderizar la lista unificada
   if (typeof renderItemsSeleccionados === 'function') renderItemsSeleccionados();
   if (typeof renderLibresResumen === 'function') renderLibresResumen();
 };

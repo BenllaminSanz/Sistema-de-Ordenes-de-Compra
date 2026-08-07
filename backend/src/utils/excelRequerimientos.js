@@ -853,7 +853,7 @@ export function detalleRequerimientoExport(req = {}) {
   return partes.filter(Boolean).join(' | ') || titulo || items || '';
 }
 
-export function generarExcelRequerimientos(reqs) {
+function generarExcelRequerimientosResumen(reqs) {
   const indice = construirIndiceAreasDeptosSync();
   const filas = (reqs || []).map((req) => {
     const n = String(req.notas || '');
@@ -901,4 +901,108 @@ export function generarExcelRequerimientos(reqs) {
   });
 
   return generarExcelBaseGral(filas);
+}
+
+const HEADERS_REQUERIMIENTOS_POR_ITEM = [
+  'Orden de compra',
+  'Fecha',
+  'N°',
+  'Fecha de solicitud',
+  'Tipo',
+  'No. proveedor',
+  'Proveedor',
+  'Total REQ/OC',
+  'Moneda',
+  'Usuario',
+  'Estado',
+  'Area',
+  'Departamento',
+  'Compañía',
+  'Código / No. de serie',
+  'Descripción del ítem',
+  'Cantidad',
+  'Unidad',
+  'Precio unitario cotizado',
+  'Subtotal cotizado',
+  'Status',
+];
+
+const COLS_REQUERIMIENTOS_POR_ITEM = [
+  { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 },
+  { wch: 12 }, { wch: 32 }, { wch: 14 }, { wch: 9 }, { wch: 22 },
+  { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 10 }, { wch: 20 },
+  { wch: 44 }, { wch: 10 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 32 },
+];
+
+/**
+ * Reporte de REQ por concepto solicitado.
+ * Si existe cotización ganadora se usan sus renglones; de lo contrario se usan los ítems del REQ.
+ */
+export function generarExcelRequerimientos(reqs = []) {
+  const indice = construirIndiceAreasDeptosSync();
+  const wsData = [HEADERS_REQUERIMIENTOS_POR_ITEM];
+  const wsStyles = [HEADERS_REQUERIMIENTOS_POR_ITEM.map(() => HEADER_STYLE)];
+
+  for (const req of reqs) {
+    const ad = resolverAreaDepartamentoVista(req.area, req.departamento, indice);
+    const n = String(req.notas || '');
+    const statusMatch = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
+    const status = statusMatch ? statusMatch[1].trim() : '';
+    const fill = fillPorEstadoSistema({ estado: req.estado, oc_estado: req.oc_estado });
+    const style = cellStyle(fill);
+    const items = Array.isArray(req.items_reporte) && req.items_reporte.length
+      ? req.items_reporte
+      : [{ codigo_catalogo: '', descripcion: '', cantidad: '', unidad: '', precio_unitario: null }];
+
+    items.forEach((item, index) => {
+      const cantidad = item.cantidad == null || item.cantidad === '' ? '' : Number(item.cantidad);
+      const precio = item.precio_unitario == null || item.precio_unitario === ''
+        ? ''
+        : Number(item.precio_unitario);
+      const subtotal = precio !== '' && cantidad !== '' && Number.isFinite(precio) && Number.isFinite(cantidad)
+        ? Math.round(precio * cantidad * 100) / 100
+        : '';
+      const totalReq = index === 0 && req.oc_monto_total != null && req.oc_monto_total !== ''
+        ? Number(req.oc_monto_total)
+        : '';
+      const row = [
+        req.oc_datatextnow_id || '',
+        formatFechaBaseGral(req.oc_fecha_po),
+        req.consecutivo || '',
+        formatFechaBaseGral(req.created_at),
+        req.tipo || '',
+        req.proveedor_num || '',
+        req.proveedor_nombre || '',
+        totalReq,
+        req.oc_moneda || '',
+        req.solicitante_nombre || '',
+        estadoExcelDesdeSistema({ estado: req.estado, oc_estado: req.oc_estado }),
+        ad.area || '',
+        ad.departamento || '',
+        '31',
+        item.codigo_catalogo || '',
+        item.descripcion || '',
+        cantidad,
+        item.unidad || '',
+        precio,
+        subtotal,
+        status,
+      ];
+      wsData.push(row);
+      wsStyles.push(row.map(() => style));
+    });
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (ws[addr]) ws[addr].s = wsStyles[R]?.[C] || {};
+    }
+  }
+  ws['!cols'] = COLS_REQUERIMIENTOS_POR_ITEM;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
 }

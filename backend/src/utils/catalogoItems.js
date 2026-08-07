@@ -14,9 +14,6 @@ export async function calcularRequiereCotizacion(datos = {}, conn = null) {
   const itemsLibres = Array.isArray(datos.items_libres) ? datos.items_libres : [];
   if (itemsLibres.length > 0) return true;
 
-  const tipo = String(datos.tipo || '').toUpperCase();
-  if (tipo === 'SERVICIOS') return true;
-
   const items = Array.isArray(datos.items) ? datos.items : [];
   const ids = [...new Set(items.map((i) => i?.catalogo_id).filter(Boolean))];
   if (!ids.length) return false;
@@ -27,7 +24,10 @@ export async function calcularRequiereCotizacion(datos = {}, conn = null) {
   );
   // Sin precio de referencia → hay que cotizar
   return rows.some(
-    (r) => r.costo_referencia == null || r.costo_referencia === ''
+    (r) => r.costo_referencia == null
+      || String(r.costo_referencia).trim() === ''
+      || !Number.isFinite(Number(r.costo_referencia))
+      || Number(r.costo_referencia) === 0
   );
 }
 

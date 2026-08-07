@@ -139,10 +139,8 @@ function rellenarSelectUnidades(selected = '') {
   const opts = ['<option value="">— Seleccionar unidad —</option>'];
   _unidadesMedida.forEach((u) => {
     const cod = u.codigo || u.nombre;
-    const label = u.codigo && u.nombre && u.codigo !== u.nombre
-      ? `${u.codigo} — ${u.nombre}`
-      : (u.nombre || u.codigo);
-    opts.push(`<option value="${UI.esc(cod)}">${UI.esc(label)}</option>`);
+    // Solo código en el combo (nombre en title al pasar el mouse)
+    opts.push(`<option value="${UI.esc(cod)}" title="${UI.esc(u.nombre || cod)}">${UI.esc(cod)}</option>`);
   });
   sel.innerHTML = opts.join('');
   if (val) {

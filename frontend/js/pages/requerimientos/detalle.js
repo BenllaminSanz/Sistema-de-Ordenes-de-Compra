@@ -316,11 +316,10 @@ function reqNecesitaCotizacion(req) {
   if (!req) return false;
   if (req.requiere_cotizacion) return true;
   if (Array.isArray(req.items_libres) && req.items_libres.length > 0) return true;
-  const tipo = (req.tipo || '').toUpperCase();
-  if (tipo === 'SERVICIOS') return true;
   if (Array.isArray(req.items) && req.items.some((i) => {
     if (i.costo_referencia == null || i.costo_referencia === '') return true;
-    return Number.isNaN(parseFloat(i.costo_referencia));
+    const precio = Number(i.costo_referencia);
+    return !Number.isFinite(precio) || precio === 0;
   })) return true;
   return false;
 }

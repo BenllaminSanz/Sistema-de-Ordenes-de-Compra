@@ -432,6 +432,10 @@ async function subirReferenciaItem(req, res) {
 // ─── GET /requerimientos/exportar ────────────────────────────────────────────
 async function exportarExcel(req, res) {
   try {
+    const anio = Number.parseInt(req.query.anio, 10);
+    const filtrarPorAnio = Number.isInteger(anio) && anio >= 2000 && anio <= new Date().getFullYear() + 1;
+    const filtroAnio = filtrarPorAnio ? 'WHERE YEAR(r.created_at) = ?' : '';
+
     // Proveedor: OC → cotización seleccionada → primer ítem de catálogo del REQ
     // Detalle: título + notas + resumen de ítems (no solo el tipo PARTES/SERVICIOS)
     const [reqs] = await pool.query(`
@@ -489,14 +493,67 @@ async function exportarExcel(req, res) {
           AND cat.proveedor_id IS NOT NULL
         LIMIT 1
       )
+      ${filtroAnio}
       ORDER BY r.tipo ASC, r.created_at ASC
-    `);
+    `, filtrarPorAnio ? [anio] : []);
+
+    const reqIds = reqs.map((req) => req.id).filter(Boolean);
+    if (reqIds.length) {
+      const [itemsCotizados, itemsCatalogo, itemsLibres] = await Promise.all([
+        pool.query(
+          `SELECT c.requerimiento_id, ci.codigo_catalogo, ci.descripcion, ci.cantidad, ci.unidad, ci.precio_unitario
+           FROM cotizaciones c
+           JOIN cotizacion_items ci ON ci.cotizacion_id = c.id
+           WHERE c.requerimiento_id IN (?)
+             AND (c.seleccionada = 1 OR c.estado = 'seleccionada')
+           ORDER BY c.requerimiento_id, ci.id`,
+          [reqIds]
+        ),
+        pool.query(
+          `SELECT ri.requerimiento_id, c.codigo AS codigo_catalogo, c.descripcion, ri.cantidad, c.unidad
+           FROM requerimiento_items ri
+           JOIN catalogo c ON c.id = ri.catalogo_id
+           WHERE ri.requerimiento_id IN (?)
+           ORDER BY ri.requerimiento_id, ri.id`,
+          [reqIds]
+        ),
+        pool.query(
+          `SELECT ril.requerimiento_id, c.codigo AS codigo_catalogo, ril.descripcion, ril.cantidad, ril.unidad
+           FROM requerimiento_items_libres ril
+           LEFT JOIN catalogo c ON c.id = ril.catalogo_asignado_id
+           WHERE ril.requerimiento_id IN (?)
+           ORDER BY ril.requerimiento_id, ril.id`,
+          [reqIds]
+        ),
+      ]);
+
+      const agruparPorReq = (items) => {
+        const mapa = new Map();
+        for (const item of items) {
+          const actuales = mapa.get(item.requerimiento_id) || [];
+          actuales.push(item);
+          mapa.set(item.requerimiento_id, actuales);
+        }
+        return mapa;
+      };
+      const cotizadosPorReq = agruparPorReq(itemsCotizados[0]);
+      const catalogoPorReq = agruparPorReq(itemsCatalogo[0]);
+      const libresPorReq = agruparPorReq(itemsLibres[0]);
+
+      for (const req of reqs) {
+        const itemsCotizadosReq = cotizadosPorReq.get(req.id) || [];
+        req.items_reporte = itemsCotizadosReq.length
+          ? itemsCotizadosReq
+          : [...(catalogoPorReq.get(req.id) || []), ...(libresPorReq.get(req.id) || [])];
+      }
+    }
 
     const buffer = generarExcelRequerimientos(reqs);
 
     const fecha  = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="BASE_GRAL_REQ_${fecha}.xlsx"`);
+    const sufijo = filtrarPorAnio ? anio : 'COMPLETO';
+    res.setHeader('Content-Disposition', `attachment; filename="BASE_GRAL_REQ_${sufijo}_${fecha}.xlsx"`);
     res.send(buffer);
   } catch (err) {
     logger.error('[exportarExcel requerimientos]', err);

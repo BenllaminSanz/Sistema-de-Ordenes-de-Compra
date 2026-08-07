@@ -23,10 +23,8 @@ async function cargarUnidadesMedidaReq(selected = '') {
   const opts = ['<option value="">— Unidad —</option>'];
   _unidadesMedidaReq.forEach((u) => {
     const cod = u.codigo || u.nombre || '';
-    const label = u.codigo && u.nombre && u.codigo !== u.nombre
-      ? `${u.codigo} — ${u.nombre}`
-      : (u.nombre || u.codigo);
-    opts.push(`<option value="${esc(cod)}">${esc(label)}</option>`);
+    // Solo código en el combo (sin descripción)
+    opts.push(`<option value="${esc(cod)}" title="${esc(u.nombre || cod)}">${esc(cod)}</option>`);
   });
   sel.innerHTML = opts.join('');
 
@@ -104,23 +102,61 @@ window.mostrarLibreInline = function() {
   }
 };
 
-// silencioso = true → solo oculta DOM sin cambiar modo ni confirmar (para resets internos)
+function _limpiarFormLibreInline() {
+  const descEl = document.getElementById('libre-descripcion');
+  const cantEl = document.getElementById('libre-cantidad');
+  const unidEl = document.getElementById('libre-unidad');
+  if (descEl) descEl.value = '';
+  if (cantEl) cantEl.value = '1';
+  if (unidEl) {
+    unidEl.value = '';
+    if (unidEl.tagName === 'SELECT') cargarUnidadesMedidaReq('').catch(() => {});
+  }
+  limpiarReferenciaLibreForm();
+}
+
+/**
+ * Cierra el formulario de ítem nuevo (botón ×).
+ * - Si ya hay ítems nuevos en la lista: solo oculta el form (no los borra).
+ * - Si la lista está vacía: vuelve a modo catálogo sin preguntar.
+ * silencioso = true → solo oculta DOM (resets internos).
+ */
 window.ocultarLibreInline = function(silencioso = false) {
-  if (!silencioso && typeof window.seleccionarModoItems === 'function') {
-    window.seleccionarModoItems('catalogo');
-  } else {
-    const panel = document.getElementById('libre-inline-section');
+  const panel = document.getElementById('libre-inline-section');
+  const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
+
+  if (silencioso) {
     if (panel) panel.style.display = 'none';
-    const descEl = document.getElementById('libre-descripcion');
-    const cantEl = document.getElementById('libre-cantidad');
-    const unidEl = document.getElementById('libre-unidad');
-    if (descEl) descEl.value = '';
-    if (cantEl) cantEl.value = '1';
-    if (unidEl) {
-      unidEl.value = '';
-      if (unidEl.tagName === 'SELECT') cargarUnidadesMedidaReq('').catch(() => {});
+    _limpiarFormLibreInline();
+    return;
+  }
+
+  // Ya hay ítems agregados: el × cierra el form, no los elimina
+  if (tieneLibres) {
+    if (panel) panel.style.display = 'none';
+    _limpiarFormLibreInline();
+    // Mantener modo "ítem nuevo" activo (lista sigue visible abajo)
+    const btnLib = document.getElementById('mode-btn-libre');
+    const btnCat = document.getElementById('mode-btn-catalogo');
+    if (btnLib) {
+      btnLib.classList.add('active-lib');
+      btnLib.classList.remove('active-cat');
     }
-    limpiarReferenciaLibreForm();
+    if (btnCat) {
+      btnCat.classList.remove('active-cat');
+      btnCat.classList.remove('active-lib');
+    }
+    const cb = document.getElementById('usar-items-nuevos');
+    if (cb) cb.checked = true;
+    return;
+  }
+
+  // Sin ítems nuevos: volver a catálogo sin confirmación
+  if (typeof window.seleccionarModoItems === 'function') {
+    window.seleccionarModoItems('catalogo', true);
+  } else if (panel) {
+    panel.style.display = 'none';
+    _limpiarFormLibreInline();
   }
 };
 
@@ -129,18 +165,18 @@ window.ocultarLibreInline = function(silencioso = false) {
 // simplemente muestra/oculta el panel inline.
 window.toggleModoItemsNuevos = function(checked) {
   if (checked) {
-    window.mostrarLibreInline();
-    // Si hay ítems del catálogo, preguntar
+    // seleccionarModoItems ya valida mezcla y pide confirmación clara
+    if (typeof window.seleccionarModoItems === 'function') {
+      window.seleccionarModoItems('libre');
+    } else {
+      window.mostrarLibreInline();
+    }
+    // Si el usuario canceló el cambio de modo, desmarcar checkbox
     const tieneCatalogo = (window.requerimientoItemsSeleccionados || []).length > 0;
-    if (tieneCatalogo) {
-      if (!confirm('Ya tienes ítems del catálogo.\n\nNo se permite mezclar. ¿Limpiarlos para agregar ítems nuevos?')) {
-        ocultarLibreInline();
-        const cb = document.getElementById('usar-items-nuevos');
-        if (cb) cb.checked = false;
-        return;
-      }
-      window.requerimientoItemsSeleccionados = [];
-      sincronizarListas();
+    const enLibre = document.getElementById('mode-btn-libre')?.classList.contains('active-lib');
+    if (tieneCatalogo && !enLibre) {
+      const cb = document.getElementById('usar-items-nuevos');
+      if (cb) cb.checked = false;
     }
   } else {
     ocultarLibreInline();
@@ -154,26 +190,57 @@ window.abrirModalItemsLibres = function() {
   window.mostrarLibreInline();
 };
 
-// cerrarModalItemsLibres — cierra el panel inline (compat)
+/**
+ * Cierra / resetea el editor de ítems (tras guardar, cancelar o ×).
+ * Siempre silencioso: NUNCA muestra confirm de “limpiar y cambiar a catálogo”.
+ * Ese diálogo solo aplica al cambiar de modo a propósito (seleccionarModoItems).
+ */
 window.cerrarModalItemsLibres = function() {
-  ocultarLibreInline();
-  // También ocultar stub de modal por si acaso
-  const modal = document.getElementById('modal-req-libres');
-  if (modal) modal.style.display = 'none';
-  renderLibresResumen();
-};
-
-// deseleccionarYVolverACatalogo — oculta panel libre, resetea
-window.deseleccionarYVolverACatalogo = function() {
-  const tieneLibres = (window.requerimientoItemsLibres || []).length > 0;
-  if (tieneLibres) {
-    if (!confirm('Tienes ítems nuevos agregados. ¿Limpiarlos y volver al catálogo?')) return;
-    window.requerimientoItemsLibres = [];
-    sincronizarListas();
+  // Vaciar listas locales del modal (el REQ ya se guardó o se canceló)
+  window.requerimientoItemsLibres = [];
+  window.requerimientoItemsSeleccionados = [];
+  if (typeof desbloquearFiltroProveedorCatalogo === 'function') {
+    desbloquearFiltroProveedorCatalogo();
   }
-  ocultarLibreInline();
+
+  const panel = document.getElementById('libre-inline-section');
+  if (panel) panel.style.display = 'none';
+  if (typeof _limpiarFormLibreInline === 'function') _limpiarFormLibreInline();
+  else {
+    const descEl = document.getElementById('libre-descripcion');
+    const cantEl = document.getElementById('libre-cantidad');
+    const unidEl = document.getElementById('libre-unidad');
+    if (descEl) descEl.value = '';
+    if (cantEl) cantEl.value = '1';
+    if (unidEl) unidEl.value = '';
+    if (typeof limpiarReferenciaLibreForm === 'function') limpiarReferenciaLibreForm();
+  }
+
   const cb = document.getElementById('usar-items-nuevos');
   if (cb) cb.checked = false;
+
+  const btnCat = document.getElementById('mode-btn-catalogo');
+  const btnLib = document.getElementById('mode-btn-libre');
+  const secCat = document.getElementById('seccion-items-catalogo');
+  if (btnCat) { btnCat.classList.add('active-cat'); btnCat.classList.remove('active-lib'); }
+  if (btnLib) { btnLib.classList.remove('active-lib'); btnLib.classList.remove('active-cat'); }
+  if (secCat) secCat.style.display = 'block';
+
+  const resCat = document.getElementById('resultados-catalogo');
+  if (resCat) resCat.innerHTML = '';
+
+  const modal = document.getElementById('modal-req-libres');
+  if (modal) modal.style.display = 'none';
+
+  if (typeof renderLibresResumen === 'function') renderLibresResumen();
+  if (typeof renderItemsSeleccionados === 'function') renderItemsSeleccionados();
+};
+
+// deseleccionarYVolverACatalogo — vuelve a modo catálogo (con confirmación clara)
+window.deseleccionarYVolverACatalogo = function() {
+  if (typeof window.seleccionarModoItems === 'function') {
+    window.seleccionarModoItems('catalogo');
+  }
   const busq = document.getElementById('busqueda-catalogo');
   if (busq) setTimeout(() => busq.focus(), 100);
 };
@@ -182,11 +249,16 @@ window.deseleccionarYVolverACatalogo = function() {
 window.agregarItemLibre = async function() {
   const btn = document.getElementById('btn-agregar-item-libre');
 
-  // Validación de mezcla
+  // Validación de mezcla (no se puede combinar catálogo + ítems nuevos)
   const tieneCatalogo = (window.requerimientoItemsSeleccionados || []).length > 0;
   if (tieneCatalogo) {
-    if (!confirm('Ya tienes ítems del catálogo.\n\nNo se permite mezclar. ¿Limpiar catálogo y pasar a ítems nuevos?')) return;
+    const n = tieneCatalogo ? (window.requerimientoItemsSeleccionados || []).length : 0;
+    const msg = n === 1
+      ? 'Este requerimiento tiene 1 ítem del catálogo.\n\nNo se pueden mezclar con ítems nuevos.\n¿Eliminar el del catálogo y continuar?'
+      : `Este requerimiento tiene ${n} ítems del catálogo.\n\nNo se pueden mezclar con ítems nuevos.\n¿Eliminarlos y continuar?`;
+    if (!confirm(msg)) return;
     window.requerimientoItemsSeleccionados = [];
+    if (typeof desbloquearFiltroProveedorCatalogo === 'function') desbloquearFiltroProveedorCatalogo();
     sincronizarListas();
     const cb = document.getElementById('usar-items-nuevos');
     if (cb) cb.checked = true;
@@ -240,9 +312,19 @@ window.agregarItemLibre = async function() {
     const cb = document.getElementById('usar-items-nuevos');
     if (cb) cb.checked = true;
 
+    // Asegurar modo libre activo (sin confirmaciones ni limpiar la lista)
+    const btnLib = document.getElementById('mode-btn-libre');
+    const btnCat = document.getElementById('mode-btn-catalogo');
+    const secCat = document.getElementById('seccion-items-catalogo');
+    const secLib = document.getElementById('libre-inline-section');
+    if (btnLib) { btnLib.classList.add('active-lib'); btnLib.classList.remove('active-cat'); }
+    if (btnCat) { btnCat.classList.remove('active-cat'); btnCat.classList.remove('active-lib'); }
+    if (secCat) secCat.style.display = 'none';
+    if (secLib) secLib.style.display = 'block';
+
     sincronizarListas();
 
-    // Limpiar el form para el siguiente ítem
+    // Limpiar el form para el siguiente ítem (la lista de seleccionados se mantiene)
     const descInput   = document.getElementById('libre-descripcion');
     const cantInput   = document.getElementById('libre-cantidad');
     const unidadInput = document.getElementById('libre-unidad');
@@ -251,6 +333,7 @@ window.agregarItemLibre = async function() {
     if (unidadInput) unidadInput.value = '';
     limpiarReferenciaLibreForm();
     if (descInput) descInput.focus();
+    Toast.success('Ítem nuevo agregado a la lista');
 
   } catch (err) {
     Toast.error(err.mensaje || 'Error al agregar el ítem');
