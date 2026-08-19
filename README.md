@@ -1,10 +1,18 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.7.0** — Agosto 2026
+**Versión 1.7.5** — Agosto 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.7.0.md](./DESPLIEGUE-v1.7.0.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.7.5.md](./DESPLIEGUE-v1.7.5.md)
+
+## Novedades v1.7.5
+
+- **Bandeja de trabajo** en el Dashboard (REQ): Por recibir / En proceso / Incompletos / Listos para OC
+- Acciones rápidas: **Recibido** (acuse) e **Incompleto** (con nota); antigüedad FIFO
+- **Bandeja OC** en Dashboard: Generadas / Distribuidas / En proceso / Recibidas / Sin PO
+- Acciones rápidas OC: **Distribuir** y **En proceso**
+- Export Excel de proveedores y filtros de REQ simplificados
 
 ## Novedades v1.7.0
 
@@ -97,7 +105,7 @@ Sistema de Ordenes de Compra/
 ├── frontend/                # HTML + JS + CSS
 ├── docs-generados/          # PDFs / material de apoyo (no va al deploy)
 ├── empaquetar-deploy.ps1
-├── DESPLIEGUE-v1.7.0.md
+├── DESPLIEGUE-v1.7.5.md
 ├── CHANGELOG.md
 ├── VERSIONING.md
 ├── RECARGAR-BASE-GRAL-SERVIDOR.md
@@ -181,7 +189,7 @@ flowchart TD
 
 ## Actualizar en producción
 
-Guía paso a paso: **[DESPLIEGUE-v1.7.0.md](./DESPLIEGUE-v1.7.0.md)**
+Guía paso a paso: **[DESPLIEGUE-v1.7.5.md](./DESPLIEGUE-v1.7.5.md)**
 
 Resumen:
 
@@ -190,9 +198,9 @@ Resumen:
 3. Descomprimir en el servidor conservando `.env` y `backend/uploads/`
 4. `cd backend && npm install --omit=dev`
 5. Reiniciar Node/PM2
-6. Verificar `GET /api/health` → version `1.7.0`
+6. Verificar `GET /api/health` → version `1.7.5`
 
-> v1.7.0 aplica migraciones al arranque (rol `compras` + estado `recibido`). No se requiere SQL manual.
+> v1.7.5 no agrega migraciones nuevas. Las de v1.7.0 (rol `compras` + estado `recibido`) siguen aplicándose al arranque.
 
 ## Notas de producción
 

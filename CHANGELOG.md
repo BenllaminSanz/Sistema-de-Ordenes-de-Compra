@@ -7,6 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.7.5] — 2026-08-07
+
+Bandeja operativa en Dashboard (REQ y OC), export de proveedores y filtros de REQ simplificados.
+
 ### Añadido
 - **Bandeja de trabajo en el Dashboard** (sin menú nuevo): colas Por recibir / En proceso / Incompletos / Listos para OC
 - Acciones rápidas desde Dashboard: **Recibido** (acuse) e **Incompleto** (con nota)
@@ -16,6 +20,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - API `GET /api/notificaciones/bandeja-oc`
 - Export Excel de proveedores (`GET /api/proveedores/export`)
 - Filtros de REQ simplificados (Más filtros + Limpiar)
+
+### Notas de despliegue
+- No hay migraciones de BD nuevas respecto a 1.7.0
+- Verificar: `GET /api/health` → `"version":"1.7.5"`
 
 ## [1.7.0] — 2026-08-03
 

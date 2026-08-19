@@ -68,6 +68,7 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 | `v1.6.1` | Email proveedor opcional; Área/Depto |
 | `v1.6.2` | Cotización solo registrar sin RFQ |
 | `v1.7.0` | Rol Compras, acuse `recibido`, bandeja/notificaciones |
+| `v1.7.5` | Bandeja Dashboard REQ/OC, export proveedores, filtros REQ |
 
 ## Convención de mensajes de commit (recomendado)
 
@@ -87,6 +88,27 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 El workflow [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) ejecuta `test:ci` en cada push/PR a `main`.
 
 La versión en pantalla (sidebar / login) y en `GET /api/health` sale de `backend/package.json`. Si el footer muestra otra versión que el tag, el servidor no se actualizó o hay un deploy incompleto.
+
+## Cortar versión con otro trabajo a medias (p. ej. pruebas)
+
+Si hay cambios de tests/CI en el working tree y quieres que el **release quede antes** (historia: `vX.Y.Z` → luego la suite):
+
+```powershell
+# 1. Apartar lo que no entra en esta versión
+git stash push -u -m "suite de pruebas"
+
+# 2. Completar el checklist de release (package.json, CHANGELOG [X.Y.Z], README, DESPLIEGUE)
+git add backend/package.json backend/package-lock.json CHANGELOG.md README.md DESPLIEGUE-vX.Y.Z.md VERSIONING.md
+git commit -m "release: vX.Y.Z — descripción breve"
+git tag -a vX.Y.Z -m "vX.Y.Z — descripción breve"
+
+# 3. Recuperar el trabajo posterior encima del tag
+git stash pop
+```
+
+En `CHANGELOG.md`, lo recuperado debe quedar en **`[Unreleased]`**, no dentro de `[X.Y.Z]`.
+
+La siguiente versión (p. ej. `1.7.6` o `1.8.0`) se corta cuando la suite ya esté lista, con el mismo checklist.
 
 ## Qué no hacer
 
