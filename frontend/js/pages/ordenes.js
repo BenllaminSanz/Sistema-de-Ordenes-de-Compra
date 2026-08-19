@@ -335,20 +335,33 @@ async function exportarOrdenesExcel(btn) {
   Reportes.solicitarPeriodoExportacion({
     titulo: 'Exportar órdenes de compra',
     btn,
-    alConfirmar: ({ modo, anio }, boton) => descargarOrdenesExcel(boton, modo, anio),
+    alConfirmar: (periodo, boton) => descargarOrdenesExcel(boton, periodo),
   });
 }
 
-async function descargarOrdenesExcel(btn, modo, anio) {
-  const qs = modo === 'anio'
-    ? new URLSearchParams({ periodo: 'anual', anio: String(anio) })
-    : new URLSearchParams({ libre: '1' });
+async function descargarOrdenesExcel(btn, periodo) {
+  const p = periodo || {};
+  let qs;
+  if (p.modo === 'rango') {
+    qs = new URLSearchParams({ fecha_desde: p.fecha_desde, fecha_hasta: p.fecha_hasta });
+  } else if (p.modo === 'mes') {
+    qs = new URLSearchParams({ periodo: 'mensual', anio: String(p.anio), mes: String(p.mes) });
+  } else if (p.modo === 'anio') {
+    qs = new URLSearchParams({ periodo: 'anual', anio: String(p.anio) });
+  } else {
+    qs = new URLSearchParams({ libre: '1' });
+  }
 
   const targetBtn = btn || document.getElementById('btn-exportar-oc');
   if (window.ExcelUI?.descargar) {
     await ExcelUI.descargar(`/reportes/ordenes-compra?${qs.toString()}`, {
       btn: targetBtn,
-      successMsg: `BASE GRAL de OC ${modo === 'anio' ? `de ${anio}` : 'completo'} descargado`,
+      successMsg: `BASE GRAL de OC ${
+        p.modo === 'rango' ? `${p.fecha_desde} a ${p.fecha_hasta}`
+        : p.modo === 'mes' ? `${p.anio}-${String(p.mes).padStart(2, '0')}`
+        : p.modo === 'anio' ? p.anio
+        : 'completo'
+      } descargado`,
       loadingText: 'Generando…',
     });
     return;

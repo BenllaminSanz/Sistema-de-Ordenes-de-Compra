@@ -113,6 +113,10 @@ export const actualizarAreaDepartamentoSchema = z.object({
   departamento: z.string().trim().toUpperCase().min(1, 'Departamento requerido'),
 });
 
+export const actualizarNotasRequerimientoSchema = z.object({
+  notas: z.union([z.string().max(4000), z.null()]).optional(),
+});
+
 // ============================================================
 // ESQUEMAS DE CAMBIO DE ESTADO (Requerimientos)
 // ============================================================

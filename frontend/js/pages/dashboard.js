@@ -795,12 +795,16 @@ function inicializarReporteStatus() {
 
   btn.style.display = 'inline-flex';
   if (window.ExcelUI?.htmlExport) btn.innerHTML = ExcelUI.htmlExport();
-  btn.title = 'Exportar BASE GRAL del año: todos los REQ y OC';
+  btn.title = 'Exportar BASE GRAL: año, mes, rango o completo (REQ + OC)';
   btn.addEventListener('click', () => {
-    if (window.Reportes?.descargarBaseGral) {
+    if (window.Reportes?.solicitarPeriodoExportacion) {
+      Reportes.solicitarPeriodoExportacion({
+        titulo: 'Exportar BASE GRAL (REQ + OC)',
+        btn,
+        alConfirmar: (periodo, boton) => Reportes.descargarBaseGral(periodo, boton),
+      });
+    } else if (window.Reportes?.descargarBaseGral) {
       Reportes.descargarBaseGral(anioActual, btn);
-    } else if (window.Reportes?.descargarStatusPOS) {
-      Reportes.descargarStatusPOS(anioActual, btn);
     } else {
       Toast.error('No se pudo cargar el módulo de reportes');
     }

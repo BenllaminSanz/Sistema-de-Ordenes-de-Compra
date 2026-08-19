@@ -3,6 +3,7 @@ import { autenticar, esAdmin } from '../middlewares/authMiddleware.js';
 import {
   getSmtpConfig,
   updateSmtpConfig,
+  updateNotificaciones,
   testSmtpConnection,
   sendTestEmail,
   resetToEnv
@@ -19,6 +20,9 @@ router.get('/smtp', getSmtpConfig);
 
 // PUT /api/config/smtp - guardar/actualizar configuración
 router.put('/smtp', updateSmtpConfig);
+
+// PUT /api/config/notificaciones — URL pública + on/off de avisos a Compras
+router.put('/notificaciones', updateNotificaciones);
 
 // POST /api/config/smtp/test - probar conexión (puede recibir config temporal)
 router.post('/smtp/test', testSmtpConnection);

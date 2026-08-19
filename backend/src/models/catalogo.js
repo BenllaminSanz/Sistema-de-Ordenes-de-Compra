@@ -4,7 +4,7 @@ import pool from '../config/db.js';
  * Listar elementos del catálogo con filtros
  */
 async function listar(filtros = {}) {
-  const { tipo, busqueda, proveedor_id, soloActivos = false } = filtros;
+  const { tipo, busqueda, proveedor_id, proveedor_nombre, soloActivos = false } = filtros;
 
   let sql = `
     SELECT 
@@ -37,14 +37,18 @@ async function listar(filtros = {}) {
   }
 
   if (busqueda) {
-    sql += ` AND (c.codigo LIKE ? OR c.descripcion LIKE ?)`;
+    sql += ` AND (c.codigo LIKE ? OR c.descripcion LIKE ? OR p.nombre LIKE ? OR p.num_proveedor LIKE ?)`;
     const like = `%${busqueda}%`;
-    params.push(like, like);
+    params.push(like, like, like, like);
   }
 
   if (proveedor_id) {
     sql += ' AND c.proveedor_id = ?';
     params.push(proveedor_id);
+  } else if (proveedor_nombre) {
+    sql += ' AND (p.nombre LIKE ? OR p.num_proveedor LIKE ?)';
+    const like = `%${proveedor_nombre}%`;
+    params.push(like, like);
   }
 
   sql += ' ORDER BY c.codigo ASC';

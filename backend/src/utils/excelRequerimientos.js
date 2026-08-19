@@ -29,6 +29,7 @@ import {
   construirIndiceAreasDeptosSync,
   resolverAreaDepartamentoVista,
 } from '../config/departamentosStore.js';
+import { formatFechaDMY } from './fechas.js';
 
 const require = createRequire(import.meta.url);
 const XLSX = require('xlsx');
@@ -679,16 +680,9 @@ function cellStyle(fill) {
   return { fill: { patternType: 'solid', fgColor: fill.fgColor } };
 }
 
-/** Formato de fecha dd/mm/yyyy como en el Excel de Contabilidad. */
+/** Formato de fecha dd/mm/yyyy como en el Excel de Contabilidad (sin desfase TZ). */
 export function formatFechaBaseGral(v) {
-  if (!v) return '';
-  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
-    const [y, m, d] = v.slice(0, 10).split('-');
-    return `${d}/${m}/${y}`;
-  }
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return formatFechaDMY(v);
 }
 
 /**

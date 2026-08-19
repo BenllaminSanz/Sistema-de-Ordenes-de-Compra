@@ -96,7 +96,7 @@ async function cargarCotizaciones(reqId) {
             ${c.seleccionada !== 1 && esGestor ? `
               <div class="d-flex gap-1 justify-content-center flex-wrap" style="font-size:0.75rem;">
                 <button class="btn btn-success btn-sm px-1 py-0" data-cot-action="seleccionar" data-cot-id="${c.id}" title="Seleccionar esta cotización">✓</button>
-                <button class="btn btn-outline btn-sm px-1 py-0" data-cot-action="editar" data-cot-id="${c.id}" title="Editar cotización">✎</button>
+                <button class="btn btn-outline btn-sm px-1 py-0" data-cot-action="editar" data-cot-id="${c.id}" title="Editar proveedor / moneda">✎</button>
                 <button class="btn btn-warning btn-sm px-1 py-0" data-cot-action="adjuntar-pdf" data-cot-id="${c.id}" title="Adjuntar archivo (PDF, Word, Excel…)">📎</button>
                 ${mostrarBotonEnviar ? `<button class="btn btn-primary btn-sm px-1 py-0" data-cot-action="enviar-correo" data-cot-id="${c.id}" data-cot-reenviar="${c.email_sent_at ? '1' : '0'}" title="${c.email_sent_at ? 'Reenviar solicitud por correo' : 'Enviar solicitud por correo'}">✉</button>` : ''}
                 <button class="btn btn-danger btn-sm px-1 py-0" data-cot-action="eliminar" data-cot-id="${c.id}" title="Eliminar cotización">×</button>
@@ -112,6 +112,11 @@ async function cargarCotizaciones(reqId) {
                       📎 ${c.archivo_url ? 'Cambiar archivo' : 'Adjuntar'}
                     </button>` : ''}
                   ${esGestor ? `
+                    <button class="btn btn-outline btn-sm px-1 py-0"
+                            data-cot-action="editar" data-cot-id="${c.id}"
+                            title="Cambiar proveedor o moneda">
+                      ✎ Editar
+                    </button>
                     <button class="btn btn-danger btn-sm px-1 py-0"
                             data-cot-action="deseleccionar" data-cot-id="${c.id}"
                             title="Quitar selección">
@@ -467,8 +472,9 @@ async function editarCotizacion(cotizacionId) {
     const c    = resp.data || resp;
 
     if (!c) return Toast.error('No se pudo cargar la cotización');
-    if (c.seleccionada === 1 || c.estado === 'seleccionada') {
-      return Toast.error('No se puede editar una cotización ya seleccionada');
+    const tieneOc = !!(requerimientoActual?.oc_id || requerimientoActual?.orden_compra_id);
+    if ((c.seleccionada === 1 || c.estado === 'seleccionada') && tieneOc) {
+      return Toast.error('No se puede editar la cotización: ya hay una OC generada');
     }
 
     cotizacionEditandoId = c.id;

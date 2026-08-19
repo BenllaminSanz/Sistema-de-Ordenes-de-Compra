@@ -9,6 +9,7 @@ import {
   crear,
   actualizar,
   actualizarAreaDepartamento,
+  actualizarNotas,
   cambiarEstado,
   eliminar,
   subirReferenciaItem,
@@ -22,6 +23,7 @@ import {
   crearRequerimientoSchema,
   actualizarRequerimientoSchema,
   actualizarAreaDepartamentoSchema,
+  actualizarNotasRequerimientoSchema,
   cambiarEstadoRequerimientoSchema
 } from '../validations/schemas.js';
 
@@ -124,6 +126,13 @@ router.patch(
   autorizar('compras', 'admin'),
   validate(actualizarAreaDepartamentoSchema),
   actualizarAreaDepartamento
+);
+
+router.patch(
+  '/:id/notas',
+  autorizar('compras', 'admin'),
+  validate(actualizarNotasRequerimientoSchema),
+  actualizarNotas
 );
 
 router.patch(

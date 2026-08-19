@@ -40,6 +40,60 @@
 
         <div id="smtp-status"></div>
 
+        <div class="card" style="margin:0 0 20px;border:1px solid #bfdbfe;background:#f8fbff;box-shadow:none;">
+          <div class="card-title" style="font-size:14px;margin-bottom:6px;">Notificaciones y URL pública</div>
+          <p class="text-muted" style="margin:0 0 12px;font-size:13px;">
+            Controla los avisos de <strong>REQ en revisión</strong> y quién los recibe (p. ej. solo Compras, sin Admin).
+          </p>
+
+          <div id="notif-toggle-wrap" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px;border-radius:8px;background:#fff;border:1px solid #dbeafe;margin-bottom:14px;">
+            <div>
+              <div id="notif-estado-titulo" style="font-weight:700;font-size:14px;color:#1e3a8a;">Notificaciones activas</div>
+              <div id="notif-estado-hint" class="form-hint" style="margin:2px 0 0;">Se envía un correo cuando un solicitante manda un REQ a revisión.</div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btn-toggle-notif">Desactivar</button>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">URL pública del sistema (enlaces de correo)</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input type="url" id="cfg-frontend-url" class="form-control" placeholder="https://servidor-compras.empresa.com" style="flex:1;min-width:220px;">
+              <button type="button" class="btn btn-outline" id="btn-usar-url-sesion" style="display:none;">Usar esta dirección</button>
+            </div>
+            <div id="cfg-frontend-url-hint" class="form-hint">Los botones «Abrir requerimiento» del correo usan esta URL. No uses localhost en el servidor.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Quién recibe el aviso de REQ en revisión</label>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="checkbox" id="notif-rol-compras" checked>
+                <span>Compras <span class="text-muted">(antes Contabilidad)</span></span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="checkbox" id="notif-rol-admin" checked>
+                <span>Admin</span>
+              </label>
+            </div>
+            <div class="form-hint">Desmarca Admin si solo quieres que le llegue a Compras. El cambio se guarda al instante.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Correos extra (además de los roles marcados)</label>
+            <input type="text" id="cfg-email-notif" class="form-control" placeholder="correo1@empresa.com, correo2@empresa.com">
+            <div class="form-hint">Opcional. Separados por coma. Se suman a las cuentas activas con rol Compras o Admin.</div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btn-guardar-notif">Guardar URL y correos extra</button>
+          </div>
+
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;">Se envían a</div>
+            <div id="notif-destinatarios" class="form-hint">Cargando destinatarios…</div>
+          </div>
+        </div>
+
         <form id="form-smtp">
           <div class="config-grid">
             <div class="form-group">
@@ -123,6 +177,7 @@
           <li>La contraseña se guarda encriptada en la base de datos usando la llave <code>SECRET_ENCRYPTION_KEY</code>.</li>
           <li>Después de guardar, los próximos correos (RFQ, verificaciones, etc.) usarán inmediatamente la nueva configuración.</li>
           <li>El campo <strong>Copia y respuestas en cotizaciones</strong> usa el mismo correo como CC y Reply-To en solicitudes a proveedores.</li>
+          <li>La <strong>URL pública</strong> y el interruptor de notificaciones se guardan aparte: no se pierden si vuelves a usar el SMTP del <code>.env</code>.</li>
           <li>Si desactivas la config de DB (botón "Usar solo .env"), el sistema volverá a leer las variables de entorno.</li>
           <li>Para Office 365 / Outlook suele funcionar: Host <strong>smtp.office365.com</strong>, Puerto <strong>587</strong>, Secure <strong>desmarcado</strong>.</li>
         </ul>

@@ -52,7 +52,13 @@ $patronesBorrar = @(
     "backend\uploads\items-referencia",
     "docs-generados",
     "terminals",
-    ".claude"
+    ".claude",
+    "backend\tests",
+    "backend\playwright.config.js",
+    "backend\playwright-report",
+    "backend\test-results",
+    "backend\coverage",
+    "backend\blob-report"
 )
 
 foreach ($patron in $patronesBorrar) {

@@ -4,16 +4,42 @@ async function exportarRequerimientos(btn) {
   Reportes.solicitarPeriodoExportacion({
     titulo: 'Exportar requerimientos',
     btn,
-    alConfirmar: ({ modo, anio }, boton) => descargarRequerimientosExcel(boton, modo, anio),
+    alConfirmar: (periodo, boton) => descargarRequerimientosExcel(boton, periodo),
   });
 }
 
-async function descargarRequerimientosExcel(btn, modo, anio) {
-  const params = modo === 'anio' ? `?anio=${encodeURIComponent(anio)}` : '';
+function qsPeriodoExport(periodo) {
+  const p = periodo || {};
+  const qs = new URLSearchParams();
+  if (p.modo === 'rango') {
+    qs.set('fecha_desde', p.fecha_desde);
+    qs.set('fecha_hasta', p.fecha_hasta);
+  } else if (p.modo === 'mes') {
+    qs.set('anio', String(p.anio));
+    qs.set('mes', String(p.mes));
+  } else if (p.modo === 'anio') {
+    qs.set('anio', String(p.anio));
+  } else {
+    qs.set('completo', '1');
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+function etiquetaPeriodo(periodo) {
+  if (!periodo) return '';
+  if (periodo.modo === 'rango') return `${periodo.fecha_desde} a ${periodo.fecha_hasta}`;
+  if (periodo.modo === 'mes') return `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}`;
+  if (periodo.modo === 'anio') return String(periodo.anio);
+  return 'completo';
+}
+
+async function descargarRequerimientosExcel(btn, periodo) {
+  const params = qsPeriodoExport(periodo);
   if (window.ExcelUI?.descargar) {
     await ExcelUI.descargar(`/requerimientos/exportar${params}`, {
       btn,
-      successMsg: `BASE GRAL de requerimientos ${modo === 'anio' ? `de ${anio}` : 'completo'} descargado`,
+      successMsg: `BASE GRAL de requerimientos ${etiquetaPeriodo(periodo)} descargado`,
       loadingText: 'Generando…',
     });
     return;

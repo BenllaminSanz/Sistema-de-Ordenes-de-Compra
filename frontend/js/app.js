@@ -223,10 +223,19 @@ const UI = {
     return `<span class="badge badge-${e}">${texto}</span>`;
   },
 
-  // Formatea fecha corta
+  // Formatea fecha corta (calendario, sin restar un día por UTC)
   fecha(iso) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('es-MX', {
+    const m = String(iso).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+        .toLocaleDateString('es-MX', {
+          day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC',
+        });
+    }
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('es-MX', {
       day: '2-digit', month: 'short', year: 'numeric',
     });
   },
@@ -821,24 +830,55 @@ const Reportes = {
       modal.id = modalId;
       modal.className = 'modal-backdrop';
       modal.innerHTML = `
-        <div class="modal-box" style="max-width:420px;">
+        <div class="modal-box" style="max-width:440px;">
           <div class="modal-header">
             <h3 class="modal-title" id="periodo-exportacion-titulo"></h3>
             <button type="button" class="modal-close" aria-label="Cerrar">×</button>
           </div>
           <div class="modal-body">
-            <p style="margin:0 0 16px;color:#475569;font-size:13px;line-height:1.5;">Selecciona el periodo que deseas incluir en el archivo Excel.</p>
+            <p style="margin:0 0 14px;color:#475569;font-size:13px;line-height:1.5;">Selecciona el periodo que deseas incluir en el archivo Excel.</p>
             <label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;margin-bottom:8px;">
               <input type="radio" name="periodo-exportacion" value="anio" checked style="margin-top:2px;">
-              <span><strong style="display:block;font-size:13px;">Un año particular</strong><small class="text-muted">Exporta únicamente los registros del año seleccionado.</small></span>
+              <span><strong style="display:block;font-size:13px;">Un año</strong><small class="text-muted">Todos los registros de ese año.</small></span>
             </label>
-            <div id="periodo-exportacion-anio-wrap" class="form-group" style="margin:0 0 12px 30px;">
+            <label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;margin-bottom:8px;">
+              <input type="radio" name="periodo-exportacion" value="mes" style="margin-top:2px;">
+              <span><strong style="display:block;font-size:13px;">Un mes</strong><small class="text-muted">Menos volumen que el año completo.</small></span>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;margin-bottom:8px;">
+              <input type="radio" name="periodo-exportacion" value="rango" style="margin-top:2px;">
+              <span><strong style="display:block;font-size:13px;">Rango de fechas</strong><small class="text-muted">Desde / hasta (fecha de solicitud o PO).</small></span>
+            </label>
+            <div id="periodo-exportacion-anio-wrap" class="form-group" style="margin:0 0 10px 30px;">
               <label class="form-label" for="periodo-exportacion-anio">Año</label>
               <input type="number" id="periodo-exportacion-anio" class="form-control" min="2000" step="1" required>
             </div>
+            <div id="periodo-exportacion-mes-wrap" class="form-group" style="margin:0 0 10px 30px;display:none;">
+              <label class="form-label" for="periodo-exportacion-mes">Mes</label>
+              <select id="periodo-exportacion-mes" class="form-control">
+                <option value="1">Enero</option><option value="2">Febrero</option>
+                <option value="3">Marzo</option><option value="4">Abril</option>
+                <option value="5">Mayo</option><option value="6">Junio</option>
+                <option value="7">Julio</option><option value="8">Agosto</option>
+                <option value="9">Septiembre</option><option value="10">Octubre</option>
+                <option value="11">Noviembre</option><option value="12">Diciembre</option>
+              </select>
+            </div>
+            <div id="periodo-exportacion-rango-wrap" class="form-group" style="margin:0 0 12px 30px;display:none;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                  <label class="form-label" for="periodo-exportacion-desde">Desde</label>
+                  <input type="date" id="periodo-exportacion-desde" class="form-control">
+                </div>
+                <div>
+                  <label class="form-label" for="periodo-exportacion-hasta">Hasta</label>
+                  <input type="date" id="periodo-exportacion-hasta" class="form-control">
+                </div>
+              </div>
+            </div>
             <label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;">
               <input type="radio" name="periodo-exportacion" value="completo" style="margin-top:2px;">
-              <span><strong style="display:block;font-size:13px;">Reporte completo</strong><small class="text-muted">Exporta todos los registros disponibles.</small></span>
+              <span><strong style="display:block;font-size:13px;">Reporte completo</strong><small class="text-muted">Todos los registros (incluye carga masiva histórica). Puede ser un archivo grande.</small></span>
             </label>
           </div>
           <div class="modal-footer">
@@ -848,9 +888,14 @@ const Reportes = {
         </div>`;
       document.body.appendChild(modal);
       const actualizarEstado = () => {
-        const esAnio = modal.querySelector('input[name="periodo-exportacion"]:checked')?.value === 'anio';
-        modal.querySelector('#periodo-exportacion-anio').disabled = !esAnio;
-        modal.querySelector('#periodo-exportacion-anio-wrap').style.opacity = esAnio ? '1' : '.5';
+        const modo = modal.querySelector('input[name="periodo-exportacion"]:checked')?.value || 'anio';
+        const anioWrap = modal.querySelector('#periodo-exportacion-anio-wrap');
+        const mesWrap = modal.querySelector('#periodo-exportacion-mes-wrap');
+        const rangoWrap = modal.querySelector('#periodo-exportacion-rango-wrap');
+        anioWrap.style.display = (modo === 'anio' || modo === 'mes') ? '' : 'none';
+        mesWrap.style.display = modo === 'mes' ? '' : 'none';
+        rangoWrap.style.display = modo === 'rango' ? '' : 'none';
+        modal.querySelector('#periodo-exportacion-anio').disabled = !(modo === 'anio' || modo === 'mes');
       };
       modal.querySelectorAll('input[name="periodo-exportacion"]').forEach((input) => input.addEventListener('change', actualizarEstado));
       modal.querySelector('.modal-close').addEventListener('click', () => this.cerrarPeriodoExportacion());
@@ -858,11 +903,18 @@ const Reportes = {
       modal.querySelector('[data-accion="exportar"]').addEventListener('click', () => this.confirmarPeriodoExportacion());
       modal.addEventListener('click', (event) => { if (event.target === modal) this.cerrarPeriodoExportacion(); });
     }
+    const now = new Date();
     modal.querySelector('#periodo-exportacion-titulo').textContent = titulo;
     modal.querySelector('input[value="anio"]').checked = true;
-    modal.querySelector('#periodo-exportacion-anio').value = new Date().getFullYear();
+    modal.querySelector('#periodo-exportacion-anio').value = now.getFullYear();
     modal.querySelector('#periodo-exportacion-anio').disabled = false;
-    modal.querySelector('#periodo-exportacion-anio-wrap').style.opacity = '1';
+    modal.querySelector('#periodo-exportacion-mes').value = String(now.getMonth() + 1);
+    modal.querySelector('#periodo-exportacion-desde').value = `${now.getFullYear()}-01-01`;
+    modal.querySelector('#periodo-exportacion-hasta').value =
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    modal.querySelector('#periodo-exportacion-anio-wrap').style.display = '';
+    modal.querySelector('#periodo-exportacion-mes-wrap').style.display = 'none';
+    modal.querySelector('#periodo-exportacion-rango-wrap').style.display = 'none';
     this._exportacionPendiente = { btn, alConfirmar };
     modal.classList.add('show');
   },
@@ -878,21 +930,55 @@ const Reportes = {
     if (!pendiente || !modal) return;
     const modo = modal.querySelector('input[name="periodo-exportacion"]:checked')?.value || 'anio';
     const anio = Number.parseInt(modal.querySelector('#periodo-exportacion-anio')?.value, 10);
-    if (modo === 'anio' && (!Number.isInteger(anio) || anio < 2000 || anio > new Date().getFullYear() + 1)) {
+    const mes = Number.parseInt(modal.querySelector('#periodo-exportacion-mes')?.value, 10);
+    const fecha_desde = modal.querySelector('#periodo-exportacion-desde')?.value || '';
+    const fecha_hasta = modal.querySelector('#periodo-exportacion-hasta')?.value || '';
+    if ((modo === 'anio' || modo === 'mes') && (!Number.isInteger(anio) || anio < 2000 || anio > new Date().getFullYear() + 1)) {
       Toast.error('Ingresa un año válido.');
+      return;
+    }
+    if (modo === 'mes' && (!Number.isInteger(mes) || mes < 1 || mes > 12)) {
+      Toast.error('Selecciona un mes válido.');
+      return;
+    }
+    if (modo === 'rango' && (!fecha_desde || !fecha_hasta || fecha_desde > fecha_hasta)) {
+      Toast.error('Indica un rango de fechas válido (desde ≤ hasta).');
       return;
     }
     modal.classList.remove('show');
     this._exportacionPendiente = null;
-    await pendiente.alConfirmar({ modo, anio }, pendiente.btn);
+    await pendiente.alConfirmar({ modo, anio, mes, fecha_desde, fecha_hasta }, pendiente.btn);
   },
 
-  /** Dashboard: BASE GRAL del año seleccionado */
-  async descargarBaseGral(anio, btn) {
-    const year = parseInt(anio) || new Date().getFullYear();
-    return ExcelUI.descargar(`/reportes/status-pos-hilos?anio=${year}`, {
+  /** Dashboard: BASE GRAL del periodo (año / mes / rango / completo) */
+  async descargarBaseGral(periodoOAnio, btn) {
+    const qs = new URLSearchParams();
+    let etiqueta = '';
+    if (periodoOAnio && typeof periodoOAnio === 'object') {
+      const p = periodoOAnio;
+      if (p.modo === 'completo') {
+        qs.set('completo', '1');
+        etiqueta = 'completo';
+      } else if (p.modo === 'rango') {
+        qs.set('fecha_desde', p.fecha_desde);
+        qs.set('fecha_hasta', p.fecha_hasta);
+        etiqueta = `${p.fecha_desde} a ${p.fecha_hasta}`;
+      } else if (p.modo === 'mes') {
+        qs.set('anio', String(p.anio));
+        qs.set('mes', String(p.mes));
+        etiqueta = `${p.anio}-${String(p.mes).padStart(2, '0')}`;
+      } else {
+        qs.set('anio', String(p.anio || new Date().getFullYear()));
+        etiqueta = String(p.anio || new Date().getFullYear());
+      }
+    } else {
+      const year = parseInt(periodoOAnio, 10) || new Date().getFullYear();
+      qs.set('anio', String(year));
+      etiqueta = String(year);
+    }
+    return ExcelUI.descargar(`/reportes/status-pos-hilos?${qs.toString()}`, {
       btn,
-      successMsg: `BASE GRAL ${year} descargado (REQ + OC)`,
+      successMsg: `BASE GRAL ${etiqueta} descargado (REQ + OC)`,
       loadingText: 'Generando…',
     });
   },

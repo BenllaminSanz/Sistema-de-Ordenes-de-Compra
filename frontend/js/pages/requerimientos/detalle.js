@@ -186,6 +186,74 @@ function _redondearMonto(n) {
   return typeof redondear2 === 'function' ? redondear2(n) : Math.round(n * 100) / 100;
 }
 
+function renderNotasDetallesReq(req) {
+  const puedeEditar = Auth.puedeHacer(['compras', 'admin']);
+  const texto = (req.notas || req.descripcion || '').trim();
+  const textoHtml = texto
+    ? UI.esc(texto)
+    : '<em style="color:#1e3a8a;opacity:.8;">Sin notas todavía. Usa este espacio para informar estatus (p. ej. cotización compartida, pendiente de respuesta).</em>';
+  return `
+    <div id="req-notas-panel" style="
+      margin-top:16px;border-radius:10px;overflow:hidden;
+      border:2px solid #93c5fd;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:rgba(29,78,216,.08);border-bottom:1px solid #bfdbfe;">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#1e3a8a;">Notas / Detalles</div>
+          <div style="font-size:11px;color:#1d4ed8;">Visibles para solicitante y Compras · editables por Compras</div>
+        </div>
+        ${puedeEditar ? `
+        <button type="button" class="btn btn-sm btn-outline" style="padding:4px 10px;font-size:12px;"
+                onclick="mostrarEditorNotasReq()">✎ Editar</button>` : ''}
+      </div>
+      <div id="req-notas-vista" style="padding:12px 14px;">
+        <div id="req-notas-texto" style="white-space:pre-wrap;line-height:1.55;font-size:14px;color:#1e3a8a;min-height:2em;">${textoHtml}</div>
+      </div>
+      <div id="req-notas-editor" style="display:none;padding:12px 14px;">
+        <textarea id="req-notas-textarea" class="form-control" rows="4"
+          placeholder="Ej. Cotización compartida al área el 03/08. Pendiente de visto bueno.">${UI.esc(texto)}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="cancelarEditorNotasReq()">Cancelar</button>
+          <button type="button" class="btn btn-primary btn-sm" id="req-notas-btn-guardar"
+                  onclick="guardarNotasReq()">Guardar notas</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+window.mostrarEditorNotasReq = function () {
+  const vista = document.getElementById('req-notas-vista');
+  const editor = document.getElementById('req-notas-editor');
+  const ta = document.getElementById('req-notas-textarea');
+  if (ta) ta.value = requerimientoActual?.notas || requerimientoActual?.descripcion || '';
+  if (vista) vista.style.display = 'none';
+  if (editor) editor.style.display = 'block';
+};
+
+window.cancelarEditorNotasReq = function () {
+  const vista = document.getElementById('req-notas-vista');
+  const editor = document.getElementById('req-notas-editor');
+  if (vista) vista.style.display = '';
+  if (editor) editor.style.display = 'none';
+};
+
+window.guardarNotasReq = async function () {
+  const id = requerimientoActual?.id;
+  if (!id) return;
+  const ta = document.getElementById('req-notas-textarea');
+  const btn = document.getElementById('req-notas-btn-guardar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    const updated = await Api.patch(`/requerimientos/${id}/notas`, { notas: ta?.value ?? '' });
+    Toast.success('Notas actualizadas');
+    if (typeof abrirDetalle === 'function') abrirDetalle(updated.id || id);
+    else Object.assign(requerimientoActual, updated);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar las notas');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar notas'; }
+  }
+};
+
 function renderProveedorSeleccionadoHtml(prov) {
   if (!prov?.proveedor_id && !prov?.proveedor_nombre) return '';
   const label = UI.labelProveedor(prov) || '—';
@@ -405,10 +473,7 @@ function renderDetalle(req) {
       <tr><td style="padding:6px 0;color:#6b7280">Fecha creación</td>
           <td>${UI.fecha(req.created_at)}</td></tr>
     </table>
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f0f0">
-      <div style="font-size:12px;color:#6b7280;margin-bottom:6px">Notas / Detalles</div>
-      <p style="margin:0;line-height:1.6">${req.notas || req.descripcion || '—'}</p>
-    </div>
+    ${renderNotasDetallesReq(req)}
 
     ${renderTablaItemsCatalogo(req.items)}
 

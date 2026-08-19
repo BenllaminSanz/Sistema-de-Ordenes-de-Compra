@@ -5,6 +5,7 @@ import {
 } from '../config/departamentosStore.js';
 import { obtenerSiguienteConsecutivo } from '../utils/consecutivos.js';
 import { puedeTransicionReq } from '../domain/reqEstados.js';
+import { registrarNotaSeguimientoReq } from './historialEstados.js';
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
 
@@ -637,12 +638,33 @@ async function asignarCatalogoAItemLibre(requerimientoId, libreId, catalogoId) {
   );
 }
 
+/**
+ * Actualiza Notas/Detalles de un REQ en cualquier estado (visible para todos).
+ * Registra también una nota de seguimiento en el historial.
+ */
+async function actualizarNotas(id, notas, usuarioId) {
+  const texto = notas == null ? '' : String(notas);
+  const [r] = await pool.query(
+    'UPDATE requerimientos SET notas = ? WHERE id = ?',
+    [texto, id]
+  );
+  if (r.affectedRows && texto.trim() && usuarioId) {
+    await registrarNotaSeguimientoReq({
+      requerimientoId: id,
+      usuarioId,
+      notas: texto.trim(),
+    });
+  }
+  return r.affectedRows;
+}
+
 export {
   listar,
   obtenerPorId,
   crear,
   actualizar,
   actualizarAreaDepartamento,
+  actualizarNotas,
   cambiarEstado,
   eliminar,
   asignarCatalogoAItemLibre,

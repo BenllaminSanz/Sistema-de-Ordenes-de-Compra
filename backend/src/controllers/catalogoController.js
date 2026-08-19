@@ -9,6 +9,7 @@ async function listar(req, res) {
       tipo: req.query.tipo || null,
       busqueda: req.query.busqueda || null,
       proveedor_id: req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null,
+      proveedor_nombre: req.query.proveedor_nombre || null,
       soloActivos: req.query.soloActivos === 'true'
     };
 
@@ -367,10 +368,12 @@ async function importarExcel(req, res) {
  */
 async function exportarExcel(req, res) {
   try {
+    const pid = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
     const items = await CatalogoModel.listar({
       tipo: req.query.tipo || null,
       busqueda: req.query.busqueda || null,
-      proveedor_id: req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null,
+      proveedor_id: Number.isInteger(pid) ? pid : null,
+      proveedor_nombre: req.query.proveedor_nombre || null,
       soloActivos: req.query.soloActivos === 'true',
     });
 

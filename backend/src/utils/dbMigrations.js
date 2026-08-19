@@ -115,7 +115,39 @@ export async function runDbMigrations() {
   // Estado intermedio: acuse formal de Compras (en_revision → recibido → aprobado/…)
   await asegurarEstadoRecibidoRequerimientos();
 
+  await ensureConfiguracionAppTable();
+
   logger.info('[migrate] Migraciones aplicadas');
+}
+
+/**
+ * Ajustes de correo independientes del SMTP: URL pública y notificaciones internas.
+ */
+async function ensureConfiguracionAppTable() {
+  if (!(await tableExists('configuracion_app'))) {
+    await pool.query(`
+      CREATE TABLE configuracion_app (
+        id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+        frontend_url VARCHAR(255) NULL,
+        notif_req_revision TINYINT(1) NOT NULL DEFAULT 1,
+        email_notif_compras VARCHAR(500) NULL,
+        notif_roles VARCHAR(80) NOT NULL DEFAULT 'compras,admin',
+        updated_by INT UNSIGNED NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await pool.query(
+      `INSERT INTO configuracion_app (id, notif_req_revision, notif_roles)
+       VALUES (1, 1, 'compras,admin')`
+    );
+    logger.info('[migrate] Tabla configuracion_app creada');
+    return;
+  }
+  await addColumnIfMissing(
+    'configuracion_app',
+    'notif_roles',
+    "VARCHAR(80) NOT NULL DEFAULT 'compras,admin' COMMENT 'Roles que reciben aviso de REQ en revisión'"
+  );
 }
 
 /**

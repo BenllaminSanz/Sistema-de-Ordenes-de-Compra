@@ -118,10 +118,23 @@ export function createApp() {
   app.use('/api/areas', areasRoutes);
   app.use('/api/notificaciones', notificacionesRoutes);
 
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', async (req, res) => {
+    let frontend_url = process.env.FRONTEND_URL
+      || process.env.PUBLIC_APP_URL
+      || process.env.CORS_ORIGIN
+      || 'http://localhost:3000';
+    let notif_req_revision = true;
+    try {
+      const { obtenerAjustesCorreo, frontendUrlEfectiva } = await import('./models/configApp.js');
+      const ajustes = await obtenerAjustesCorreo();
+      frontend_url = frontendUrlEfectiva(ajustes);
+      notif_req_revision = !!ajustes.notif_req_revision;
+    } catch (_) { /* ignore */ }
     res.json({
       estado: 'ok',
       version: APP_VERSION,
+      frontend_url: String(frontend_url).replace(/\/$/, ''),
+      notif_req_revision,
       timestamp: new Date().toISOString(),
     });
   });

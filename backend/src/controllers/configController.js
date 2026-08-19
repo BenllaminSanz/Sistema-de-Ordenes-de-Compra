@@ -1,4 +1,12 @@
 import { obtenerConfig, guardarConfig, desactivarConfig, obtenerConfigParaMailer } from '../models/configSmtp.js';
+import {
+  obtenerAjustesCorreo,
+  guardarAjustesCorreo,
+  listarDestinatariosNotif,
+  frontendUrlEfectiva,
+  urlPublicaDesdeRequest,
+  esLocalhost,
+} from '../models/configApp.js';
 import { recargarTransporter, enviarCorreo, getFromAddress, getConfigSource, getTransporter } from '../config/mailer.js';
 import logger from '../utils/logger.js';
 import {
@@ -12,26 +20,74 @@ import {
  * Devuelve la configuración actual (sin contraseña real).
  * Solo admin.
  */
+async function bloqueNotificaciones(req) {
+  const ajustes = await obtenerAjustesCorreo();
+  const destinatarios = await listarDestinatariosNotif(ajustes);
+  const efectiva = frontendUrlEfectiva(ajustes);
+  const sugerida = urlPublicaDesdeRequest(req);
+  return {
+    frontend_url: ajustes.frontend_url || '',
+    frontend_url_efectiva: efectiva,
+    frontend_url_es_local: esLocalhost(efectiva),
+    frontend_url_sugerida: sugerida && !esLocalhost(sugerida) ? sugerida : '',
+    notif_req_revision: !!ajustes.notif_req_revision,
+    email_notif_compras: ajustes.email_notif_compras || '',
+    notif_roles: Array.isArray(ajustes.notif_roles) ? ajustes.notif_roles : ['compras', 'admin'],
+    destinatarios,
+  };
+}
+
 export async function getSmtpConfig(req, res) {
   try {
     const cfg = await obtenerConfig();
+    const notificaciones = await bloqueNotificaciones(req);
 
     if (!cfg) {
       // No hay config en DB → informar que se usa .env
       return res.json({
         usando_env: true,
         mensaje: 'No hay configuración SMTP en base de datos. Se están usando las variables de entorno (.env).',
-        config: null
+        config: null,
+        notificaciones,
       });
     }
 
     res.json({
       usando_env: false,
-      config: cfg
+      config: cfg,
+      notificaciones,
     });
   } catch (err) {
     logger.error('[getSmtpConfig]', err);
     res.status(500).json({ mensaje: 'Error al obtener configuración SMTP' });
+  }
+}
+
+export async function updateNotificaciones(req, res) {
+  try {
+    const body = req.body || {};
+    const ajustes = await guardarAjustesCorreo({
+      frontend_url: body.frontend_url,
+      notif_req_revision: body.notif_req_revision,
+      email_notif_compras: body.email_notif_compras,
+      notif_roles: body.notif_roles,
+    }, req.usuario?.id || null);
+
+    res.json({
+      mensaje: body.notif_req_revision === false
+        ? 'Notificaciones de REQ en revisión desactivadas'
+        : (body.notif_req_revision === true && body.notif_roles === undefined
+          ? 'Notificaciones de REQ en revisión activadas'
+          : (body.notif_roles
+            ? 'Destinatarios actualizados'
+            : 'Ajustes de notificaciones guardados')),
+      notificaciones: await bloqueNotificaciones(req),
+      ajustes,
+    });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.message });
+    logger.error('[updateNotificaciones]', err);
+    res.status(500).json({ mensaje: err.message || 'Error al guardar notificaciones' });
   }
 }
 

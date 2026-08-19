@@ -10,6 +10,7 @@ import {
   construirIndiceAreasDeptos,
   resolverAreaDepartamentoVista,
 } from '../config/departamentosStore.js';
+import { parsePeriodoExport, sqlRangoFecha, rangoMes } from '../utils/fechas.js';
 
 function extraerStatusNotas(notasReq, notasOc) {
   const n = String(notasReq || notasOc || '');
@@ -142,17 +143,23 @@ export async function generarReporteOrdenesCompra(req, res) {
         filtros.fecha_hasta = `${year}-12-31`;
       } else if (periodoEfectivo === 'mensual') {
         const month = parseInt(mes) || (now.getMonth() + 1);
-        const start = new Date(year, month - 1, 1);
-        const end = new Date(year, month, 0);
-        filtros.fecha_desde = start.toISOString().split('T')[0];
-        filtros.fecha_hasta = end.toISOString().split('T')[0];
+        const r = rangoMes(year, month);
+        filtros.fecha_desde = r.fecha_desde;
+        filtros.fecha_hasta = r.fecha_hasta;
       } else if (periodoEfectivo === 'semanal') {
         const week = parseInt(semana) || 1;
         const start = new Date(year, 0, 1 + (week - 1) * 7);
         const end = new Date(start);
         end.setDate(end.getDate() + 6);
-        filtros.fecha_desde = start.toISOString().split('T')[0];
-        filtros.fecha_hasta = end.toISOString().split('T')[0];
+        const ymdLocal = (d) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        filtros.fecha_desde = ymdLocal(start);
+        filtros.fecha_hasta = ymdLocal(end);
+      }
+      if (req.query.fecha_desde && req.query.fecha_hasta) {
+        const p = parsePeriodoExport(req.query);
+        filtros.fecha_desde = p.fecha_desde;
+        filtros.fecha_hasta = p.fecha_hasta;
       }
     }
 
@@ -205,11 +212,15 @@ export async function generarReporteOrdenesCompra(req, res) {
  */
 export async function generarReporteStatusPOS(req, res) {
   try {
-    const { anio, po, estado } = req.query;
-    const year = parseInt(anio) || new Date().getFullYear();
+    const { po, estado } = req.query;
+    const periodo = parsePeriodoExport(req.query);
+    const year = periodo.year;
     const likePo = po ? `%${po}%` : null;
+    const colOcFecha = 'COALESCE(oc.fecha_po, oc.fecha_autorizacion, oc.created_at)';
+    const rangoOc = sqlRangoFecha(colOcFecha, periodo.fecha_desde, periodo.fecha_hasta);
+    const rangoReq = sqlRangoFecha('r.created_at', periodo.fecha_desde, periodo.fecha_hasta);
 
-    // ── 1) OCs del año ──────────────────────────────────────────
+    // ── 1) OCs del periodo ──────────────────────────────────────
     let sqlOc = `
       SELECT
         oc.id,
@@ -237,9 +248,10 @@ export async function generarReporteStatusPOS(req, res) {
       JOIN requerimientos r ON r.id = oc.requerimiento_id
       LEFT JOIN usuarios u ON u.id = r.solicitante_id
       LEFT JOIN proveedores p ON p.id = oc.proveedor_id
-      WHERE YEAR(COALESCE(oc.fecha_po, oc.fecha_autorizacion, oc.created_at)) = ?
+      WHERE 1=1
+        ${rangoOc.sql}
     `;
-    const paramsOc = [year];
+    const paramsOc = [...rangoOc.params];
 
     if (likePo) {
       sqlOc += ` AND (oc.datatextnow_id LIKE ? OR oc.numero_oc LIKE ? OR r.consecutivo LIKE ?) `;
@@ -288,9 +300,10 @@ export async function generarReporteStatusPOS(req, res) {
         WHERE ri.requerimiento_id = r.id AND cat.proveedor_id IS NOT NULL
         LIMIT 1
       )
-      WHERE YEAR(r.created_at) = ?
+      WHERE 1=1
+        ${rangoReq.sql}
     `;
-    const paramsReq = [year];
+    const paramsReq = [...rangoReq.params];
 
     if (likePo) {
       sqlReq += ` AND (
@@ -343,7 +356,12 @@ export async function generarReporteStatusPOS(req, res) {
     });
 
     const buffer = generarExcelBaseGral(filas);
-    const filename = `BASE_GRAL_${year}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const etiqueta = periodo.modo === 'rango'
+      ? `${periodo.fecha_desde}_${periodo.fecha_hasta}`
+      : (periodo.modo === 'mes'
+        ? `${year}-${String(periodo.mes).padStart(2, '0')}`
+        : (periodo.modo === 'completo' ? 'COMPLETO' : String(year)));
+    const filename = `BASE_GRAL_${etiqueta}_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

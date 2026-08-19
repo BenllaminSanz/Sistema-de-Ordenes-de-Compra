@@ -176,7 +176,7 @@ async function actualizar(id, datos, items = null) {
     await conn.beginTransaction();
 
     const [[verificacion]] = await conn.query(
-      'SELECT seleccionada FROM cotizaciones WHERE id = ?',
+      'SELECT seleccionada, requerimiento_id FROM cotizaciones WHERE id = ?',
       [id]
     );
 
@@ -185,6 +185,15 @@ async function actualizar(id, datos, items = null) {
       return 0;
     }
 
+    const [[reqRow]] = await conn.query(
+      `SELECT r.orden_compra_id
+       FROM cotizaciones c
+       JOIN requerimientos r ON r.id = c.requerimiento_id
+       WHERE c.id = ?`,
+      [id]
+    );
+    const tieneOc = !!(reqRow && reqRow.orden_compra_id);
+
     const camposPermitidosSeleccionada = ['archivo_url', 'notas'];
     const estaSeleccionada = verificacion.seleccionada === 1;
     const camposSolicitados = Object.keys(datos || {});
@@ -192,13 +201,15 @@ async function actualizar(id, datos, items = null) {
       c => !camposPermitidosSeleccionada.includes(c)
     );
 
-    if (estaSeleccionada && intentaActualizarCamposRestringidos && !items) {
+    // Con OC ya formalizada no se cambia proveedor/moneda de la cotización ganadora.
+    // Sin OC (p. ej. REQ aprobado por error de proveedor) sí se permite corregir.
+    if (estaSeleccionada && tieneOc && intentaActualizarCamposRestringidos && !items) {
       await conn.rollback();
       return 0;
     }
 
     const campos = {};
-    ['monto_total', 'monto_subtotal', 'iva', 'moneda', 'archivo_url', 'fecha_envio', 'fecha_recepcion', 'notas', 'estado'].forEach(c => {
+    ['proveedor_id', 'monto_total', 'monto_subtotal', 'iva', 'moneda', 'archivo_url', 'fecha_envio', 'fecha_recepcion', 'notas', 'estado'].forEach(c => {
       if (datos[c] !== undefined) campos[c] = datos[c];
     });
 

@@ -1,5 +1,10 @@
 import { enviarCorreo } from '../config/mailer.js';
 import { obtenerCcCotizaciones } from '../models/configSmtp.js';
+import {
+  obtenerAjustesCorreo,
+  frontendUrlEfectiva,
+  esLocalhost,
+} from '../models/configApp.js';
 import * as Requerimiento from '../models/requerimientos.js';
 import * as Cotizacion from '../models/cotizaciones.js';
 import {
@@ -7,6 +12,23 @@ import {
   buildEmailBrandingHtml,
   getEmailBrandingAttachments,
 } from './emailBranding.js';
+
+/**
+ * URL pública para ligas de correo.
+ * Prioridad: configuracion_app.frontend_url → FRONTEND_URL / PUBLIC_APP_URL / CORS_ORIGIN.
+ */
+export async function getPublicAppUrl() {
+  try {
+    const ajustes = await obtenerAjustesCorreo();
+    return frontendUrlEfectiva(ajustes);
+  } catch {
+    return frontendUrlEfectiva(null);
+  }
+}
+
+export function isPublicAppUrlLocal(url) {
+  return esLocalhost(url || frontendUrlEfectiva(null));
+}
 
 const UNIDADES_ENTERAS = new Set([
   'pieza', 'piezas', 'pza', 'pzas', 'hora', 'horas', 'hr', 'hrs',
@@ -251,7 +273,7 @@ ${t.footer}`;
  * Envía correo de verificación de cuenta al nuevo usuario solicitante.
  */
 export async function enviarCorreoVerificacion(nombre, email, token) {
-  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const baseUrl = await getPublicAppUrl();
   const link = `${baseUrl}/verificar.html?token=${token}`;
 
   const html = `
@@ -319,27 +341,15 @@ Si no solicitaste esta cuenta, ignora este correo.`;
  */
 export async function notificarComprasReqEnRevision(reqData, opts = {}) {
   try {
-    const pool = (await import('../config/db.js')).default;
-    const [usuarios] = await pool.query(
-      `SELECT email, nombre FROM usuarios
-       WHERE activo = 1
-         AND rol IN ('compras', 'admin')
-         AND email IS NOT NULL AND TRIM(email) <> ''
-         AND email NOT LIKE '%@import.local'`
-    );
-
-    const extras = [
-      process.env.EMAIL_NOTIF_COMPRAS,
-      process.env.EMAIL_CC_COTIZACIONES,
-    ]
-      .filter(Boolean)
-      .flatMap((s) => String(s).split(/[,;]/).map((x) => x.trim()).filter(Boolean));
-
-    const destinos = new Set();
-    for (const u of usuarios || []) {
-      if (u.email) destinos.add(String(u.email).toLowerCase());
+    const ajustes = await obtenerAjustesCorreo();
+    if (!ajustes.notif_req_revision) {
+      console.log('[Email] Notificación REQ en revisión omitida (desactivada en Configuración)');
+      return { success: false, skipped: true, reason: 'notif_desactivada' };
     }
-    for (const e of extras) destinos.add(e.toLowerCase());
+
+    const { listarDestinatariosNotif } = await import('../models/configApp.js');
+    const lista = await listarDestinatariosNotif(ajustes);
+    const destinos = new Set(lista.map((d) => d.email));
 
     // No reenviar al mismo solicitante si también es admin de prueba
     if (opts.excluirEmail) destinos.delete(String(opts.excluirEmail).toLowerCase());
@@ -349,7 +359,7 @@ export async function notificarComprasReqEnRevision(reqData, opts = {}) {
       return { success: false, reason: 'sin_destinatarios' };
     }
 
-    const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const baseUrl = frontendUrlEfectiva(ajustes);
     const consecutivo = reqData.consecutivo || `ID ${reqData.id}`;
     const solicitante = reqData.solicitante_nombre || 'Solicitante';
     const titulo = reqData.titulo_solicitud || reqData.notas || '—';

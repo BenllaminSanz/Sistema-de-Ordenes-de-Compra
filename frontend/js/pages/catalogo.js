@@ -68,7 +68,8 @@ function hayFiltrosCatalogoActivos() {
   const q = (document.getElementById('busqueda')?.value || '').trim();
   const tipo = document.getElementById('filtro-tipo')?.value || '';
   const prov = document.getElementById('filtro-proveedor-id')?.value || '';
-  return !!(q || tipo || prov);
+  const provLabel = document.getElementById('filtro-proveedor-busqueda')?.value || '';
+  return !!(q || tipo || prov || provLabel);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -210,10 +211,16 @@ function _getCatalogoFiltradoActual() {
   const q         = (document.getElementById('busqueda')?.value ?? '').trim().toLowerCase();
   const tipo      = document.getElementById('filtro-tipo')?.value || '';
   const proveedor = (document.getElementById('filtro-proveedor-id')?.value || '').trim();
+  const provLabel = (document.getElementById('filtro-proveedor-busqueda')?.value || '').trim().toLowerCase();
 
   return _catalogoData.filter(item => {
     const matchTipo = !tipo || item.tipo === tipo;
-    const matchProv = !proveedor || String(item.proveedor_id ?? '') === String(proveedor);
+    const matchProv = proveedor
+      ? String(item.proveedor_id ?? '') === String(proveedor)
+      : (!provLabel
+        || String(item.proveedor_nombre || '').toLowerCase().includes(provLabel)
+        || String(item.proveedor_num || '').toLowerCase().includes(provLabel)
+        || UI.labelProveedor(item).toLowerCase().includes(provLabel));
     const matchQ    = !q ||
       (item.codigo           || '').toLowerCase().includes(q) ||
       (item.descripcion      || '').toLowerCase().includes(q) ||
@@ -720,8 +727,15 @@ function queryExportCatalogo() {
   const tipo = document.getElementById('filtro-tipo')?.value || '';
   if (tipo) params.set('tipo', tipo);
 
-  const proveedor_id = (document.getElementById('filtro-proveedor-id')?.value || '').trim();
+  const hid = document.getElementById('filtro-proveedor-id');
+  const inp = document.getElementById('filtro-proveedor-busqueda');
+  if (typeof ProveedorBusqueda !== 'undefined' && inp) {
+    ProveedorBusqueda.resolver(inp, hid);
+  }
+  const proveedor_id = (hid?.value || '').trim();
+  const proveedor_label = (inp?.value || '').trim();
   if (proveedor_id) params.set('proveedor_id', proveedor_id);
+  else if (proveedor_label) params.set('proveedor_nombre', proveedor_label);
 
   const busqueda = (document.getElementById('busqueda')?.value || '').trim();
   if (busqueda) params.set('busqueda', busqueda);
