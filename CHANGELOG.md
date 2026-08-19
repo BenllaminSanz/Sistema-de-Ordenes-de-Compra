@@ -7,6 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Cambiado
+- Extraídas reglas de dominio a `src/domain/` (roles, estados REQ/OC)
+- Arranque separado: `server.js` + fábrica `createApp()`; `app.js` queda como entry de compatibilidad
+
 ## [1.7.5] — 2026-08-07
 
 Bandeja operativa en Dashboard (REQ y OC), export de proveedores y filtros de REQ simplificados.

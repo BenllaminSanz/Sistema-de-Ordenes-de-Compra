@@ -1,12 +1,7 @@
 // backend/src/middlewares/authMiddleware.js
 import jwt from 'jsonwebtoken';
 import { promisify } from 'util';
-
-/** Rol legacy `contabilidad` → `compras` (tokens y datos previos). */
-function normalizarRol(rol) {
-    if (rol === 'contabilidad') return 'compras';
-    return rol;
-}
+import { normalizarRol } from '../domain/roles.js';
 
 // ─── Middleware principal de autenticación ───────────────────────────────
 const verificarToken = async (req, res, next) => {

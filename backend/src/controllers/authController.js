@@ -15,33 +15,18 @@ import {
   buscarPorTokenVerificacion,
   marcarEmailVerificado
 } from '../models/usuario.js';
-
-const ROLES_VALIDOS = ['solicitante', 'compras', 'admin'];
-
-function normalizarRolAuth(rol) {
-  if (rol === 'contabilidad') return 'compras';
-  return rol;
-}
-
-function puedeGestionarUsuario(actor, target) {
-  if (!actor || !target) return false;
-  const actorRol = normalizarRolAuth(actor.rol);
-  const targetRol = normalizarRolAuth(target.rol);
-  if (actorRol === 'admin') return true;
-  if (actorRol === 'compras' && targetRol !== 'admin') return true;
-  return false;
-}
-
-function puedeAsignarRol(actor, rol) {
-  const r = normalizarRolAuth(rol);
-  if (!ROLES_VALIDOS.includes(r)) return false;
-  const actorRol = normalizarRolAuth(actor.rol);
-  if (actorRol === 'admin') return true;
-  return actorRol === 'compras' && r !== 'admin';
-}
+import {
+  ROLES_VALIDOS,
+  normalizarRol,
+  puedeGestionarUsuario,
+  puedeAsignarRol,
+} from '../domain/roles.js';
 import { enviarCorreoVerificacion } from '../utils/emailService.js';
 import logger from '../utils/logger.js';
 import { enviarCotizacionesPendientesOportunista } from './cotizacionesController.js';
+
+/** Alias histórico en este controller */
+const normalizarRolAuth = normalizarRol;
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 async function login(req, res) {

@@ -1,15 +1,36 @@
 import nodemailer from 'nodemailer';
-import "../config/env.js";
+import '../config/env.js';
 import { obtenerConfigParaMailer } from '../models/configSmtp.js';
 
 // =====================================================
 // Mailer dinámico con soporte de configuración en DB
 // Prioridad: configuracion_smtp (activa) > variables .env > defaults
+// En NODE_ENV=test / EMAIL_MOCK=1: no hay red; se registran mails en memoria.
 // =====================================================
 
 let currentTransporter = null;
-let currentConfigSource = 'env'; // 'db' | 'env'
+let currentConfigSource = 'env'; // 'db' | 'env' | 'mock'
 let currentFromAddress = null;
+
+/** Bandeja en memoria para tests (Fase 3). */
+const sentMails = [];
+
+export function isEmailMockEnabled() {
+  return (
+    process.env.NODE_ENV === 'test'
+    || process.env.EMAIL_MOCK === '1'
+    || process.env.EMAIL_MOCK === 'true'
+  );
+}
+
+/** Copia de correos capturados (solo mock). */
+export function getSentMails() {
+  return sentMails.map((m) => ({ ...m }));
+}
+
+export function clearSentMails() {
+  sentMails.length = 0;
+}
 
 /**
  * Construye el transporter a partir de un objeto de config.
@@ -42,12 +63,32 @@ function buildTransporter(cfg) {
     socketTimeout,
     tls: {
       ciphers: tlsCiphers,
-      rejectUnauthorized
-    }
+      rejectUnauthorized,
+    },
   });
 }
 
 async function initializeMailer() {
+  if (isEmailMockEnabled()) {
+    currentTransporter = {
+      sendMail: async (mailOptions) => {
+        const entry = {
+          ...mailOptions,
+          _capturedAt: new Date().toISOString(),
+        };
+        sentMails.push(entry);
+        return { messageId: `mock-${sentMails.length}@test.local` };
+      },
+      verify: (cb) => {
+        if (typeof cb === 'function') cb(null, true);
+        return Promise.resolve(true);
+      },
+    };
+    currentConfigSource = 'mock';
+    currentFromAddress = process.env.EMAIL_USER || 'mock@test.local';
+    return;
+  }
+
   try {
     // Intentar primero configuración desde DB
     const dbCfg = await obtenerConfigParaMailer();
@@ -120,7 +161,12 @@ export async function recargarTransporter() {
 export function getTransporter() {
   if (!currentTransporter) {
     // Fallback de emergencia
-    currentTransporter = buildTransporter({});
+    if (isEmailMockEnabled()) {
+      // reinicializa mock si se perdió
+      initializeMailer();
+    } else {
+      currentTransporter = buildTransporter({});
+    }
   }
   return currentTransporter;
 }
@@ -133,7 +179,7 @@ export function getFromAddress() {
 }
 
 /**
- * Devuelve la fuente actual de la configuración ('db' o 'env').
+ * Devuelve la fuente actual de la configuración ('db' | 'env' | 'mock').
  */
 export function getConfigSource() {
   return currentConfigSource;
@@ -141,11 +187,11 @@ export function getConfigSource() {
 
 /**
  * Función genérica para enviar cualquier correo.
- * Usa el transporter actual (puede provenir de DB o .env).
+ * Usa el transporter actual (puede provenir de DB, .env o mock de test).
  */
 export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text, attachments }) => {
   const transporter = getTransporter();
-  const from = getFromAddress();
+  const from = getFromAddress() || 'mock@test.local';
 
   try {
     const mailOptions = {
@@ -153,7 +199,7 @@ export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text, 
       to,
       subject,
       html,
-      text: text || undefined
+      text: text || undefined,
     };
 
     if (cc) mailOptions.cc = cc;
@@ -162,7 +208,9 @@ export const enviarCorreo = async ({ to, cc, bcc, replyTo, subject, html, text, 
     if (attachments?.length) mailOptions.attachments = attachments;
 
     const info = await transporter.sendMail(mailOptions);
-    console.log(`📧 Correo enviado a ${to} | MessageId: ${info.messageId} (fuente:${currentConfigSource})`);
+    if (!isEmailMockEnabled()) {
+      console.log(`📧 Correo enviado a ${to} | MessageId: ${info.messageId} (fuente:${currentConfigSource})`);
+    }
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error(`❌ Error enviando correo a ${to}:`, error.message);
@@ -180,7 +228,7 @@ export const enviarCorreoCotizacion = async (correoDestino, idCotizacion) => {
         <h2 style="color: #0078d4;">Notificación de Cotización</h2>
         <p>Se ha registrado la cotización <strong>#${idCotizacion}</strong>.</p>
       </div>
-    `
+    `,
   });
 };
 

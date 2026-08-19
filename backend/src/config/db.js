@@ -15,19 +15,25 @@ const pool = createPool({
   timezone: '+00:00',
 });
 
-// Verificar conexión al iniciar
-pool.getConnection()
-  .then(conn => {
-    console.log('✔  Conectado a MySQL:', process.env.DB_NAME);
-    conn.release();
-  })
-  .catch(err => {
-    console.error('✘  Error al conectar a MySQL:', err.message);
-    console.error('   Host:', process.env.DB_HOST || 'localhost');
-    console.error('   BD:  ', process.env.DB_NAME || 'ordenes_compra');
-    console.error('   .env esperado en:', projectRoot);
-    console.error('   Revisa DB_HOST, DB_USER, DB_PASSWORD y DB_NAME en .env');
-    process.exit(1);
-  });
+const skipEagerCheck =
+  process.env.SKIP_DB_EAGER_CHECK === '1'
+  || process.env.NODE_ENV === 'test';
+
+// Verificar conexión al iniciar (omitido en tests unitarios)
+if (!skipEagerCheck) {
+  pool.getConnection()
+    .then(conn => {
+      console.log('✔  Conectado a MySQL:', process.env.DB_NAME);
+      conn.release();
+    })
+    .catch(err => {
+      console.error('✘  Error al conectar a MySQL:', err.message);
+      console.error('   Host:', process.env.DB_HOST || 'localhost');
+      console.error('   BD:  ', process.env.DB_NAME || 'ordenes_compra');
+      console.error('   .env esperado en:', projectRoot);
+      console.error('   Revisa DB_HOST, DB_USER, DB_PASSWORD y DB_NAME en .env');
+      process.exit(1);
+    });
+}
 
 export default pool;

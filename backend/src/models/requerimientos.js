@@ -4,6 +4,7 @@ import {
   aplicarVistaAreaDepto,
 } from '../config/departamentosStore.js';
 import { obtenerSiguienteConsecutivo } from '../utils/consecutivos.js';
+import { puedeTransicionReq } from '../domain/reqEstados.js';
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
 
@@ -498,23 +499,8 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
 
 /**
  * Cambiar el estado de un requerimiento y registrar en historial.
- *
- * Flujo:
- *   borrador → en_revision (solicitante envía)
- *   en_revision → recibido (Compras acusa recibo) | rechazado
- *   recibido → aprobado | incompleto | rechazado | en_revision
- *   Tras generar OC el REQ queda cerrado; cancelar se hace sobre la OC.
+ * Máquina de estados: ver domain/reqEstados.js
  */
-const TRANSICIONES = {
-  borrador:    ['en_revision'],
-  en_revision: ['recibido', 'rechazado'],
-  recibido:    ['aprobado', 'incompleto', 'rechazado', 'en_revision'],
-  incompleto:  ['en_revision', 'rechazado'],
-  aprobado:    ['cerrado', 'rechazado', 'recibido', 'en_revision'],
-  rechazado:   [],
-  cerrado:     [],
-};
-
 async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
   const conn = await pool.getConnection();
   try {
@@ -527,8 +513,7 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
 
     if (!req) throw { status: 404, mensaje: 'Requerimiento no encontrado' };
 
-    const permitidos = TRANSICIONES[req.estado] || [];
-    if (!permitidos.includes(nuevoEstado)) {
+    if (!puedeTransicionReq(req.estado, nuevoEstado)) {
       throw {
         status: 422,
         mensaje: `No se puede pasar de '${req.estado}' a '${nuevoEstado}'`,

@@ -5,6 +5,7 @@ import { validarMismoProveedorCatalogo, calcularRequiereCotizacion } from '../ut
 import { parseExcelRequerimientos, generarExcelRequerimientos } from '../utils/excelRequerimientos.js';
 import { importarBaseRequerimientos } from '../utils/importBaseReq.js';
 import { notificarComprasReqEnRevision } from '../utils/emailService.js';
+import { puedeCambiarEstadoRequerimiento } from '../domain/reqEstados.js';
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 
@@ -13,28 +14,6 @@ async function validarAreaDeptoReq(area, departamento) {
     return { ok: false, mensaje: 'Área y departamento son requeridos' };
   }
   return validarAreaDepartamento(area, departamento);
-}
-
-/** Transiciones permitidas por rol (admin puede todas las del modelo). */
-const TRANSICIONES_POR_ROL = {
-  solicitante: {
-    borrador: ['en_revision'],
-    incompleto: ['en_revision'],
-  },
-  compras: {
-    // Compras: acusa recibo (recibido), decide y puede regresar/cancelar pre-OC
-    borrador: ['en_revision'],
-    incompleto: ['en_revision', 'rechazado'],
-    en_revision: ['recibido', 'rechazado'],
-    recibido: ['aprobado', 'incompleto', 'rechazado', 'en_revision'],
-    aprobado: ['cerrado', 'rechazado', 'recibido', 'en_revision'],
-  },
-};
-
-function puedeCambiarEstadoRequerimiento(rol, estadoActual, estadoNuevo) {
-  if (rol === 'admin') return true;
-  const permitidas = TRANSICIONES_POR_ROL[rol]?.[estadoActual] || [];
-  return permitidas.includes(estadoNuevo);
 }
 
 // ─── GET /requerimientos ──────────────────────────────────────────────────────

@@ -14,6 +14,13 @@ backend/uploads/items-referencia/*
 !backend/uploads/cotizaciones/.gitkeep
 !backend/uploads/referencias/.gitkeep
 !backend/uploads/items-referencia/.gitkeep
+# Tests
+backend/tests/.env.test
+backend/tests/.tmp/
+backend/coverage/
+backend/playwright-report/
+backend/test-results/
+backend/blob-report/
 # Material de apoyo / cliente (no desplegar)
 docs-generados/*.pdf
 Gmail*.pdf

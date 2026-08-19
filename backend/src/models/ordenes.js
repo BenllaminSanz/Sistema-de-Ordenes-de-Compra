@@ -8,6 +8,7 @@ import {
 import { validarCierreOrden } from '../utils/ocCierre.js';
 import { calcularTotalesCatalogoRequerimiento } from '../utils/catalogoItems.js';
 import { siguienteConsecutivoNumerico } from '../utils/consecutivos.js';
+import { puedeTransicionOc } from '../domain/ocEstados.js';
 import {
   construirIndiceAreasDeptos,
   aplicarVistaAreaDepto,
@@ -421,19 +422,8 @@ async function crear(requerimiento_id, cotizacion_id, autorizado_por, notas = nu
 }
 
 /**
- * Máquina de estados de OC (compras/admin).
- * Incluye avance del flujo, cancelación y regreso a estados anteriores
- * mientras la OC no esté cerrada/cancelada.
+ * Máquina de estados de OC: ver domain/ocEstados.js
  */
-const TRANSICIONES_OC = {
-  generada:    ['distribuida', 'cancelada'],
-  distribuida: ['en_proceso', 'cancelada', 'generada'],
-  en_proceso:  ['cerrada', 'cancelada', 'distribuida'],
-  recibida:    ['cerrada', 'en_proceso'],
-  cerrada:     [],
-  cancelada:   [],
-};
-
 async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
   const conn = await pool.getConnection();
   try {
@@ -444,8 +434,7 @@ async function cambiarEstado(id, nuevoEstado, usuarioId, notas = null) {
     );
     if (!oc) throw { status: 404, mensaje: 'Orden de compra no encontrada' };
 
-    const permitidos = TRANSICIONES_OC[oc.estado] || [];
-    if (!permitidos.includes(nuevoEstado)) {
+    if (!puedeTransicionOc(oc.estado, nuevoEstado)) {
       throw { status: 422, mensaje: `No se puede pasar de '${oc.estado}' a '${nuevoEstado}'` };
     }
 
