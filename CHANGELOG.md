@@ -7,6 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Añadido
+- Suite de pruebas del backend: unitarias, integración (MySQL `_test`) y smoke E2E Playwright
+- CI: `test:ci` ejecuta unitarias; E2E opcional (manual / nightly)
+
 ## [1.8.0] — 2026-08-19
 
 Ajustes pedidos por operación: notas en REQ, correcciones de cotización/fechas/catálogo, reportes por periodo y control de correos.

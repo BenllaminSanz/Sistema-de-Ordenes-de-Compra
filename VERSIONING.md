@@ -83,10 +83,11 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 
 | Comando | Cuándo | Requiere |
 |---------|--------|----------|
-| `npm run test:ci` | Siempre (local y GitHub Actions) | Solo Node + archivos del repo |
-| `npm test` | Smoke local | Node |
+| `npm run test:ci` / `test:unit` | Siempre (local y GitHub Actions) | Solo Node + archivos del repo |
+| `npm run test:integration` | Local / CI con MySQL | BD `*_test` |
+| `npm run test:e2e` | Local o workflow `e2e.yml` (manual/nightly) | BD `*_test` + Chromium |
 
-El workflow [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) ejecuta `test:ci` en cada push/PR a `main`.
+El workflow [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) ejecuta `test:ci` (unitarias) en cada push/PR a `main`.
 
 La versión en pantalla (sidebar / login) y en `GET /api/health` sale de `backend/package.json`. Si el footer muestra otra versión que el tag, el servidor no se actualizó o hay un deploy incompleto.
 

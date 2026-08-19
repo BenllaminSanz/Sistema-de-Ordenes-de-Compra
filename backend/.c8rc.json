@@ -1,0 +1,15 @@
+{
+  "include": [
+    "src/domain/**",
+    "src/utils/fechas.js",
+    "src/utils/ocCierre.js",
+    "src/config/cryptoHelper.js",
+    "src/validations/schemas.js"
+  ],
+  "reporter": ["text", "lcov"],
+  "check-coverage": true,
+  "lines": 70,
+  "functions": 65,
+  "branches": 55,
+  "statements": 70
+}

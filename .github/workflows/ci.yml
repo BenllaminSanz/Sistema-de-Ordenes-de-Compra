@@ -1,7 +1,5 @@
-# CI — se ejecuta en cada push y pull request a main
-# Por qué: detectar roturas de sintaxis/versión/archivos clave antes de desplegar.
-# Qué NO hace: las pruebas de flujo (npm test) requieren MySQL + servidor + credenciales;
-#              esas se corren en local o en un entorno con BD de prueba.
+# CI — unitarias en cada push/PR a main (sin MySQL).
+# Integración y E2E se corren en local o en el workflow e2e.yml (manual / nightly).
 name: CI
 
 on:
