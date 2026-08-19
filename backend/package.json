@@ -1,6 +1,6 @@
 {
   "name": "sistema-de-ordenes-de-compra",
-  "version": "1.7.5",
+  "version": "1.8.0",
   "description": "Sistema de Órdenes de Compra — API y frontend",
   "main": "server.js",
   "scripts": {

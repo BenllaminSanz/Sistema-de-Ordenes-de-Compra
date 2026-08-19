@@ -1,10 +1,17 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.7.5** — Agosto 2026
+**Versión 1.8.0** — Agosto 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.7.5.md](./DESPLIEGUE-v1.7.5.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.8.0.md](./DESPLIEGUE-v1.8.0.md)
+
+## Novedades v1.8.0
+
+- Notas/Detalles editables en el REQ y corrección de proveedor/moneda post-aprobación (sin OC)
+- Reportes Excel por año, mes, rango o completo
+- Configuración SMTP: URL pública de correos y quién recibe avisos de REQ en revisión
+- Correcciones: fecha de reporte (−1 día), export de catálogo por proveedor
 
 ## Novedades v1.7.5
 
@@ -105,7 +112,7 @@ Sistema de Ordenes de Compra/
 ├── frontend/                # HTML + JS + CSS
 ├── docs-generados/          # PDFs / material de apoyo (no va al deploy)
 ├── empaquetar-deploy.ps1
-├── DESPLIEGUE-v1.7.5.md
+├── DESPLIEGUE-v1.8.0.md
 ├── CHANGELOG.md
 ├── VERSIONING.md
 ├── RECARGAR-BASE-GRAL-SERVIDOR.md
@@ -189,7 +196,7 @@ flowchart TD
 
 ## Actualizar en producción
 
-Guía paso a paso: **[DESPLIEGUE-v1.7.5.md](./DESPLIEGUE-v1.7.5.md)**
+Guía paso a paso: **[DESPLIEGUE-v1.8.0.md](./DESPLIEGUE-v1.8.0.md)**
 
 Resumen:
 
@@ -198,9 +205,10 @@ Resumen:
 3. Descomprimir en el servidor conservando `.env` y `backend/uploads/`
 4. `cd backend && npm install --omit=dev`
 5. Reiniciar Node/PM2
-6. Verificar `GET /api/health` → version `1.7.5`
+6. Verificar `GET /api/health` → version `1.8.0`
+7. Configuración SMTP: URL pública del servidor (no localhost) y roles de aviso
 
-> v1.7.5 no agrega migraciones nuevas. Las de v1.7.0 (rol `compras` + estado `recibido`) siguen aplicándose al arranque.
+> v1.8.0 crea al arranque la tabla `configuracion_app`. No se requiere SQL manual.
 
 ## Notas de producción
 

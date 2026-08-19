@@ -7,9 +7,27 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-08-19
+
+Ajustes pedidos por operación: notas en REQ, correcciones de cotización/fechas/catálogo, reportes por periodo y control de correos.
+
+### Añadido
+- Notas/Detalles editables en el detalle del REQ (Compras/Admin; visibles para el solicitante)
+- Export de reportes por **mes** o **rango de fechas** (además de año / completo)
+- Configuración SMTP: URL pública de correos, interruptor de avisos de REQ en revisión, roles destinatarios (Compras y/o Admin) y lista de quién recibe el aviso
+
 ### Cambiado
-- Extraídas reglas de dominio a `src/domain/` (roles, estados REQ/OC)
-- Arranque separado: `server.js` + fábrica `createApp()`; `app.js` queda como entry de compatibilidad
+- Cotización: se puede corregir proveedor y moneda aunque esté seleccionada (si aún no hay OC)
+
+### Corregido
+- Fechas de reporte un día atrás (zona horaria al formatear DATE)
+- Export de catálogo vacío al filtrar por proveedor (nombre / id)
+- Enlaces de correo ya no caen en `localhost:3000` si se configura la URL pública
+
+### Notas de despliegue
+- Migración al arranque: tabla `configuracion_app` (URL pública + notificaciones)
+- Tras desplegar: Configuración SMTP → fijar URL pública del servidor; marcar solo Compras si no debe avisarse a Admin
+- Verificar: `GET /api/health` → `"version":"1.8.0"` y `frontend_url`
 
 ## [1.7.5] — 2026-08-07
 
