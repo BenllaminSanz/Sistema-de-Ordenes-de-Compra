@@ -77,6 +77,17 @@ describeIntegration('Notificaciones config (URL, roles, on/off)', () => {
     assert.equal(health.body.frontend_url, 'https://oc.empresa.test');
   });
 
+  it('admin puede enviar reporte diario (mock, no a solicitantes)', async () => {
+    const res = await agentFor('admin').post('/api/notificaciones/reporte-diario');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.success, true);
+    const { getSentMails } = await import('../helpers/mail.js');
+    const mails = getSentMails();
+    assert.ok(mails.some((m) => /Resumen diario/i.test(m.subject || '')));
+    const blob = JSON.stringify(mails).toLowerCase();
+    assert.ok(!blob.includes('sol1@test.local'), 'el solicitante no debe recibir el reporte');
+  });
+
   it('rechaza URL pública inválida', async () => {
     const res = await agentFor('admin')
       .put('/api/config/notificaciones')

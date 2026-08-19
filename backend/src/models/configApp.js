@@ -68,6 +68,8 @@ const DEFAULTS = {
   notif_req_revision: true,
   email_notif_compras: '',
   notif_roles: ['compras', 'admin'],
+  reporte_diario: true,
+  reporte_diario_ultimo: null,
   updated_at: null,
 };
 
@@ -75,7 +77,8 @@ export async function obtenerAjustesCorreo() {
   if (cache) return cache;
   try {
     const [[row]] = await pool.query(
-      `SELECT frontend_url, notif_req_revision, email_notif_compras, notif_roles, updated_at
+      `SELECT frontend_url, notif_req_revision, email_notif_compras, notif_roles,
+              reporte_diario, reporte_diario_ultimo, updated_at
        FROM configuracion_app
        WHERE id = 1
        LIMIT 1`
@@ -85,6 +88,10 @@ export async function obtenerAjustesCorreo() {
       notif_req_revision: row ? Number(row.notif_req_revision) !== 0 : true,
       email_notif_compras: row?.email_notif_compras || '',
       notif_roles: parseRolesNotif(row?.notif_roles),
+      reporte_diario: row ? Number(row.reporte_diario) !== 0 : true,
+      reporte_diario_ultimo: row?.reporte_diario_ultimo
+        ? String(row.reporte_diario_ultimo).slice(0, 10)
+        : null,
       updated_at: row?.updated_at || null,
     };
   } catch (err) {
@@ -111,6 +118,9 @@ export async function guardarAjustesCorreo(datos = {}, updatedById = null) {
   const notif_roles = datos.notif_roles !== undefined
     ? parseRolesNotif(datos.notif_roles)
     : (actual.notif_roles || DEFAULTS.notif_roles);
+  const reporte_diario = datos.reporte_diario !== undefined
+    ? !!datos.reporte_diario
+    : (actual.reporte_diario !== false);
 
   if (datos.frontend_url !== undefined && datos.frontend_url && !frontend_url) {
     throw Object.assign(new Error('La URL pública debe empezar con http:// o https://'), { status: 400 });
@@ -123,19 +133,21 @@ export async function guardarAjustesCorreo(datos = {}, updatedById = null) {
 
   await pool.query(
     `INSERT INTO configuracion_app
-       (id, frontend_url, notif_req_revision, email_notif_compras, notif_roles, updated_by)
-     VALUES (1, ?, ?, ?, ?, ?)
+       (id, frontend_url, notif_req_revision, email_notif_compras, notif_roles, reporte_diario, updated_by)
+     VALUES (1, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        frontend_url = VALUES(frontend_url),
        notif_req_revision = VALUES(notif_req_revision),
        email_notif_compras = VALUES(email_notif_compras),
        notif_roles = VALUES(notif_roles),
+       reporte_diario = VALUES(reporte_diario),
        updated_by = VALUES(updated_by)`,
     [
       frontend_url || null,
       notif_req_revision ? 1 : 0,
       email_notif_compras || null,
       serializarRolesNotif(notif_roles),
+      reporte_diario ? 1 : 0,
       updatedBy,
     ]
   );
@@ -194,6 +206,27 @@ export async function listarDestinatariosNotif(ajustes) {
   }
 
   return destinos;
+}
+
+export function fechaHoyMexico() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+export async function marcarReporteDiarioEnviado(dia = fechaHoyMexico()) {
+  const ymd = String(dia).slice(0, 10);
+  await pool.query(
+    `INSERT INTO configuracion_app (id, reporte_diario_ultimo)
+     VALUES (1, ?)
+     ON DUPLICATE KEY UPDATE reporte_diario_ultimo = VALUES(reporte_diario_ultimo)`,
+    [ymd]
+  );
+  if (cache) cache.reporte_diario_ultimo = ymd;
+  return ymd;
 }
 
 export function urlPublicaDesdeRequest(req) {

@@ -28,6 +28,9 @@ runDbMigrations()
       } else {
         console.log(`URL pública de correos: ${publicUrl}`);
       }
+      import('./src/utils/emailService.js')
+        .then((m) => m.iniciarSchedulerReporteDiario())
+        .catch((err) => console.warn('[Email] No se inició el reporte diario:', err.message));
     });
   })
   .catch((err) => {

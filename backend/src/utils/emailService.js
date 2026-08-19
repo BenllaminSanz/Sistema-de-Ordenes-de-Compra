@@ -427,3 +427,141 @@ Bandeja: ${linkBandeja}
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Resumen diario a Compras (no se envía a solicitantes).
+ * Un envío por día (America/Mexico_City) salvo forzar.
+ */
+export async function enviarReporteDiarioCompras({ forzar = false } = {}) {
+  const {
+    listarDestinatariosNotif,
+    fechaHoyMexico,
+    marcarReporteDiarioEnviado,
+  } = await import('../models/configApp.js');
+  const ajustes = await obtenerAjustesCorreo();
+  if (!ajustes.reporte_diario) {
+    return { success: false, skipped: true, reason: 'reporte_diario_off' };
+  }
+  const hoy = fechaHoyMexico();
+  const ultimo = ajustes.reporte_diario_ultimo
+    ? String(ajustes.reporte_diario_ultimo).slice(0, 10)
+    : '';
+  if (!forzar && ultimo === hoy) {
+    return { success: true, skipped: true, reason: 'ya_enviado', dia: hoy };
+  }
+
+  const lista = await listarDestinatariosNotif(ajustes);
+  const destinos = [...new Set(lista.map((d) => d.email))];
+  if (!destinos.length) {
+    return { success: false, reason: 'sin_destinatarios' };
+  }
+
+  const pool = (await import('../config/db.js')).default;
+  const [[{ por_recibir }]] = await pool.query(
+    `SELECT COUNT(*) AS por_recibir FROM requerimientos WHERE estado = 'en_revision'`
+  );
+  const [[{ en_proceso }]] = await pool.query(
+    `SELECT COUNT(*) AS en_proceso FROM requerimientos WHERE estado = 'recibido'`
+  );
+  const [[{ incompletos }]] = await pool.query(
+    `SELECT COUNT(*) AS incompletos FROM requerimientos WHERE estado = 'incompleto'`
+  );
+  const [[{ listos_oc }]] = await pool.query(
+    `SELECT COUNT(*) AS listos_oc FROM requerimientos
+     WHERE estado = 'aprobado' AND orden_compra_id IS NULL`
+  );
+  const [viejos] = await pool.query(
+    `SELECT r.consecutivo, r.tipo, r.estado, u.nombre AS solicitante,
+            DATEDIFF(NOW(), r.created_at) AS dias
+     FROM requerimientos r
+     JOIN usuarios u ON u.id = r.solicitante_id
+     WHERE r.estado IN ('en_revision', 'recibido', 'incompleto', 'aprobado')
+       AND (r.estado <> 'aprobado' OR r.orden_compra_id IS NULL)
+     ORDER BY r.created_at ASC
+     LIMIT 8`
+  );
+
+  const baseUrl = frontendUrlEfectiva(ajustes);
+  const linkBandeja = `${baseUrl}/dashboard.html#bandeja`;
+  const filas = (viejos || []).map((r) =>
+    `<tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.consecutivo || '—'}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.tipo || ''}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.estado}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.solicitante || ''}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">${r.dias}d</td>
+    </tr>`
+  ).join('');
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:24px;">
+      <div style="background:white;border-radius:8px;padding:24px;">
+        ${buildEmailBrandingHtml()}
+        <h2 style="color:#1e40af;margin:0 0 8px;font-size:18px;">Resumen diario de Compras</h2>
+        <p style="color:#64748b;font-size:13px;margin:0 0 16px;">${hoy} · bandeja de requerimientos</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Por recibir</td><td style="text-align:right;font-weight:700;">${Number(por_recibir) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">En proceso (recibidos)</td><td style="text-align:right;font-weight:700;">${Number(en_proceso) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Incompletos</td><td style="text-align:right;font-weight:700;">${Number(incompletos) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Listos para OC</td><td style="text-align:right;font-weight:700;">${Number(listos_oc) || 0}</td></tr>
+        </table>
+        ${filas ? `
+        <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 8px;">Más antiguos (FIFO)</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#f1f5f9;text-align:left;">
+            <th style="padding:6px 8px;">N°</th><th style="padding:6px 8px;">Tipo</th>
+            <th style="padding:6px 8px;">Estado</th><th style="padding:6px 8px;">Solicitante</th>
+            <th style="padding:6px 8px;text-align:right;">Días</th>
+          </tr>
+          ${filas}
+        </table>` : '<p style="color:#64748b;font-size:14px;">No hay requerimientos pendientes.</p>'}
+        <p style="text-align:center;margin:22px 0 0;">
+          <a href="${linkBandeja}" style="background:#185FA5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;display:inline-block;">Abrir bandeja</a>
+        </p>
+      </div>
+    </div>`;
+
+  const text = `Resumen diario Compras ${hoy}
+Por recibir: ${Number(por_recibir) || 0}
+En proceso: ${Number(en_proceso) || 0}
+Incompletos: ${Number(incompletos) || 0}
+Listos OC: ${Number(listos_oc) || 0}
+Bandeja: ${linkBandeja}`;
+
+  const result = await enviarCorreo({
+    to: destinos[0],
+    cc: destinos.length > 1 ? destinos.slice(1).join(',') : undefined,
+    subject: `Resumen diario Compras · ${hoy}`,
+    html,
+    text,
+    attachments: getEmailBrandingAttachments(),
+  });
+
+  if (result?.success) {
+    await marcarReporteDiarioEnviado(hoy);
+  }
+  console.log(`[Email] Reporte diario Compras ${hoy} → ${destinos.join(', ')} success=${!!result?.success}`);
+  return { ...result, dia: hoy, destinatarios: destinos.length };
+}
+
+export function iniciarSchedulerReporteDiario() {
+  const TICK_MS = 15 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const hora = Number(
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Mexico_City',
+          hour: 'numeric',
+          hour12: false,
+        }).format(new Date())
+      );
+      if (hora < 7) return;
+      const r = await enviarReporteDiarioCompras({ forzar: false });
+      if (r?.skipped) return;
+    } catch (err) {
+      console.warn('[Email] Scheduler reporte diario:', err.message);
+    }
+  };
+  setInterval(tick, TICK_MS);
+  setTimeout(tick, 45_000);
+}

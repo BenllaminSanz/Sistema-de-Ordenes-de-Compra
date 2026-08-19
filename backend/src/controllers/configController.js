@@ -33,6 +33,7 @@ async function bloqueNotificaciones(req) {
     notif_req_revision: !!ajustes.notif_req_revision,
     email_notif_compras: ajustes.email_notif_compras || '',
     notif_roles: Array.isArray(ajustes.notif_roles) ? ajustes.notif_roles : ['compras', 'admin'],
+    reporte_diario: ajustes.reporte_diario !== false,
     destinatarios,
   };
 }
@@ -71,6 +72,7 @@ export async function updateNotificaciones(req, res) {
       notif_req_revision: body.notif_req_revision,
       email_notif_compras: body.email_notif_compras,
       notif_roles: body.notif_roles,
+      reporte_diario: body.reporte_diario,
     }, req.usuario?.id || null);
 
     res.json({

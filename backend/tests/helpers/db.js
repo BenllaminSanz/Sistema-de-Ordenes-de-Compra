@@ -111,13 +111,15 @@ export async function resetFlowTables() {
   await conn.query('UPDATE consecutivos_control SET ultimo_numero = 0');
   try {
     await conn.query(
-      `INSERT INTO configuracion_app (id, frontend_url, notif_req_revision, email_notif_compras, notif_roles)
-       VALUES (1, NULL, 1, NULL, 'compras,admin')
+      `INSERT INTO configuracion_app (id, frontend_url, notif_req_revision, email_notif_compras, notif_roles, reporte_diario, reporte_diario_ultimo)
+       VALUES (1, NULL, 1, NULL, 'compras,admin', 1, NULL)
        ON DUPLICATE KEY UPDATE
          frontend_url = NULL,
          notif_req_revision = 1,
          email_notif_compras = NULL,
-         notif_roles = 'compras,admin'`
+         notif_roles = 'compras,admin',
+         reporte_diario = 1,
+         reporte_diario_ultimo = NULL`
     );
   } catch (_) { /* tabla puede no existir en esquemas viejos */ }
   await conn.query('SET FOREIGN_KEY_CHECKS = 1');

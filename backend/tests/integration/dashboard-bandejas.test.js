@@ -98,6 +98,31 @@ describeIntegration('Dashboard y bandejas', () => {
     assert.ok(Number(pendientes) >= 1);
   });
 
+  it('solicitante ve aviso in-app al marcar incompleto (sin correo a él)', async () => {
+    const created = await createRequerimiento('sol1');
+    await patchEstado('sol1', created.body.id, 'en_revision');
+    await patchEstado('compras', created.body.id, 'recibido');
+    await patchEstado('compras', created.body.id, 'incompleto', 'Falta ficha técnica');
+
+    const res = await agentFor('sol1').get('/api/notificaciones/bandeja');
+    assert.equal(res.status, 200);
+    const avisos = res.body.avisos || [];
+    assert.ok(avisos.some((a) => a.tipo_evento === 'incompleto'));
+    assert.ok(avisos.every((a) => a.requerimiento_id === created.body.id));
+  });
+
+  it('solicitante ve aviso de nota nueva', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const nota = await agentFor('compras')
+      .patch(`/api/requerimientos/${req.id}/notas`)
+      .send({ notas: 'Cotización compartida, pendiente de visto bueno' });
+    assert.equal(nota.status, 200);
+
+    const res = await agentFor('sol1').get('/api/notificaciones/bandeja');
+    const avisos = res.body.avisos || [];
+    assert.ok(avisos.some((a) => a.tipo_evento === 'nota' && /Cotización compartida/.test(a.resumen || '')));
+  });
+
   it('D03 — solicitante sin id válido → stats vacíos (fail-closed)', async () => {
     const token = jwt.sign(
       { nombre: 'Roto', email: 'roto@test.local', rol: 'solicitante' }, // sin id

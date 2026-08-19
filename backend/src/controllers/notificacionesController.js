@@ -180,16 +180,111 @@ async function bandejaSolicitante(res, uid, colaRaw, limite) {
     [uid, limite]
   );
 
+  const avisos = await listarAvisosSolicitante(uid, limite);
+
   return res.json({
     tipo: 'solicitante',
     cola,
     contadores,
-    total: contadores.pendientes,
+    total: avisos.length || contadores.pendientes,
+    pendientes: contadores.pendientes,
     nuevos_hoy: 0,
     items,
+    avisos,
     link_todos: 'requerimientos.html?estado=activos',
     link_dashboard: 'dashboard.html#bandeja',
   });
+}
+
+/**
+ * Novedades in-app para el solicitante (sin correo):
+ * nota de Compras, incompleto, aprobado, OC generada.
+ */
+function clasificarAvisoHistorial(h) {
+  const notas = String(h.notas || '').trim();
+  const mismoEstado = h.estado_anterior && h.estado_anterior === h.estado_nuevo;
+  if (h.estado_nuevo === 'cerrado' && /OC|orden de compra/i.test(notas)) {
+    return {
+      tipo_evento: 'oc_generada',
+      etiqueta: 'OC generada',
+      resumen: notas || 'Se generó una orden de compra de tu requerimiento.',
+    };
+  }
+  if (h.estado_nuevo === 'incompleto' && h.estado_anterior !== 'incompleto') {
+    return {
+      tipo_evento: 'incompleto',
+      etiqueta: 'Incompleto',
+      resumen: notas || 'Compras marcó el requerimiento como incompleto.',
+    };
+  }
+  if (h.estado_nuevo === 'aprobado' && h.estado_anterior !== 'aprobado') {
+    return {
+      tipo_evento: 'aprobado',
+      etiqueta: 'Aprobado',
+      resumen: notas || 'Tu requerimiento fue aprobado.',
+    };
+  }
+  if (mismoEstado && notas) {
+    return {
+      tipo_evento: 'nota',
+      etiqueta: 'Nueva nota',
+      resumen: notas,
+    };
+  }
+  return null;
+}
+
+async function listarAvisosSolicitante(uid, limite) {
+  if (!uid) return [];
+  const [rows] = await pool.query(
+    `SELECT h.id, h.estado_anterior, h.estado_nuevo, h.notas, h.created_at, h.cambiado_por,
+            r.id AS requerimiento_id, r.consecutivo, r.tipo, r.titulo_solicitud, r.estado,
+            u.nombre AS autor_nombre
+     FROM historial_estados h
+     JOIN requerimientos r ON r.id = h.entidad_id AND h.entidad_tipo = 'requerimiento'
+     LEFT JOIN usuarios u ON u.id = h.cambiado_por
+     WHERE r.solicitante_id = ?
+       AND (h.cambiado_por IS NULL OR h.cambiado_por <> ?)
+       AND h.created_at >= DATE_SUB(NOW(), INTERVAL 21 DAY)
+     ORDER BY h.created_at DESC
+     LIMIT 80`,
+    [uid, uid]
+  );
+
+  const avisos = [];
+  for (const h of rows || []) {
+    const ev = clasificarAvisoHistorial(h);
+    if (!ev) continue;
+    avisos.push({
+      id: `aviso-${h.id}`,
+      historial_id: h.id,
+      requerimiento_id: h.requerimiento_id,
+      consecutivo: h.consecutivo,
+      tipo: h.tipo,
+      titulo_solicitud: h.titulo_solicitud,
+      estado: h.estado,
+      created_at: h.created_at,
+      autor_nombre: h.autor_nombre,
+      ...ev,
+    });
+    if (avisos.length >= limite) break;
+  }
+  return avisos;
+}
+
+export async function dispararReporteDiario(req, res) {
+  try {
+    const rol = String(req.usuario?.rol || '').toLowerCase();
+    if (rol !== 'admin' && rol !== 'compras') {
+      return res.status(403).json({ mensaje: 'Solo Compras/Admin pueden enviar el reporte diario' });
+    }
+    const { enviarReporteDiarioCompras } = await import('../utils/emailService.js');
+    const result = await enviarReporteDiarioCompras({ forzar: true });
+    res.json(result);
+  } catch (err) {
+    logger.error('[notificaciones.reporteDiario]', err);
+    res.status(500).json({ mensaje: err.message || 'Error al enviar el reporte diario' });
+  }
 }
 
 /** PO vacío o NA = sin PO real de DataTextNow */

@@ -441,8 +441,9 @@ window.toggleNotificaciones = function (ev) {
   if (btn) btn.setAttribute('aria-expanded', 'true');
   cargarNotificaciones(true);
   // Marcar como vistos los que se muestran
-  if (_notifData?.items?.length) {
-    markNotifSeen(_notifData.items.map((i) => i.id));
+  const lista = itemsCampana(_notifData);
+  if (lista.length) {
+    markNotifSeen(lista.map((i) => i.id));
     actualizarBadgeNotif(_notifData);
   }
 };
@@ -467,7 +468,7 @@ async function cargarNotificaciones(renderPanel = false) {
       const n = data.contadores?.por_recibir ?? data.total;
       title.textContent = data.tipo === 'compras'
         ? `Bandeja Compras${n != null ? ` · ${n} por recibir` : ''}`
-        : 'Mis pendientes';
+        : 'Novedades de mis REQ';
     }
   } catch (err) {
     if (badge) badge.style.display = 'none';
@@ -477,12 +478,20 @@ async function cargarNotificaciones(renderPanel = false) {
   }
 }
 
+function itemsCampana(data) {
+  if (data?.tipo === 'solicitante' && Array.isArray(data.avisos)) return data.avisos;
+  return data?.items || [];
+}
+
 function actualizarBadgeNotif(data) {
   const badge = document.getElementById('notif-badge');
   if (!badge) return;
-  const total = Number(data?.total) || 0;
+  const lista = itemsCampana(data);
+  const total = data?.tipo === 'solicitante'
+    ? lista.length
+    : (Number(data?.total) || 0);
   const seen = getNotifSeenIds();
-  const nuevos = (data?.items || []).filter((i) => !seen.has(String(i.id))).length;
+  const nuevos = lista.filter((i) => !seen.has(String(i.id))).length;
   // Preferir “nuevos no vistos”; si todos vistos, mostrar total de la bandeja si > 0
   const n = nuevos > 0 ? nuevos : (total > 0 && data?.tipo === 'compras' ? total : nuevos);
   if (n > 0) {
@@ -501,10 +510,10 @@ function actualizarBadgeNotif(data) {
 function renderPanelNotif(data) {
   const body = document.getElementById('notif-panel-body');
   if (!body) return;
-  const items = data.items || [];
+  const items = itemsCampana(data);
   if (!items.length) {
     body.innerHTML = `<p class="text-muted text-sm" style="padding:14px;margin:0;text-align:center">
-      ${data.tipo === 'compras' ? 'No hay requerimientos en revisión' : 'Sin pendientes'}
+      ${data.tipo === 'compras' ? 'No hay requerimientos en revisión' : 'Sin novedades en tus requerimientos'}
     </p>`;
     return;
   }
@@ -512,17 +521,22 @@ function renderPanelNotif(data) {
   const esc = (s) => (typeof UI !== 'undefined' && UI.esc ? UI.esc(s) : String(s || '').replace(/</g, '&lt;'));
   body.innerHTML = items.map((it) => {
     const isNew = !seen.has(String(it.id));
-    const label = it.consecutivo || `REQ #${it.id}`;
-    const sub = [
-      it.solicitante_nombre,
-      it.tipo,
-      it.estado === 'incompleto' ? 'Incompleto'
-        : it.estado === 'recibido' ? 'Recibido'
-        : it.estado === 'en_revision' ? 'Por recibir' : null,
-    ].filter(Boolean).join(' · ');
-    const detalle = (it.titulo_solicitud || '').slice(0, 80);
+    const reqId = it.requerimiento_id || it.id;
+    const label = it.consecutivo || `REQ #${reqId}`;
+    const sub = it.tipo_evento
+      ? [it.etiqueta, it.autor_nombre, it.tipo].filter(Boolean).join(' · ')
+      : [
+        it.solicitante_nombre,
+        it.tipo,
+        it.estado === 'incompleto' ? 'Incompleto'
+          : it.estado === 'recibido' ? 'Recibido'
+          : it.estado === 'en_revision' ? 'Por recibir' : null,
+      ].filter(Boolean).join(' · ');
+    const detalle = it.resumen
+      ? String(it.resumen).slice(0, 120)
+      : (it.titulo_solicitud || '').slice(0, 80);
     return `
-      <a class="notif-item${isNew ? ' notif-item-new' : ''}" href="requerimientos.html?id=${it.id}">
+      <a class="notif-item${isNew ? ' notif-item-new' : ''}" href="requerimientos.html?id=${reqId}">
         <div class="notif-item-top">
           <strong>${esc(label)}</strong>
           ${isNew ? '<span class="notif-dot-new">Nuevo</span>' : ''}

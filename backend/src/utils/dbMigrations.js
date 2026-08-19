@@ -141,12 +141,21 @@ async function ensureConfiguracionAppTable() {
        VALUES (1, 1, 'compras,admin')`
     );
     logger.info('[migrate] Tabla configuracion_app creada');
-    return;
   }
   await addColumnIfMissing(
     'configuracion_app',
     'notif_roles',
     "VARCHAR(80) NOT NULL DEFAULT 'compras,admin' COMMENT 'Roles que reciben aviso de REQ en revisión'"
+  );
+  await addColumnIfMissing(
+    'configuracion_app',
+    'reporte_diario',
+    "TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Enviar resumen diario a Compras'"
+  );
+  await addColumnIfMissing(
+    'configuracion_app',
+    'reporte_diario_ultimo',
+    'DATE NULL COMMENT \'Último día (America/Mexico_City) en que se envió el resumen\''
   );
 }
 

@@ -262,6 +262,8 @@ CREATE TABLE configuracion_app (
   notif_req_revision TINYINT(1) NOT NULL DEFAULT 1,
   email_notif_compras VARCHAR(500) NULL,
   notif_roles VARCHAR(80) NOT NULL DEFAULT 'compras,admin',
+  reporte_diario TINYINT(1) NOT NULL DEFAULT 1,
+  reporte_diario_ultimo DATE NULL,
   updated_by INT UNSIGNED NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

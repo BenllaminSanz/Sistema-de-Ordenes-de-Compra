@@ -10,6 +10,8 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 ### Añadido
 - Suite de pruebas del backend: unitarias, integración (MySQL `_test`) y smoke E2E Playwright
 - CI: `test:ci` ejecuta unitarias; E2E opcional (manual / nightly)
+- Campana del solicitante: novedades in-app (nota de Compras, incompleto, aprobado, OC generada) — sin correo
+- Resumen diario por correo a Compras (7:00 hora México; se puede activar/desactivar en Configuración)
 
 ## [1.8.0] — 2026-08-19
 

@@ -79,6 +79,8 @@ function renderNotificaciones(n) {
   const chkAdmin = document.getElementById('notif-rol-admin');
   if (chkCompras) chkCompras.checked = roles.includes('compras');
   if (chkAdmin) chkAdmin.checked = roles.includes('admin');
+  const chkDiario = document.getElementById('cfg-reporte-diario');
+  if (chkDiario) chkDiario.checked = n.reporte_diario !== false;
 
   const urlHint = document.getElementById('cfg-frontend-url-hint');
   if (urlHint) {
@@ -326,6 +328,18 @@ async function guardarRolesNotif() {
 
 document.getElementById('notif-rol-compras')?.addEventListener('change', guardarRolesNotif);
 document.getElementById('notif-rol-admin')?.addEventListener('change', guardarRolesNotif);
+
+document.getElementById('cfg-reporte-diario')?.addEventListener('change', async (e) => {
+  const on = !!e.target.checked;
+  try {
+    const resp = await Api.put('/config/notificaciones', { reporte_diario: on });
+    renderNotificaciones(resp.notificaciones);
+    Toast.success(on ? 'Reporte diario activado' : 'Reporte diario desactivado');
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo guardar el reporte diario');
+    e.target.checked = !on;
+  }
+});
 
 if (btnGuardarNotif) {
   btnGuardarNotif.addEventListener('click', async () => {
