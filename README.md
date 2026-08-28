@@ -1,17 +1,17 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.8.0** — Agosto 2026
+**Versión 1.9.0** — Agosto 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.8.0.md](./DESPLIEGUE-v1.8.0.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.9.0.md](./DESPLIEGUE-v1.9.0.md)
 
-## Novedades v1.8.0
+## Novedades v1.9.0
 
-- Notas/Detalles editables en el REQ y corrección de proveedor/moneda post-aprobación (sin OC)
-- Reportes Excel por año, mes, rango o completo
-- Configuración SMTP: URL pública de correos y quién recibe avisos de REQ en revisión
-- Correcciones: fecha de reporte (−1 día), export de catálogo por proveedor
+- Dashboard general para todos los roles (consulta de REQ/OC ajenos en solo lectura)
+- Unificación de usuarios duplicados del import (se conserva el nombre corto)
+- Corregir proveedor en la OC sin recotizar
+- Campana in-app al solicitante y resumen diario a Compras
 
 ## Novedades v1.7.5
 
@@ -112,7 +112,7 @@ Sistema de Ordenes de Compra/
 ├── frontend/                # HTML + JS + CSS
 ├── docs-generados/          # PDFs / material de apoyo (no va al deploy)
 ├── empaquetar-deploy.ps1
-├── DESPLIEGUE-v1.8.0.md
+├── DESPLIEGUE-v1.9.0.md
 ├── CHANGELOG.md
 ├── VERSIONING.md
 ├── RECARGAR-BASE-GRAL-SERVIDOR.md
@@ -128,6 +128,7 @@ Sistema de Ordenes de Compra/
 | `npm run dev` / `npm start` (en `backend/`) | Servidor desarrollo / producción |
 | `node backend/scripts/cargar-base-req.mjs` | Import Excel BASE GRAL (`--dry-run` / `--apply`) |
 | `node backend/scripts/vincular-usuarios-import.mjs` | Vincular historial import a usuarios activos (`--apply`) |
+| `node backend/scripts/corregir-nombres-usuarios.mjs` | Fusiona duplicados de import; conserva el nombre corto (`--apply`; también al arrancar) |
 | `npm run test:ci` (en `backend/`) | CI sin BD (GitHub Actions) |
 | `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy |
 
@@ -154,7 +155,7 @@ Los administradores pueden configurar SMTP completo (incluido CC de cotizaciones
 
 | Rol | Acceso principal |
 |-----|------------------|
-| **Solicitante** | Requerimientos propios, catálogo (lectura), OC de sus reqs |
+| **Solicitante** | Dashboard general; consulta de REQ/OC de todos (solo lectura); edita solo los propios; catálogo (lectura) |
 | **Compras** | Flujo completo operativo, proveedores, usuarios (no admin), áreas |
 | **Admin** | Todo lo anterior + configuración SMTP |
 
@@ -193,10 +194,11 @@ flowchart TD
 | `GET /api/areas` | Áreas y departamentos |
 | `PATCH /api/requerimientos/:id/estado` | Cambio de estado (incluye `recibido`) |
 | `PATCH /api/requerimientos/:id/area-departamento` | Corregir área/depto |
+| `PATCH /api/ordenes-compra/:id/proveedor` | Corregir proveedor de la OC |
 
 ## Actualizar en producción
 
-Guía paso a paso: **[DESPLIEGUE-v1.8.0.md](./DESPLIEGUE-v1.8.0.md)**
+Guía paso a paso: **[DESPLIEGUE-v1.9.0.md](./DESPLIEGUE-v1.9.0.md)**
 
 Resumen:
 
@@ -205,10 +207,9 @@ Resumen:
 3. Descomprimir en el servidor conservando `.env` y `backend/uploads/`
 4. `cd backend && npm install --omit=dev`
 5. Reiniciar Node/PM2
-6. Verificar `GET /api/health` → version `1.8.0`
-7. Configuración SMTP: URL pública del servidor (no localhost) y roles de aviso
+6. Verificar `GET /api/health` → version `1.9.0`
 
-> v1.8.0 crea al arranque la tabla `configuracion_app`. No se requiere SQL manual.
+> Al arrancar se unifican usuarios duplicados del import (nombre corto). No se requiere SQL manual.
 
 ## Notas de producción
 

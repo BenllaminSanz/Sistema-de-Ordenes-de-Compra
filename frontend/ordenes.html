@@ -185,6 +185,32 @@
   </div>
 </div>
 
+<!-- ── Modal: Corregir proveedor de la OC ─────────────────────── -->
+<div class="modal-backdrop" id="modal-editar-proveedor-oc">
+  <div class="modal-box" style="max-width:460px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Cambiar proveedor de la OC</h3>
+      <button class="modal-close" onclick="UI.cerrarModal('modal-editar-proveedor-oc')">×</button>
+    </div>
+    <p class="text-muted text-sm" style="margin:0 0 12px;">
+      Corrige el proveedor de esta orden. No se vuelve a cotizar ni se envía RFQ.
+    </p>
+    <div class="form-group">
+      <label class="form-label">Proveedor</label>
+      <input type="text" id="oc-proveedor-busqueda" class="form-control"
+             list="oc-proveedores-list"
+             placeholder="Buscar por código o nombre…"
+             autocomplete="off">
+      <input type="hidden" id="oc-proveedor-id">
+      <datalist id="oc-proveedores-list"></datalist>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="UI.cerrarModal('modal-editar-proveedor-oc')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-guardar-proveedor-oc">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal: Editar ítem de catálogo desde OC ─────────────────── -->
 <div class="modal-backdrop" id="modal-editar-item-proveedor">
   <div class="modal-box" style="max-width:480px;">

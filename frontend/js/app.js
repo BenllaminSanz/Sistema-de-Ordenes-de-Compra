@@ -202,6 +202,27 @@ const UI = {
       .replace(/'/g, '&#39;');
   },
 
+  /**
+   * Filtro de solicitante: oculta placeholders de import y duplicados
+   * inactivos cuyo nombre ya está en una cuenta activa.
+   */
+  usuariosParaFiltro(lista) {
+    const arr = Array.isArray(lista) ? lista : [];
+    const norm = (n) => String(n || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const activo = (u) => u.activo === 1 || u.activo === true;
+    const nombresActivos = new Set(arr.filter(activo).map((u) => norm(u.nombre)));
+    return arr.filter((u) => {
+      if (/@import\.local$/i.test(u.email || '')) return false;
+      if (!activo(u) && nombresActivos.has(norm(u.nombre))) return false;
+      return true;
+    });
+  },
+
   // Badge de estado con color y etiqueta legible
   badge(estado) {
     const labels = {
@@ -576,8 +597,7 @@ function renderSidebar() {
 
   // Menús visibles por rol
   const esCompras = ['compras','admin'].includes(u.rol);
-  // Nota: "Órdenes de Compra" ahora es visible para TODOS (incluyendo solicitantes),
-  // pero el backend limita a los solicitantes para que solo vean las OCs de sus propios requerimientos.
+  // "Órdenes de Compra" es visible para todos; consulta general, edición solo Compras/Admin.
 
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-brand">

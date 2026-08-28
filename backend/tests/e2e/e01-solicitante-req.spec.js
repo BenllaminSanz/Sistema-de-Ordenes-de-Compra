@@ -14,7 +14,7 @@ test.describe('E01 — solicitante crea REQ de catálogo y envía a revisión', 
 
   test('login → crear REQ catálogo → enviar a revisión → logout', async ({ page }) => {
     await login(page, USERS.sol1.email);
-    await expect(page.locator('#dash-titulo')).toContainText(/Mi panel/i);
+    await expect(page.locator('#dash-titulo')).toContainText(/Dashboard/i);
 
     await page.goto('/requerimientos.html');
     await page.getByRole('button', { name: /Nuevo requerimiento/ }).click();

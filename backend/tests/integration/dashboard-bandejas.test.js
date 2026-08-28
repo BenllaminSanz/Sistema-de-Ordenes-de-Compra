@@ -12,20 +12,19 @@ import {
 } from '../helpers/factories.js';
 
 describeIntegration('Dashboard y bandejas', () => {
-  it('D01 — stats solicitante alcance propio (no ve REQ ajenos en conteos)', async () => {
+  it('D01 — stats de solicitante son la vista general', async () => {
     await createRequerimiento('sol1');
     await createRequerimiento('sol2');
     await patchEstado('sol1', (await createRequerimiento('sol1')).body.id, 'en_revision');
 
     const resSol1 = await agentFor('sol1').get('/api/dashboard/stats');
     assert.equal(resSol1.status, 200);
-    assert.equal(resSol1.body.alcance, 'propio');
+    assert.equal(resSol1.body.alcance, 'global');
 
     const resSol2 = await agentFor('sol2').get('/api/dashboard/stats');
     assert.equal(resSol2.status, 200);
-    assert.equal(resSol2.body.alcance, 'propio');
+    assert.equal(resSol2.body.alcance, 'global');
 
-    // Histórico de sol1 debe tener más o igual borradores/en_revision que solo los suyos
     const totalSol1 = (resSol1.body.estados_req_hist || []).reduce(
       (s, r) => s + Number(r.total || 0),
       0
@@ -34,9 +33,7 @@ describeIntegration('Dashboard y bandejas', () => {
       (s, r) => s + Number(r.total || 0),
       0
     );
-    // sol1 creó 2 (+1 a revisión); sol2 creó 1
-    assert.ok(totalSol1 >= 2, `sol1 total=${totalSol1}`);
-    assert.equal(totalSol2, 1, `sol2 total=${totalSol2}`);
+    assert.equal(totalSol1, totalSol2);
 
     const resCompras = await agentFor('compras').get('/api/dashboard/stats');
     assert.equal(resCompras.status, 200);
@@ -45,7 +42,8 @@ describeIntegration('Dashboard y bandejas', () => {
       (s, r) => s + Number(r.total || 0),
       0
     );
-    assert.ok(totalGlobal >= totalSol1 + totalSol2);
+    assert.ok(totalGlobal >= 3);
+    assert.equal(totalSol1, totalGlobal);
   });
 
   it('D02 — bandeja compras: por_recibir cuenta en_revision', async () => {
@@ -73,7 +71,7 @@ describeIntegration('Dashboard y bandejas', () => {
     assert.equal(Number(res.body.contadores.listos_oc), 1);
   });
 
-  it('bandeja solicitante solo ve lo propio', async () => {
+  it('campana del solicitante sigue siendo de sus REQ', async () => {
     const r1 = await createRequerimiento('sol1');
     await patchEstado('sol1', r1.body.id, 'en_revision');
     const r2 = await createRequerimiento('sol2');
@@ -82,20 +80,23 @@ describeIntegration('Dashboard y bandejas', () => {
     const res = await agentFor('sol1').get('/api/notificaciones/bandeja');
     assert.equal(res.status, 200);
     assert.notEqual(res.body.tipo, 'compras');
-    // items solo del solicitante 1 si vienen
-    if (Array.isArray(res.body.items) && res.body.items.length) {
-      assert.ok(
-        res.body.items.every(
-          (i) =>
-            !i.solicitante_nombre
-            || i.solicitante_nombre.includes('Uno')
-            || i.solicitante_id === 3
-        )
-      );
-    }
-    // pendientes propios >= 1
     const pendientes = res.body.contadores?.pendientes ?? res.body.total ?? res.body.pendientes;
     assert.ok(Number(pendientes) >= 1);
+  });
+
+  it('bandeja general del dashboard incluye REQ de otros', async () => {
+    const r1 = await createRequerimiento('sol1');
+    await patchEstado('sol1', r1.body.id, 'en_revision');
+    const r2 = await createRequerimiento('sol2');
+    await patchEstado('sol2', r2.body.id, 'en_revision');
+
+    const res = await agentFor('sol1').get('/api/notificaciones/bandeja?vista=general&cola=por_recibir');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.tipo, 'compras');
+    assert.ok(Number(res.body.contadores.por_recibir) >= 2);
+    const ids = (res.body.items || []).map((i) => i.id);
+    assert.ok(ids.includes(r1.body.id));
+    assert.ok(ids.includes(r2.body.id));
   });
 
   it('solicitante ve aviso in-app al marcar incompleto (sin correo a él)', async () => {
@@ -123,9 +124,9 @@ describeIntegration('Dashboard y bandejas', () => {
     assert.ok(avisos.some((a) => a.tipo_evento === 'nota' && /Cotización compartida/.test(a.resumen || '')));
   });
 
-  it('D03 — solicitante sin id válido → stats vacíos (fail-closed)', async () => {
+  it('D03 — stats globales no dependen del id del JWT', async () => {
     const token = jwt.sign(
-      { nombre: 'Roto', email: 'roto@test.local', rol: 'solicitante' }, // sin id
+      { nombre: 'Roto', email: 'roto@test.local', rol: 'solicitante' },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
@@ -134,9 +135,8 @@ describeIntegration('Dashboard y bandejas', () => {
       .set('Authorization', `Bearer ${token}`);
 
     assert.equal(res.status, 200);
-    assert.equal(res.body.alcance, 'propio');
-    assert.deepEqual(res.body.estados_req, []);
-    assert.ok(res.body.aviso);
+    assert.equal(res.body.alcance, 'global');
+    assert.ok(Array.isArray(res.body.estados_req));
   });
 
   it('bandeja-oc responde para compras', async () => {

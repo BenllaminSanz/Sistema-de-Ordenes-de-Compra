@@ -70,6 +70,7 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 | `v1.7.0` | Rol Compras, acuse `recibido`, bandeja/notificaciones |
 | `v1.7.5` | Bandeja Dashboard REQ/OC, export proveedores, filtros REQ |
 | `v1.8.0` | Notas REQ, reportes por periodo, control de correos, fixes fecha/catálogo |
+| `v1.9.0` | Dashboard general, usuarios duplicados, proveedor en OC |
 
 ## Convención de mensajes de commit (recomendado)
 

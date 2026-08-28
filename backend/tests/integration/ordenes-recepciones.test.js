@@ -9,6 +9,7 @@ import {
   reqAprobadoConCotizacion,
   crearOc,
 } from '../helpers/factories.js';
+import { query } from '../helpers/db.js';
 
 describeIntegration('Órdenes de compra y recepciones', () => {
   it('no genera OC si REQ no está aprobado', async () => {
@@ -110,7 +111,7 @@ describeIntegration('Órdenes de compra y recepciones', () => {
     assert.match(res.body.mensaje || '', /recepci/i);
   });
 
-  it('solicitante solo ve sus OC', async () => {
+  it('solicitante consulta el listado general de OC', async () => {
     const req1 = await reqAprobadoSinCotizacion('sol1');
     await crearOc('compras', { requerimiento_id: req1.id, datatextnow_id: 'PO-S1', fecha_po: '2026-01-01' });
 
@@ -121,14 +122,44 @@ describeIntegration('Órdenes de compra y recepciones', () => {
     assert.equal(res.status, 200);
     const datos = res.body.datos || res.body;
     assert.ok(Array.isArray(datos));
-    assert.ok(datos.every((oc) => oc.solicitante_id === 3 || oc.solicitante_email === 'sol1@test.local'));
+    assert.ok(datos.length >= 2);
   });
 
-  it('solicitante no ve OC ajena por ID', async () => {
+  it('compras puede cambiar el proveedor de una OC con cotización (sin recotizar)', async () => {
+    const { req, cotizacionId } = await reqAprobadoConCotizacion('sol1');
+    const oc = await crearOc('compras', {
+      requerimiento_id: req.id,
+      cotizacion_id: cotizacionId,
+    });
+    assert.equal(oc.status, 201, JSON.stringify(oc.body));
+    assert.equal(Number(oc.body.proveedor_id), 1);
+
+    const res = await agentFor('compras')
+      .patch(`/api/ordenes-compra/${oc.body.id}/proveedor`)
+      .send({ proveedor_id: 2 });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(Number(res.body.proveedor_id), 2);
+    assert.match(String(res.body.proveedor_nombre || ''), /Beta/i);
+
+    const [[cot]] = await query('SELECT proveedor_id FROM cotizaciones WHERE id = ?', [cotizacionId]);
+    assert.equal(Number(cot.proveedor_id), 2);
+  });
+
+  it('solicitante no puede cambiar el proveedor de la OC', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const oc = await crearOc('compras', { requerimiento_id: req.id });
+    const res = await agentFor('sol1')
+      .patch(`/api/ordenes-compra/${oc.body.id}/proveedor`)
+      .send({ proveedor_id: 2 });
+    assert.equal(res.status, 403);
+  });
+
+  it('solicitante puede consultar una OC ajena (solo lectura)', async () => {
     const req2 = await reqAprobadoSinCotizacion('sol2');
     const oc = await crearOc('compras', { requerimiento_id: req2.id });
     const res = await agentFor('sol1').get(`/api/ordenes-compra/${oc.body.id}`);
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.id, oc.body.id);
   });
 
   it('recepción completa y cierre de OC', async () => {

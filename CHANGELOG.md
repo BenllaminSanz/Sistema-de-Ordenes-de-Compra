@@ -7,11 +7,28 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-08-28
+
+Dashboard general para todos, unificación de usuarios duplicados del import y corrección de proveedor en la OC.
+
 ### Añadido
 - Suite de pruebas del backend: unitarias, integración (MySQL `_test`) y smoke E2E Playwright
 - CI: `test:ci` ejecuta unitarias; E2E opcional (manual / nightly)
 - Campana del solicitante: novedades in-app (nota de Compras, incompleto, aprobado, OC generada) — sin correo
 - Resumen diario por correo a Compras (7:00 hora México; se puede activar/desactivar en Configuración)
+- Fusión de usuarios duplicados del import (nombre completo) con la cuenta de login (nombre corto): al arrancar el backend, y script `node backend/scripts/corregir-nombres-usuarios.mjs` (`--apply`). Se conserva el nombre corto.
+
+### Cambiado
+- Filtros de solicitante (REQ/OC): no listan placeholders `@import.local` ni duplicados inactivos con el mismo nombre que una cuenta activa
+- Dashboard general para todos los roles (ya no “Mi panel”). Los solicitantes consultan REQ/OC de otros en solo lectura; editar/cambiar estado sigue siendo del dueño o de Compras
+- Campana del solicitante: sigue mostrando novedades de **sus** REQ
+- OC: Compras/Admin puede corregir el proveedor en el detalle (sin recotizar ni reenviar RFQ); se refleja también en la cotización ligada
+
+### Notas de despliegue
+- Al arrancar: unifica placeholders `@import.local` con la cuenta de login y deja el nombre corto. Sin SQL manual.
+- Conservar `.env` y `backend/uploads/`
+- Verificar: `GET /api/health` → `"version":"1.9.0"`
+- Comprobar: login solicitante ve Dashboard general; detalle OC → lápiz de Proveedor (Compras)
 
 ## [1.8.0] — 2026-08-19
 

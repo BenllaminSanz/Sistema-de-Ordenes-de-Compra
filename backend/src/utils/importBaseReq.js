@@ -112,6 +112,31 @@ const ALIAS_USUARIO_IMPORT = [
     email: 'jose.fonseca@parkdalemills.com',
     nombresSistema: ['jose isai fonseca', 'isai fonseca'],
   },
+  {
+    patrones: ['dulce amaranta velazquez', 'dulce velazquez'],
+    email: 'dulce.velazquez@parkdalemills.com',
+    nombresSistema: ['dulce velazquez', 'dulce amaranta velazquez'],
+  },
+  {
+    patrones: ['jorge alejandro lara velez', 'jorge lara'],
+    email: 'jorge.lara@parkdalemills.com',
+    nombresSistema: ['jorge lara', 'jorge alejandro lara velez'],
+  },
+  {
+    patrones: ['juan manuel camacho herrera', 'juan camacho'],
+    email: 'juan.camacho@parkdalemills.com',
+    nombresSistema: ['juan camacho', 'juan manuel camacho herrera'],
+  },
+  {
+    patrones: ['juan carlos ocampo reyna', 'juan ocampo'],
+    email: 'juan.ocampo@parkdalemills.com',
+    nombresSistema: ['juan ocampo', 'juan carlos ocampo reyna'],
+  },
+  {
+    patrones: ['elda lizbeth linares', 'lisbeth linares', 'lizbeth linares'],
+    email: 'lisbeth.linares@parkdalemills.com',
+    nombresSistema: ['lisbeth linares', 'elda lizbeth linares'],
+  },
 ];
 
 function buscarUsuarioPorAlias(rows, excelNombre) {

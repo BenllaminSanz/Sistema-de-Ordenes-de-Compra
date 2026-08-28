@@ -48,7 +48,6 @@ router.post('/registro',
 
 router.get('/usuarios',
   autenticar,
-  gestionarUsuarios,
   listarUsuarios
 );
 

@@ -76,6 +76,13 @@ pm2 restart oc
 # o el nombre de tu proceso
 ```
 
+Al arrancar se fusionan placeholders de import con la cuenta de login y se
+conserva el nombre corto (`Juan Camacho`, no el largo del Excel). Para ver el plan:
+
+```powershell
+node scripts/corregir-nombres-usuarios.mjs
+```
+
 ## 5) Verificar en la UI
 
 1. Login admin  

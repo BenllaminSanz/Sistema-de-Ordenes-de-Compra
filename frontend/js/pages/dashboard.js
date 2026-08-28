@@ -9,10 +9,10 @@ renderTopbar('Dashboard');
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const HOY   = new Date();
 let anioActual = HOY.getFullYear();
-const esSolicitante = Auth.getUsuario()?.rol === 'solicitante';
+const puedeOperarBandeja = Auth.puedeHacer(['compras', 'admin']);
 
 function tituloDashboard(anio) {
-  return esSolicitante ? `Mi panel ${anio}` : `Dashboard ${anio}`;
+  return `Dashboard ${anio}`;
 }
 
 // ─── Selector de año ──────────────────────────────────────────
@@ -121,7 +121,6 @@ function renderKPIs(s) {
     ocRec ? `${ocRec} recibidas` : null,
   ].filter(Boolean).join(' · ') || 'Sin desglose';
 
-  const mio = s.alcance === 'propio' || esSolicitante;
   // Bandeja: pendientes de acuse (en_revision) e histórico
   let enRevisionHist = enRevision;
   let recibidosHist = recibidos;
@@ -129,16 +128,14 @@ function renderKPIs(s) {
     if (r.estado === 'en_revision') enRevisionHist = +r.total || enRevision;
     if (r.estado === 'recibido') recibidosHist = +r.total || recibidos;
   });
-  const porRecibir = mio ? enRevision : enRevisionHist;
-  const enTrabajo = mio ? recibidos : recibidosHist;
+  const porRecibir = enRevisionHist;
+  const enTrabajo = recibidosHist;
 
   const cards = [
     {
-      label: mio ? 'Mis REQ en revisión' : 'Por recibir (acuse Compras)',
+      label: 'Por recibir (acuse Compras)',
       value: porRecibir.toLocaleString('es-MX'),
-      sub: mio
-        ? 'Enviados a Compras, pendientes de acuse/respuesta'
-        : `${enTrabajo} ya recibidos en proceso · ${enRevision} por acuse en ${s.anio}`,
+      sub: `${enTrabajo} ya recibidos en proceso · ${enRevision} por acuse en ${s.anio}`,
       color: '#c2410c', bg: '#ffedd5',
       icon: `<svg width="16" height="16" fill="none" stroke="#c2410c" stroke-width="2" viewBox="0 0 24 24">
                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
@@ -147,7 +144,7 @@ function renderKPIs(s) {
       highlight: porRecibir > 0,
     },
     {
-      label: mio ? `Mis requerimientos ${s.anio}` : `Requerimientos ${s.anio}`,
+      label: `Requerimientos ${s.anio}`,
       value: totalReqs.toLocaleString('es-MX'),
       sub: `${reqAbiertos} abiertos · ${enRevision} pend. acuse · ${recibidos} recibidos · ${aprobados} aprob.`,
       color: '#185FA5', bg: '#e6f1fb',
@@ -158,7 +155,7 @@ function renderKPIs(s) {
       link: 'requerimientos.html',
     },
     {
-      label: mio ? 'Mis OC activas' : 'OC activas (no concluidas)',
+      label: 'OC activas (no concluidas)',
       value: ocEnVuelo.toLocaleString('es-MX'),
       sub: `${subOcActivas} · ${ocCerradasHist.toLocaleString('es-MX')} cerradas hist. · ${totalOCHist.toLocaleString('es-MX')} OC total`,
       color: '#7c3aed', bg: '#ede9fe',
@@ -169,7 +166,7 @@ function renderKPIs(s) {
       highlight: ocEnVuelo > 0,
     },
     {
-      label: mio ? `Mi gasto MXN ${s.anio}` : `Gasto MXN ${s.anio}`,
+      label: `Gasto MXN ${s.anio}`,
       value: fmt(gastoMXN, 'MXN'),
       sub: subGasto.join(' · ')
         + (ciclo != null && !Number.isNaN(+ciclo) ? ` · ciclo req→PO ${ciclo}d` : ''),
@@ -305,7 +302,7 @@ function renderTopDepartamentos(s) {
 
 // ─── Bandeja de trabajo (Dashboard) ───────────────────────────
 // Si se entra con #bandeja (KPI / campana), abrir cola de acuse
-let _bandejaCola = (!esSolicitante && location.hash === '#bandeja') ? 'por_recibir' : null;
+let _bandejaCola = (location.hash === '#bandeja') ? 'por_recibir' : null;
 let _bandejaData = null;
 
 const COLAS_COMPRAS = [
@@ -315,13 +312,8 @@ const COLAS_COMPRAS = [
   { id: 'listos_oc', label: 'Listos para OC' },
 ];
 
-const COLAS_SOLICITANTE = [
-  { id: 'pendientes', label: 'En curso' },
-  { id: 'incompletos', label: 'Incompletos' },
-];
-
 function tabsBandeja() {
-  return esSolicitante ? COLAS_SOLICITANTE : COLAS_COMPRAS;
+  return COLAS_COMPRAS;
 }
 
 function countCola(contadores, colaId) {
@@ -364,7 +356,7 @@ function accionesBandeja(item) {
   const estado = item.estado;
   const btns = [];
 
-  if (!esSolicitante) {
+  if (puedeOperarBandeja) {
     if (estado === 'en_revision') {
       btns.push(
         `<button type="button" class="btn btn-sm btn-primary" data-bandeja-accion="recibido" data-id="${id}"
@@ -397,11 +389,9 @@ function renderBandejaTabla(data) {
     const msgs = {
       por_recibir: 'No hay requerimientos pendientes de acuse',
       en_proceso: 'No hay requerimientos recibidos en proceso',
-      incompletos: esSolicitante
-        ? 'No tienes requerimientos incompletos'
-        : 'No hay requerimientos incompletos',
+      incompletos: 'No hay requerimientos incompletos',
       listos_oc: 'No hay requerimientos aprobados listos para OC',
-      pendientes: 'No tienes requerimientos en curso',
+      pendientes: 'No hay requerimientos en curso',
     };
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;padding:12px 0;
@@ -414,7 +404,6 @@ function renderBandejaTabla(data) {
     return;
   }
 
-  const colSol = esSolicitante ? '' : '<th>Solicitante</th>';
   el.innerHTML = `
     <div class="table-wrap">
       <table class="table-sm">
@@ -423,7 +412,7 @@ function renderBandejaTabla(data) {
           <th>Tipo</th>
           <th>Estado</th>
           <th>Área / Depto</th>
-          ${colSol}
+          <th>Solicitante</th>
           <th>Espera</th>
           <th style="text-align:right">Acciones</th>
         </tr></thead>
@@ -438,8 +427,8 @@ function renderBandejaTabla(data) {
               <td>${UI.badge(r.estado)}</td>
               <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   title="${UI.esc(areaDepto)}">${UI.esc(areaDepto)}</td>
-              ${esSolicitante ? '' : `<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${UI.esc(r.solicitante_nombre || '')}">${UI.esc(r.solicitante_nombre || '—')}</td>`}
+              <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${UI.esc(r.solicitante_nombre || '')}">${UI.esc(r.solicitante_nombre || '—')}</td>
               <td>${badgeDias(Number(r.dias_espera) || 0)}</td>
               <td>${accionesBandeja(r)}</td>
             </tr>`;
@@ -454,12 +443,10 @@ function actualizarCabeceraBandeja(data) {
   const count = document.getElementById('bandeja-count');
   const link = document.getElementById('bandeja-link-todos');
   if (titulo) {
-    titulo.textContent = esSolicitante ? 'Mis pendientes' : 'Bandeja Compras';
+    titulo.textContent = 'Bandeja Compras';
   }
   const c = data.contadores || {};
-  const totalTrabajo = esSolicitante
-    ? countCola(c, 'pendientes')
-    : (c.por_recibir || 0) + (c.en_proceso || 0) + (c.incompletos || 0) + (c.listos_oc || 0);
+  const totalTrabajo = (c.por_recibir || 0) + (c.en_proceso || 0) + (c.incompletos || 0) + (c.listos_oc || 0);
   if (count) {
     if (totalTrabajo > 0) {
       count.style.display = '';
@@ -470,7 +457,7 @@ function actualizarCabeceraBandeja(data) {
   }
   if (link && data.link_todos) {
     link.href = data.link_todos;
-    link.textContent = esSolicitante ? 'Mis REQ →' : 'Ver en listado →';
+    link.textContent = 'Ver en listado →';
   }
 }
 
@@ -480,7 +467,7 @@ async function cargarBandeja() {
   UI.spinner(el);
   try {
     const cola = _bandejaCola ? `&cola=${encodeURIComponent(_bandejaCola)}` : '';
-    const data = await Api.get(`/notificaciones/bandeja?limite=25${cola}`);
+    const data = await Api.get(`/notificaciones/bandeja?vista=general&limite=25${cola}`);
     _bandejaData = data;
     _bandejaCola = data.cola || _bandejaCola;
     actualizarCabeceraBandeja(data);
@@ -547,7 +534,7 @@ function focusBandejaSiHash() {
   card.classList.add('bandeja-focus');
   setTimeout(() => card.classList.remove('bandeja-focus'), 2200);
   // Si se llega desde KPI "Por recibir", abrir esa cola (sin recargar si ya está)
-  if (!esSolicitante && _bandejaCola !== 'por_recibir') {
+  if (_bandejaCola !== 'por_recibir') {
     _bandejaCola = 'por_recibir';
     cargarBandeja();
   }
@@ -598,7 +585,7 @@ function accionesBandejaOc(item) {
   const estado = item.estado;
   const btns = [];
 
-  if (!esSolicitante) {
+  if (puedeOperarBandeja) {
     if (estado === 'generada') {
       btns.push(
         `<button type="button" class="btn btn-sm btn-primary" data-oc-accion="distribuida" data-id="${id}"
@@ -633,7 +620,7 @@ function renderBandejaOcTabla(data) {
 
   if (!items.length) {
     const msgs = {
-      generada: esSolicitante ? 'No tienes OC generadas pendientes' : 'No hay OC generadas pendientes',
+      generada: 'No hay OC generadas pendientes',
       distribuida: 'No hay OC distribuidas en esta cola',
       en_proceso: 'No hay OC en proceso',
       recibida: 'No hay OC recibidas pendientes de cierre',
@@ -650,7 +637,6 @@ function renderBandejaOcTabla(data) {
     return;
   }
 
-  const colSol = esSolicitante ? '' : '<th>Solicitante</th>';
   el.innerHTML = `
     <div class="table-wrap">
       <table class="table-sm">
@@ -659,7 +645,7 @@ function renderBandejaOcTabla(data) {
           <th>No. OC</th>
           <th>Tipo</th>
           <th>Proveedor</th>
-          ${colSol}
+          <th>Solicitante</th>
           <th>Monto</th>
           <th>Estado</th>
           <th>Espera</th>
@@ -677,8 +663,8 @@ function renderBandejaOcTabla(data) {
               <td>${UI.esc(o.tipo || '—')}</td>
               <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   title="${UI.esc(o.proveedor_nombre || '')}">${prov}</td>
-              ${esSolicitante ? '' : `<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${UI.esc(o.solicitante_nombre || '')}">${UI.esc(o.solicitante_nombre || '—')}</td>`}
+              <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${UI.esc(o.solicitante_nombre || '')}">${UI.esc(o.solicitante_nombre || '—')}</td>
               <td class="fw-600" style="white-space:nowrap">
                 ${o.monto_total != null
                   ? `<span style="color:var(--primary)">${fmt(o.monto_total, o.moneda || 'MXN')}</span>`
@@ -699,7 +685,7 @@ function actualizarCabeceraBandejaOc(data) {
   const count = document.getElementById('oc-activas-count');
   const link = document.getElementById('bandeja-oc-link-todos');
   if (titulo) {
-    titulo.textContent = esSolicitante ? 'Mis OC activas' : 'Bandeja OC';
+    titulo.textContent = 'Bandeja OC';
   }
   const total = Number(data.contadores?.activas) || 0;
   if (count) {
@@ -712,7 +698,7 @@ function actualizarCabeceraBandejaOc(data) {
   }
   if (link) {
     link.href = data.link_todos || 'ordenes.html?estado=activas';
-    link.textContent = esSolicitante ? 'Mis órdenes →' : 'Ver en listado →';
+    link.textContent = 'Ver en listado →';
   }
 }
 
@@ -810,29 +796,6 @@ function inicializarReporteStatus() {
     }
   });
 }
-
-// Ajustes de textos de secciones según rol
-(function ajustarTitulosSolicitante() {
-  if (!esSolicitante) return;
-  const bandejaTit = document.getElementById('bandeja-titulo');
-  const ocTit = document.getElementById('oc-activas-titulo');
-  if (bandejaTit) bandejaTit.textContent = 'Mis pendientes';
-  if (ocTit) ocTit.textContent = 'Mis OC activas';
-  const topProvCard = document.querySelector('#top-proveedores')?.closest('.card')?.querySelector('.card-title');
-  if (topProvCard) {
-    const svg = topProvCard.querySelector('svg');
-    topProvCard.innerHTML = '';
-    if (svg) topProvCard.appendChild(svg);
-    topProvCard.appendChild(document.createTextNode(' Mis proveedores (gasto MXN)'));
-  }
-  const topDeptoCard = document.querySelector('#top-departamentos')?.closest('.card')?.querySelector('.card-title');
-  if (topDeptoCard) {
-    const svg = topDeptoCard.querySelector('svg');
-    topDeptoCard.innerHTML = '';
-    if (svg) topDeptoCard.appendChild(svg);
-    topDeptoCard.appendChild(document.createTextNode(' Mis áreas / deptos'));
-  }
-})();
 
 // ─── Carga principal ──────────────────────────────────────────
 async function cargarDashboard() {

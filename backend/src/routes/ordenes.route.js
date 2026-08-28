@@ -7,6 +7,7 @@ import {
   cambiarEstado,
   actualizarDatatextnow,
   actualizarItemCatalogo,
+  actualizarProveedor,
   actualizarNotas,
 } from '../controllers/ordenesController.js';
 import { autenticar, autorizar } from '../middlewares/authMiddleware.js';
@@ -19,6 +20,7 @@ router.post('/',   autorizar('compras','admin'),       crear);
 router.patch('/:id/estado', autorizar('compras','admin'), cambiarEstado);
 // Actualiza el número de PO / Order code de DataTextNow (se obtiene de los reportes Excel externos)
 router.patch('/:id/datatextnow', autorizar('compras','admin'),   actualizarDatatextnow);
+router.patch('/:id/proveedor', autorizar('compras','admin'), actualizarProveedor);
 // Notas de compras (editables durante todo el ciclo de la OC)
 router.patch('/:id/notas', autorizar('compras','admin'), actualizarNotas);
 router.patch('/:id/items/:catalogoId', autorizar('compras','admin'), actualizarItemCatalogo);

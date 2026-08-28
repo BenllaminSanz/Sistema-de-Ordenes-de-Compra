@@ -6,69 +6,24 @@ import {
 
 /**
  * GET /api/dashboard/stats
- * Queries agregadas del dashboard.
+ * Queries agregadas del dashboard (vista general para todos los roles).
  * ?anio=YYYY filtra métricas de año (default: año actual).
- *
- * Alcance por rol:
- * - admin / compras → global
- * - solicitante → solo sus REQ y OC (vía r.solicitante_id)
  *
  * Notas post-carga histórica:
  * - El import BASE GRAL a veces guardó el depto en `requerimientos.area`
  *   (departamento vacío). La API normaliza con el catálogo al responder.
  * - Ciclo real se calcula con fecha_po / fecha solicitud, no solo created_at (import crea ambos el mismo día).
  */
-function resolverAlcanceDashboard(usuario) {
-  const rol = String(usuario?.rol || '')
-    .trim()
-    .toLowerCase();
-  // id puede venir como number o string del JWT
-  const rawId = usuario?.id ?? usuario?.userId ?? usuario?.usuario_id;
-  const id = rawId != null && rawId !== '' ? Number(rawId) : null;
-  const esSolicitante = rol === 'solicitante';
-  const solicitanteId =
-    esSolicitante && Number.isFinite(id) && id > 0 ? id : null;
-  // Fail-closed: si es solicitante pero no hay id válido, no devolver datos ajenos
-  const forzarVacio = esSolicitante && solicitanteId == null;
-  return { esSolicitante, solicitanteId, forzarVacio, rol };
-}
-
 export async function getStats(req, res, next) {
   try {
     const anio = parseInt(req.query.anio, 10) || new Date().getFullYear();
-    const { esSolicitante, solicitanteId, forzarVacio } = resolverAlcanceDashboard(
-      req.usuario
-    );
-
-    if (forzarVacio) {
-      return res.json({
-        anio,
-        alcance: 'propio',
-        estados_req: [],
-        estados_oc: [],
-        estados_req_hist: [],
-        estados_oc_hist: [],
-        gasto_por_tipo: [],
-        top_proveedores: [],
-        top_departamentos: [],
-        ciclo: null,
-        aging_reqs: [],
-        oc_activas_resumen: [],
-        oc_sin_recibir: [],
-        volumen_mensual: [],
-        req_activos_anio: [],
-        aviso: 'Sesión de solicitante sin id válido; cierra sesión e inicia de nuevo.',
-      });
-    }
 
     // Depto operativo: departamento del formulario o area del Excel histórico
     const deptoExpr = `COALESCE(NULLIF(TRIM(r.departamento), ''), NULLIF(TRIM(r.area), ''))`;
 
-    // Filtros reutilizables (placeholders ? se agregan al array de params)
-    // Usar siempre el id numérico para evitar mismatches JWT string vs INT en MySQL
-    const filtroReqSolo = esSolicitante ? ' AND solicitante_id = ?' : '';
-    const filtroR = esSolicitante ? ' AND r.solicitante_id = ?' : '';
-    const pSol = esSolicitante ? [solicitanteId] : [];
+    const filtroReqSolo = '';
+    const filtroR = '';
+    const pSol = [];
 
     const [
       estadosReqAnio,
@@ -190,7 +145,6 @@ export async function getStats(req, res, next) {
       `, [anio, ...pSol]),
 
       // 7. Aging: pendientes de acuse / recibidos / incompleto / aprobado más antiguos
-      //    IMPORTANTE: filtrar por r.solicitante_id cuando es solicitante
       //    area/departamento crudos; se normalizan con catálogo antes de responder
       pool.query(`
         SELECT r.id, r.consecutivo, r.tipo,
@@ -286,7 +240,7 @@ export async function getStats(req, res, next) {
 
     res.json({
       anio,
-      alcance: esSolicitante ? 'propio' : 'global',
+      alcance: 'global',
       // Por año (para KPIs del selector)
       estados_req: estadosReqAnio[0],
       estados_oc: estadosOCAnio[0],

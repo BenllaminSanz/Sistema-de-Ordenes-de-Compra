@@ -5,6 +5,7 @@ import {
   cambiarEstado as _cambiarEstado,
   actualizarDatatextnow as _actualizarDatatextnow,
   actualizarItemCatalogo as _actualizarItemCatalogo,
+  actualizarProveedor as _actualizarProveedor,
   actualizarNotas as _actualizarNotas,
 } from '../models/ordenes.js';
 import logger from '../utils/logger.js';
@@ -12,15 +13,6 @@ import logger from '../utils/logger.js';
 async function listar(req, res) {
   try {
     const filtros = { ...req.query };
-
-    // Regla de permisos:
-    // - Admin y Compras: pueden ver TODAS las OCs.
-    // - Solicitante: SOLO puede ver las OCs que nacen de SUS requerimientos (usando el filtro por solicitante_id del requerimiento asociado).
-    if (req.usuario.rol === 'solicitante') {
-      // Forzamos el filtro al solicitante actual. Cualquier otro valor que venga en la query se sobrescribe.
-      filtros.solicitante_id = req.usuario.id;
-    }
-
     res.json(await _listar(filtros));
   } catch (err) {
     logger.error('[listar OC]', err);
@@ -32,12 +24,6 @@ async function obtener(req, res) {
   try {
     const oc = await obtenerPorId(req.params.id);
     if (!oc) return res.status(404).json({ mensaje: 'Orden de compra no encontrada' });
-
-    // Los solicitantes solo pueden ver las OCs relacionadas a SUS requerimientos.
-    // (Usamos el solicitante_id del requerimiento al que pertenece la OC)
-    if (req.usuario.rol === 'solicitante' && oc.solicitante_id !== req.usuario.id) {
-      return res.status(403).json({ mensaje: 'No tienes permiso para ver esta orden de compra' });
-    }
 
     res.json(oc);
   } catch (err) {
@@ -144,6 +130,18 @@ async function actualizarItemCatalogo(req, res) {
   }
 }
 
+async function actualizarProveedor(req, res) {
+  try {
+    const { proveedor_id } = req.body || {};
+    await _actualizarProveedor(req.params.id, proveedor_id, req.usuario?.id);
+    res.json(await obtenerPorId(req.params.id));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ mensaje: err.mensaje });
+    logger.error('[actualizarProveedor OC]', err);
+    res.status(500).json({ mensaje: 'Error al actualizar el proveedor' });
+  }
+}
+
 async function actualizarNotas(req, res) {
   try {
     if (req.body?.notas === undefined) {
@@ -167,5 +165,6 @@ export {
   cambiarEstado,
   actualizarDatatextnow,
   actualizarItemCatalogo,
+  actualizarProveedor,
   actualizarNotas,
 };

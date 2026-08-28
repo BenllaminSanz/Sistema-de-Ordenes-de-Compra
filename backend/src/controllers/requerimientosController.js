@@ -24,9 +24,8 @@ async function listar(req, res) {
       orden, ordenar_por, pagina, limite,
     } = req.query;
 
-    // Los solicitantes solo ven sus propios requerimientos
-    const solicitante_id =
-      req.usuario.rol === 'solicitante' ? req.usuario.id : req.query.solicitante_id;
+    // Todos los autenticados consultan el listado general; el filtro de usuario es opcional.
+    const solicitante_id = req.query.solicitante_id;
 
     const resultado = await _listar({
       titulo_solicitud,
@@ -54,14 +53,6 @@ async function obtener(req, res) {
   try {
     const req_ = await obtenerPorId(req.params.id);
     if (!req_) return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
-
-    // El solicitante solo puede ver el suyo
-    if (
-      req.usuario.rol === 'solicitante' &&
-      req_.solicitante_id !== req.usuario.id
-    ) {
-      return res.status(403).json({ mensaje: 'Acceso denegado' });
-    }
 
     res.json(req_);
   } catch (err) {

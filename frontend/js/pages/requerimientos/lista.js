@@ -42,15 +42,10 @@ window.ordenarRequerimientosPor = function(colKey) {
   cargarRequerimientos(1);
 };
 
-/** Carga el select de solicitantes (solo compras/admin). */
+/** Carga el select de solicitantes (consulta general). */
 async function cargarFiltroSolicitantesReq(valorPreferido) {
   const sel = document.getElementById('fil-solicitante');
   if (!sel) return;
-  if (!Auth.puedeHacer(['compras', 'admin'])) {
-    sel.style.display = 'none';
-    sel.value = '';
-    return;
-  }
   sel.style.display = '';
   if (sel.dataset.loaded === '1') {
     if (valorPreferido) sel.value = String(valorPreferido);
@@ -59,7 +54,8 @@ async function cargarFiltroSolicitantesReq(valorPreferido) {
   }
   try {
     const usuarios = await Api.get('/auth/usuarios');
-    const lista = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
+    const crudos = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
+    const lista = UI.usuariosParaFiltro(crudos);
     const actual = valorPreferido || sel.value;
     sel.innerHTML = '<option value="">Usuario: todos</option>';
     lista
@@ -186,9 +182,7 @@ async function cargarRequerimientos(pagina) {
   const tipo     = document.getElementById('fil-tipo').value;
   const area     = document.getElementById('fil-area').value;
   const depto    = document.getElementById('fil-departamento').value;
-  const solicitante = Auth.puedeHacer(['compras', 'admin'])
-    ? (document.getElementById('fil-solicitante')?.value || '')
-    : '';
+  const solicitante = document.getElementById('fil-solicitante')?.value || '';
 
   let qs = `?pagina=${pagina}&limite=15`;
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;

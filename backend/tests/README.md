@@ -62,7 +62,7 @@ El runner levanta `createApp()` en `http://127.0.0.1:3999`, aplica `fixtures/sch
 |------|--------|
 | E01 | Login sol1 → crear REQ de catálogo → enviar a revisión → logout |
 | E02 | Login compras → acuse → aprobar → generar OC → recepción → cierre |
-| E03 | sol2 no ve el detalle de un REQ de sol1 |
+| E03 | sol2 consulta el detalle de un REQ de sol1 (solo lectura) |
 
 Usuarios seed: mismos que integración (`Test1234!`).
 

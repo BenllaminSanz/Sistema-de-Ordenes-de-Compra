@@ -273,15 +273,10 @@ window.ordenarOrdenesPor = function(colKey) {
   cargarOrdenes(1);
 };
 
-/** Select de solicitante solo para compras/admin. */
+/** Select de solicitante (consulta general). */
 async function cargarFiltroSolicitantesOc() {
   const sel = document.getElementById('fil-solicitante-oc');
   if (!sel) return;
-  if (!Auth.puedeHacer(['compras', 'admin'])) {
-    sel.style.display = 'none';
-    sel.value = '';
-    return;
-  }
   sel.style.display = '';
   if (sel.dataset.loaded === '1') {
     if (window._filSolicitanteOcPreferido) {
@@ -292,7 +287,8 @@ async function cargarFiltroSolicitantesOc() {
   }
   try {
     const usuarios = await Api.get('/auth/usuarios');
-    const lista = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
+    const crudos = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
+    const lista = UI.usuariosParaFiltro(crudos);
     const preferido = window._filSolicitanteOcPreferido || sel.value;
     sel.innerHTML = '<option value="">Todos los usuarios</option>';
     lista
@@ -395,29 +391,20 @@ async function cargarOrdenes(pagina) {
   const contenedor = document.getElementById('tabla-oc');
   UI.spinner(contenedor);
 
-  const usuario = Auth.getUsuario();
-  const esSolicitante = usuario?.rol === 'solicitante';
-  const esAdminOContab = !esSolicitante;
+  const puedeOperarOc = Auth.puedeHacer(['compras', 'admin']);
 
   const adminActions = document.getElementById('oc-admin-actions');
   if (adminActions) {
-    adminActions.style.display = esAdminOContab ? 'flex' : 'none';
+    adminActions.style.display = puedeOperarOc ? 'flex' : 'none';
   }
 
-  // Subtítulo contextual para solicitantes
   const subtitle = document.getElementById('oc-subtitle');
   if (subtitle) {
-    if (esSolicitante) {
-      subtitle.innerHTML = 'Solo se muestran las OC que nacen de <strong>tus requerimientos aprobados</strong>.';
-      subtitle.style.display = '';
-    } else {
-      subtitle.textContent = '';
-      subtitle.style.display = 'none';
-    }
+    subtitle.textContent = '';
+    subtitle.style.display = 'none';
   }
 
-  // Asegura el filtro de usuario cargado (compras/admin)
-  if (esAdminOContab && typeof cargarFiltroSolicitantesOc === 'function') {
+  if (typeof cargarFiltroSolicitantesOc === 'function') {
     await cargarFiltroSolicitantesOc();
   }
 
@@ -425,9 +412,7 @@ async function cargarOrdenes(pagina) {
   const tipo      = document.getElementById('fil-tipo')?.value || '';
   const sinPo     = document.getElementById('fil-sin-po')?.checked;
   const busqueda  = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
-  const solicitante = esAdminOContab
-    ? (document.getElementById('fil-solicitante-oc')?.value || '')
-    : '';
+  const solicitante = document.getElementById('fil-solicitante-oc')?.value || '';
   let qs = `?pagina=${pagina}&limite=15`;
   if (estado)   qs += `&estado=${encodeURIComponent(estado)}`;
   if (tipo)     qs += `&tipo=${encodeURIComponent(tipo)}`;
@@ -444,13 +429,9 @@ async function cargarOrdenes(pagina) {
 
     if (!datos.length) {
       const hayFiltros = estado || tipo || sinPo || busqueda || solicitante;
-      let msg = esSolicitante
-        ? 'No tienes órdenes de compra que coincidan con el filtro.'
-        : 'No hay órdenes de compra que coincidan con el filtro.';
+      let msg = 'No hay órdenes de compra que coincidan con el filtro.';
       if (!hayFiltros) {
-        msg = esSolicitante
-          ? 'No tienes órdenes de compra generadas a partir de tus requerimientos.'
-          : 'No hay órdenes de compra';
+        msg = 'No hay órdenes de compra';
       } else if (estado === 'activas') {
         msg = 'No hay órdenes de compra activas / no concluidas.';
       } else if (sinPo) {
@@ -463,14 +444,9 @@ async function cargarOrdenes(pagina) {
       return;
     }
 
-    // Columna dinámica según rol:
-    // - Admin/Compras: mostrar "Solicitante" (quien lo pidió)
-    // - Solicitante: mostrar "Autorizado por" (quien autorizó la OC)
-    const colPersonaKey = esAdminOContab ? 'solicitante' : 'autorizado';
-    const columnaHeader = esAdminOContab ? 'Solicitante' : 'Autorizado por';
-    const getColumnaValor = (o) => esAdminOContab 
-      ? (o.solicitante_nombre || '—') 
-      : (o.autorizado_por_nombre || '—');
+    const colPersonaKey = 'solicitante';
+    const columnaHeader = 'Solicitante';
+    const getColumnaValor = (o) => o.solicitante_nombre || '—';
 
     contenedor.innerHTML = `
       <div class="table-wrap">
@@ -664,13 +640,8 @@ async function editarDataTextNowOC(ocId, valorActual, fechaActual) {
 function renderDetalle(oc) {
   document.getElementById('detalle-titulo').textContent = oc.numero_oc;
 
-  // En el detalle de OC (según rol):
-  // - Admin/Compras: mostrar "Solicitante" (quién lo solicitó)  [en vez de Autorizado por]
-  // - Solicitante: mostrar "Autorizado por" (quién autorizó)
-  const u = Auth.getUsuario();
-  const esSol = u?.rol === 'solicitante';
-  const mostrarSolicitanteRow = !esSol;
-  const mostrarAutorizadoRow = esSol;   // solo para solicitantes (admins ven al solicitante en su lugar)
+  const mostrarSolicitanteRow = true;
+  const mostrarAutorizadoRow = true;
 
   document.getElementById('detalle-info').innerHTML = `
     <div class="card-title">Información de la OC</div>
@@ -690,7 +661,18 @@ function renderDetalle(oc) {
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${oc.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
-          <td>${UI.labelProveedor(oc)}</td></tr>
+          <td>
+            ${UI.labelProveedor(oc)}
+            ${Auth.puedeHacer(['compras','admin']) && oc.estado !== 'cancelada'
+              ? `<button type="button" onclick="editarProveedorOC(${oc.id})"
+                   class="btn btn-sm btn-outline" title="Cambiar proveedor" style="margin-left:8px;padding:2px 6px;">
+                  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>`
+              : ''}
+          </td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Monto</td>
           <td>${oc.monto_total != null
                 ? '$' + Number(oc.monto_total).toLocaleString('es-MX') + ' ' + oc.moneda
@@ -1668,6 +1650,57 @@ async function abrirEditarItemProveedor(catalogoId, descripcion, proveedorActual
 window.abrirRecepcion = abrirRecepcion;
 window.cerrarModalRecepcion = cerrarModalRecepcion;
 window.editarRecepcion = editarRecepcion;
+async function editarProveedorOC(ocId) {
+  const oc = ocActual && Number(ocActual.id) === Number(ocId) ? ocActual : null;
+  const input = document.getElementById('oc-proveedor-busqueda');
+  const hidden = document.getElementById('oc-proveedor-id');
+  if (!input || !hidden) return;
+
+  try {
+    if (typeof ProveedorBusqueda === 'undefined') {
+      Toast.error('No se pudo cargar el buscador de proveedores');
+      return;
+    }
+    await ProveedorBusqueda.init({
+      inputId: 'oc-proveedor-busqueda',
+      hiddenId: 'oc-proveedor-id',
+      datalistId: 'oc-proveedores-list',
+      placeholder: 'Buscar por código o nombre…',
+    });
+    ProveedorBusqueda.establecer(input, hidden, oc?.proveedor_id || '');
+  } catch {
+    Toast.error('No se pudieron cargar los proveedores');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-proveedor-oc');
+  if (btn) {
+    btn.onclick = async () => {
+      ProveedorBusqueda.resolver(input, hidden);
+      const provId = hidden.value ? parseInt(hidden.value, 10) : null;
+      if (!provId) {
+        Toast.error('Selecciona un proveedor de la lista');
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const updated = await Api.patch(`/ordenes-compra/${ocId}/proveedor`, { proveedor_id: provId });
+        UI.cerrarModal('modal-editar-proveedor-oc');
+        Toast.success('Proveedor de la OC actualizado');
+        ocActual = updated;
+        renderDetalle(updated);
+      } catch (err) {
+        Toast.error(err.mensaje || 'No se pudo cambiar el proveedor');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+
+  UI.abrirModal('modal-editar-proveedor-oc');
+}
+
+window.editarProveedorOC = editarProveedorOC;
 window.editarDataTextNowOC = editarDataTextNowOC;
 window.editarNotasComprasOC = editarNotasComprasOC;
 window.mostrarEditorNotasCompras = mostrarEditorNotasCompras;

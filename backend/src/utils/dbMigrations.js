@@ -117,7 +117,30 @@ export async function runDbMigrations() {
 
   await ensureConfiguracionAppTable();
 
+  await migrarNombresUsuariosDuplicados();
+
   logger.info('[migrate] Migraciones aplicadas');
+}
+
+/**
+ * Fusiona placeholders de import (nombre largo) con la cuenta de login (nombre corto).
+ * Conserva el nombre corto. Idempotente.
+ */
+async function migrarNombresUsuariosDuplicados() {
+  if (!(await tableExists('usuarios'))) return;
+  try {
+    const { aplicarCorreccionNombres } = await import('./nombresUsuarios.js');
+    const result = await aplicarCorreccionNombres(pool, { dryRun: false });
+    const s = result?.resumen || {};
+    if ((s.aRevertir || 0) > 0 || (s.reqs || 0) > 0 || (s.aEliminar || 0) > 0) {
+      logger.info(
+        `[migrate] Usuarios duplicados: ${s.aRevertir} nombre(s) a corto, `
+        + `${s.reqs} REQ reasignado(s), ${s.aEliminar} placeholder(s) eliminado(s)`
+      );
+    }
+  } catch (err) {
+    logger.warn('[migrate] Corrección de nombres de usuarios no aplicada:', err.message);
+  }
 }
 
 /**

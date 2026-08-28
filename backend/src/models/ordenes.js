@@ -574,6 +574,84 @@ async function actualizarItemCatalogo(ocId, catalogoId, { proveedor_id, costo_re
 }
 
 /**
+ * Corrige el proveedor de la OC (y de la cotización ligada, si hay).
+ * No reenvía RFQ ni cambia montos/ítems.
+ */
+async function actualizarProveedor(ocId, proveedor_id, usuarioId = null) {
+  const pid = parseInt(proveedor_id, 10);
+  if (!pid || Number.isNaN(pid)) {
+    throw { status: 400, mensaje: 'proveedor_id es requerido' };
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[oc]] = await conn.query(
+      `SELECT oc.id, oc.estado, oc.proveedor_id, oc.cotizacion_id,
+              p.nombre AS proveedor_nombre, p.num_proveedor AS proveedor_num
+       FROM ordenes_compra oc
+       LEFT JOIN proveedores p ON p.id = oc.proveedor_id
+       WHERE oc.id = ?`,
+      [ocId]
+    );
+    if (!oc) throw { status: 404, mensaje: 'Orden de compra no encontrada' };
+    if (oc.estado === 'cancelada') {
+      throw { status: 422, mensaje: 'No se puede cambiar el proveedor de una OC cancelada' };
+    }
+
+    const [[prov]] = await conn.query(
+      'SELECT id, nombre, num_proveedor, activo FROM proveedores WHERE id = ?',
+      [pid]
+    );
+    if (!prov) throw { status: 404, mensaje: 'Proveedor no encontrado' };
+    if (Number(prov.activo) === 0) {
+      throw { status: 422, mensaje: 'El proveedor está inactivo' };
+    }
+
+    if (Number(oc.proveedor_id) === pid) {
+      await conn.commit();
+      return 1;
+    }
+
+    await conn.query('UPDATE ordenes_compra SET proveedor_id = ? WHERE id = ?', [pid, ocId]);
+
+    if (oc.cotizacion_id) {
+      await conn.query(
+        'UPDATE cotizaciones SET proveedor_id = ? WHERE id = ?',
+        [pid, oc.cotizacion_id]
+      );
+    }
+
+    const anterior = oc.proveedor_nombre
+      ? `${oc.proveedor_num ? oc.proveedor_num + ' — ' : ''}${oc.proveedor_nombre}`
+      : (oc.proveedor_id ? `#${oc.proveedor_id}` : 'sin proveedor');
+    const nuevo = `${prov.num_proveedor ? prov.num_proveedor + ' — ' : ''}${prov.nombre}`;
+
+    await conn.query(
+      `INSERT INTO historial_estados
+         (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
+       VALUES ('orden_compra', ?, ?, ?, ?, ?)`,
+      [
+        ocId,
+        oc.estado,
+        oc.estado,
+        usuarioId || null,
+        `Proveedor corregido: ${anterior} → ${nuevo} (sin recotizar)`,
+      ]
+    );
+
+    await conn.commit();
+    return 1;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Actualiza notas de compras de la OC (editables durante todo el ciclo).
  */
 async function actualizarNotas(id, notas) {
@@ -592,5 +670,6 @@ export {
   cambiarEstado,
   actualizarDatatextnow,
   actualizarItemCatalogo,
+  actualizarProveedor,
   actualizarNotas,
 };

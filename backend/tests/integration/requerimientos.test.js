@@ -58,7 +58,7 @@ describeIntegration('Requerimientos', () => {
     assert.match(res.body.mensaje || '', /proveedor/i);
   });
 
-  it('solicitante solo lista sus propios REQ', async () => {
+  it('solicitante lista el catálogo general de REQ (consulta)', async () => {
     await createRequerimiento('sol1');
     await createRequerimiento('sol2');
 
@@ -66,15 +66,25 @@ describeIntegration('Requerimientos', () => {
     assert.equal(res.status, 200);
     const datos = res.body.datos || res.body;
     assert.ok(Array.isArray(datos));
-    assert.equal(datos.length, 1);
-    // El listado expone solicitante_email (no siempre solicitante_id)
-    assert.equal(datos[0].solicitante_email, 'sol1@test.local');
+    assert.ok(datos.length >= 2);
+    const emails = datos.map((r) => r.solicitante_email);
+    assert.ok(emails.includes('sol1@test.local'));
+    assert.ok(emails.includes('sol2@test.local'));
   });
 
-  it('solicitante no puede ver REQ ajeno (IDOR)', async () => {
+  it('solicitante puede consultar el detalle de un REQ ajeno', async () => {
     const created = await createRequerimiento('sol2');
     assert.equal(created.status, 201);
     const res = await agentFor('sol1').get(`/api/requerimientos/${created.body.id}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.id, created.body.id);
+  });
+
+  it('solicitante no puede editar un REQ ajeno', async () => {
+    const created = await createRequerimiento('sol2');
+    const res = await agentFor('sol1')
+      .put(`/api/requerimientos/${created.body.id}`)
+      .send({ titulo_solicitud: 'Intento de edición ajena de diez' });
     assert.equal(res.status, 403);
   });
 

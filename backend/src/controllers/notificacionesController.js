@@ -34,16 +34,18 @@ const COLAS_COMPRAS = {
  *        limite=1..50
  *
  * Compras/Admin: colas de trabajo + ítems con antigüedad.
- * Solicitante: seguimiento de sus REQ.
+ * Solicitante (campana): seguimiento de SUS REQ (`avisos`).
+ * `?vista=general`: mismas colas globales (Dashboard para todos; solo consulta).
  */
 export async function bandeja(req, res) {
   try {
     const rol = String(req.usuario?.rol || '').toLowerCase();
     const esCompras = rol === 'compras' || rol === 'admin';
+    const vistaGeneral = String(req.query.vista || '').toLowerCase() === 'general';
     const limite = Math.min(parseInt(req.query.limite, 10) || 25, 50);
     const colaRaw = String(req.query.cola || '').trim().toLowerCase();
 
-    if (esCompras) {
+    if (esCompras || vistaGeneral) {
       return await bandejaCompras(res, colaRaw, limite);
     }
     return await bandejaSolicitante(res, req.usuario.id, colaRaw, limite);
@@ -326,14 +328,11 @@ const COLAS_OC = {
  */
 export async function bandejaOc(req, res) {
   try {
-    const rol = String(req.usuario?.rol || '').toLowerCase();
-    const esCompras = rol === 'compras' || rol === 'admin';
     const limite = Math.min(parseInt(req.query.limite, 10) || 25, 50);
     const colaRaw = String(req.query.cola || '').trim().toLowerCase();
-    const uid = req.usuario?.id;
 
-    const filtroSol = esCompras ? '' : ' AND r.solicitante_id = ?';
-    const paramsSol = esCompras ? [] : [uid];
+    const filtroSol = '';
+    const paramsSol = [];
 
     const countEstado = async (estado) => {
       const [[{ c }]] = await pool.query(
@@ -412,7 +411,7 @@ export async function bandejaOc(req, res) {
     );
 
     return res.json({
-      tipo: esCompras ? 'compras' : 'solicitante',
+      tipo: 'compras',
       cola,
       contadores,
       total: contadores.activas,
