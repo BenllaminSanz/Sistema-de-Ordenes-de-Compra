@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.9.4] — 2026-08-28
+
+Reasignar REQ del Excel (`@import.local`) a la cuenta de login aunque el placeholder tenga más requerimientos.
+
+### Corregido
+- La fusión ya no elige como canónico al usuario `sin-correo*@import.local` solo porque tiene más REQ (caso Isai Fonseca / Juan Ocampo en el servidor)
+- Al arrancar se mueven esos REQ/OC a la cuenta con correo corporativo y se elimina el placeholder; no se borra ningún requerimiento
+
 ## [1.9.3] — 2026-08-28
 
 Buscar REQ/OC por el **nombre actual** del usuario (p. ej. «Isai Fonseca» encuentra a Jose Isai Fonseca). El nombre de login manda sobre el nombre largo del Excel.

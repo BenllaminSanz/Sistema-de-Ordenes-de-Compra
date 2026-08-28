@@ -7,6 +7,7 @@ import {
   tokensContenidosEn,
   nombreMasCompleto,
   elegirCanonicaYDuplicado,
+  orientarParLoginSobreImport,
   detectarParesNombres,
   planRevertirNombresCortos,
   esEmailImport,
@@ -89,6 +90,43 @@ describe('nombresUsuarios — canónica vs duplicado', () => {
     assert.equal(omitir, 'ambos_activos');
   });
 
+  it('nunca elige @import.local como canónica aunque tenga todos los REQ', () => {
+    const real = { id: 6, nombre: 'Isai Fonseca', email: 'jose.fonseca@x.com', activo: 1, n_req: 0 };
+    const imp = {
+      id: 26,
+      nombre: 'Jose Isai Fonseca Vivas',
+      email: 'sin-correo.jose.isai.fonseca.vivas@import.local',
+      activo: 0,
+      n_req: 242,
+    };
+    const directo = elegirCanonicaYDuplicado(real, imp);
+    const invertido = elegirCanonicaYDuplicado(imp, real);
+    assert.equal(directo.omitir, null);
+    assert.equal(directo.canonica.id, 6);
+    assert.equal(directo.duplicado.id, 26);
+    assert.equal(invertido.canonica.id, 6);
+    assert.equal(invertido.duplicado.id, 26);
+  });
+
+  it('reorienta un par invertido antes de escribir', () => {
+    const real = { id: 8, nombre: 'Juan Ocampo', email: 'juan.ocampo@x.com', activo: 1, n_req: 4 };
+    const imp = {
+      id: 24,
+      nombre: 'Juan Carlos Ocampo Reyna',
+      email: 'sin-correo.juan.carlos@import.local',
+      activo: 0,
+      n_req: 171,
+    };
+    const fixed = orientarParLoginSobreImport({
+      canonica: imp,
+      duplicado: real,
+      nombreNuevo: imp.nombre,
+    });
+    assert.equal(fixed.canonica.id, 8);
+    assert.equal(fixed.duplicado.id, 24);
+    assert.equal(fixed.nombreNuevo, 'Juan Ocampo');
+  });
+
   it('detecta placeholders de import', () => {
     assert.equal(esEmailImport('sin-correo.juan@import.local'), true);
     assert.equal(esEmailImport('sin-correo.fulano@otra.local'), true);
@@ -139,6 +177,25 @@ describe('nombresUsuarios — detectarParesNombres (datos reales)', () => {
       '16-21',
     ]);
     assert.equal(omitidos.length, 0);
+  });
+
+  it('el login gana aunque el placeholder tenga los REQ (caso servidor)', () => {
+    const dump = [
+      { id: 6, nombre: 'Isai Fonseca', email: 'jose.fonseca@parkdalemills.com', activo: 1, n_req: 6 },
+      { id: 26, nombre: 'Jose Isai Fonseca Vivas', email: 'sin-correo.jose.isai.fonseca.vivas@import.local', activo: 0, n_req: 242 },
+      { id: 8, nombre: 'Juan Ocampo', email: 'juan.ocampo@parkdalemills.com', activo: 1, n_req: 4 },
+      { id: 24, nombre: 'Juan Carlos Ocampo Reyna', email: 'sin-correo.juan.carlos.ocampo.reyna@import.local', activo: 0, n_req: 171 },
+    ];
+    const { pares } = detectarParesNombres(dump);
+    const fonseca = pares.find((p) => [p.canonica.id, p.duplicado.id].includes(6));
+    const ocampo = pares.find((p) => [p.canonica.id, p.duplicado.id].includes(8));
+    assert.equal(pares.length, 2);
+    assert.equal(fonseca.canonica.id, 6);
+    assert.equal(fonseca.duplicado.id, 26);
+    assert.equal(fonseca.nombreNuevo, 'Isai Fonseca');
+    assert.equal(ocampo.canonica.id, 8);
+    assert.equal(ocampo.duplicado.id, 24);
+    assert.equal(ocampo.nombreNuevo, 'Juan Ocampo');
   });
 
   it('conserva el nombre corto de la cuenta de login', () => {

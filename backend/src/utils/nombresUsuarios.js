@@ -132,12 +132,13 @@ function puntuacionCanonica(u) {
   let s = 0;
   if (esActivo(u)) s += 100;
   if (!esEmailImport(u.email)) s += 50;
-  s += Number(u.n_req) || 0;
   return s;
 }
 
 /**
  * Elige la cuenta de login (canónica) y la que se fusiona.
+ * Un @import.local / sin-correo nunca gana frente a un correo real,
+ * aunque el placeholder tenga todos los REQ (caso Excel vs. registro).
  * No fusiona dos cuentas activas con correo real (homónimos).
  */
 export function elegirCanonicaYDuplicado(a, b) {
@@ -147,6 +148,14 @@ export function elegirCanonicaYDuplicado(a, b) {
     return { canonica: null, duplicado: null, omitir: 'ambos_activos' };
   }
 
+  const aImp = esEmailImport(a.email);
+  const bImp = esEmailImport(b.email);
+  if (aImp !== bImp) {
+    return aImp
+      ? { canonica: b, duplicado: a, omitir: null }
+      : { canonica: a, duplicado: b, omitir: null };
+  }
+
   const sa = puntuacionCanonica(a);
   const sb = puntuacionCanonica(b);
   if (sa !== sb) {
@@ -154,14 +163,23 @@ export function elegirCanonicaYDuplicado(a, b) {
       ? { canonica: a, duplicado: b, omitir: null }
       : { canonica: b, duplicado: a, omitir: null };
   }
-  if (esEmailImport(a.email) !== esEmailImport(b.email)) {
-    return esEmailImport(a.email)
-      ? { canonica: b, duplicado: a, omitir: null }
-      : { canonica: a, duplicado: b, omitir: null };
-  }
   const menor = Number(a.id) <= Number(b.id) ? a : b;
   const mayor = menor === a ? b : a;
   return { canonica: menor, duplicado: mayor, omitir: null };
+}
+
+/** Último filtro antes de escribir: nunca reasignar del login hacia el import. */
+export function orientarParLoginSobreImport(p) {
+  if (!p?.canonica || !p?.duplicado) return p;
+  if (esEmailPlaceholder(p.canonica.email) && !esEmailPlaceholder(p.duplicado.email)) {
+    return {
+      ...p,
+      canonica: p.duplicado,
+      duplicado: p.canonica,
+      nombreNuevo: p.duplicado.nombre,
+    };
+  }
+  return p;
 }
 
 function evaluarPar(a, b) {
@@ -417,7 +435,8 @@ export async function aplicarCorreccionNombres(db, { dryRun = true } = {}) {
   const reverts = planRevertirNombresCortos(usuarios);
   const cambios = [];
 
-  const plan = pares.map((p) => {
+  const plan = pares.map((raw) => {
+    const p = orientarParLoginSobreImport(raw);
     const eliminarPlaceholder = esEmailPlaceholder(p.duplicado.email);
     const reqsAMover = Number(p.duplicado.n_req) || 0;
     if (!eliminarPlaceholder && reqsAMover === 0) return null;
