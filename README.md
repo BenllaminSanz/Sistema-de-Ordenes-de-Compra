@@ -1,10 +1,10 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.9.1** — Agosto 2026
+**Versión 1.9.2** — Agosto 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.9.1.md](./DESPLIEGUE-v1.9.1.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.9.2.md](./DESPLIEGUE-v1.9.2.md)
 
 ## Novedades v1.9.0
 
@@ -112,7 +112,7 @@ Sistema de Ordenes de Compra/
 ├── frontend/                # HTML + JS + CSS
 ├── docs-generados/          # PDFs / material de apoyo (no va al deploy)
 ├── empaquetar-deploy.ps1
-├── DESPLIEGUE-v1.9.1.md
+├── DESPLIEGUE-v1.9.2.md
 ├── CHANGELOG.md
 ├── VERSIONING.md
 ├── RECARGAR-BASE-GRAL-SERVIDOR.md
@@ -198,7 +198,7 @@ flowchart TD
 
 ## Actualizar en producción
 
-Guía paso a paso: **[DESPLIEGUE-v1.9.1.md](./DESPLIEGUE-v1.9.1.md)**
+Guía paso a paso: **[DESPLIEGUE-v1.9.2.md](./DESPLIEGUE-v1.9.2.md)**
 
 Resumen:
 
@@ -207,7 +207,7 @@ Resumen:
 3. Descomprimir en el servidor conservando `.env` y `backend/uploads/`
 4. `cd backend && npm install --omit=dev`
 5. Reiniciar Node/PM2
-6. Verificar `GET /api/health` → version `1.9.1`
+6. Verificar `GET /api/health` → version `1.9.2`
 
 > Al arrancar se unifican usuarios duplicados del import (nombre corto). No se requiere SQL manual.
 

@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-08-28
+
+Corregir proveedor/moneda de la cotización aunque ya exista OC (el botón Editar ya no se bloquea).
+
+### Corregido
+- Cotización seleccionada con OC: Compras puede **Corregir proveedor** desde el REQ; se actualiza también la OC (sin recotizar ni cambiar ítems)
+- En el detalle de OC el botón **Cambiar proveedor** es visible (texto, no solo el lápiz)
+
 ## [1.9.1] — 2026-08-28
 
 Purga de placeholders `sin-correo*@import.local` aunque no tengan par de nombre (se veían en Usuarios).

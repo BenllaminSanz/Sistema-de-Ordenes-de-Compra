@@ -65,6 +65,7 @@ async function cargarCotizaciones(reqId) {
 
       const esGestor          = puedeGestionarCotizaciones();
       const reqParaCot        = requerimientoActual || {};
+      const tieneOc           = !!(reqParaCot.oc_id || reqParaCot.orden_compra_id);
       const puedeRfq = typeof reqNecesitaCotizacion === 'function'
         ? reqNecesitaCotizacion(reqParaCot)
         : !!(reqParaCot.requiere_cotizacion
@@ -114,14 +115,15 @@ async function cargarCotizaciones(reqId) {
                   ${esGestor ? `
                     <button class="btn btn-outline btn-sm px-1 py-0"
                             data-cot-action="editar" data-cot-id="${c.id}"
-                            title="Cambiar proveedor o moneda">
-                      ✎ Editar
+                            title="${tieneOc ? 'Corregir proveedor o moneda (la OC se actualiza, no se recotiza)' : 'Cambiar proveedor o moneda'}">
+                      ✎ ${tieneOc ? 'Corregir proveedor' : 'Editar'}
                     </button>
+                    ${!tieneOc ? `
                     <button class="btn btn-danger btn-sm px-1 py-0"
                             data-cot-action="deseleccionar" data-cot-id="${c.id}"
                             title="Quitar selección">
                       Deseleccionar
-                    </button>` : ''}
+                    </button>` : ''}` : ''}
                 </div>
               </div>`
             : `<span class="text-muted small">—</span>`}
@@ -472,10 +474,6 @@ async function editarCotizacion(cotizacionId) {
     const c    = resp.data || resp;
 
     if (!c) return Toast.error('No se pudo cargar la cotización');
-    const tieneOc = !!(requerimientoActual?.oc_id || requerimientoActual?.orden_compra_id);
-    if ((c.seleccionada === 1 || c.estado === 'seleccionada') && tieneOc) {
-      return Toast.error('No se puede editar la cotización: ya hay una OC generada');
-    }
 
     cotizacionEditandoId = c.id;
 
@@ -483,7 +481,12 @@ async function editarCotizacion(cotizacionId) {
     document.getElementById('form-cotizacion').reset();
 
     const modalTitle = document.querySelector('#modal-cotizacion .modal-title');
-    if (modalTitle) modalTitle.textContent = 'Editar Cotización';
+    const tieneOc = !!(requerimientoActual?.oc_id || requerimientoActual?.orden_compra_id);
+    if (modalTitle) {
+      modalTitle.textContent = tieneOc
+        ? 'Corregir proveedor / moneda (OC ya generada)'
+        : 'Editar Cotización';
+    }
 
     await cargarProveedoresEnModal();
 

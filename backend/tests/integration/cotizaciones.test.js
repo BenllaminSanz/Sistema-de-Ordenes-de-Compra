@@ -11,6 +11,7 @@ import {
   reqRecibidoConLibres,
   reqAprobadoConCotizacion,
   crearCotizacion,
+  crearOc,
 } from '../helpers/factories.js';
 import { query } from '../helpers/db.js';
 import { getSentMails, findMails, flushAsyncMail } from '../helpers/mail.js';
@@ -102,6 +103,35 @@ describeIntegration('Cotizaciones y RFQ', () => {
     );
     assert.equal(Number(row.proveedor_id), 2);
     assert.equal(row.moneda, 'USD');
+  });
+
+  it('C03c — con OC se puede corregir proveedor/moneda de la cotización seleccionada', async () => {
+    const { req, cotizacionId } = await reqAprobadoConCotizacion('sol1');
+    const oc = await crearOc('compras', {
+      requerimiento_id: req.id,
+      cotizacion_id: cotizacionId,
+    });
+    assert.equal(oc.status, 201, JSON.stringify(oc.body));
+
+    const upd = await agentFor('compras')
+      .put(`/api/cotizaciones/${cotizacionId}`)
+      .send({ proveedor_id: 2, moneda: 'USD', monto_total: 999 });
+    assert.ok([200, 201].includes(upd.status), JSON.stringify(upd.body));
+
+    const [[cot]] = await query(
+      'SELECT proveedor_id, moneda, monto_total FROM cotizaciones WHERE id = ?',
+      [cotizacionId]
+    );
+    assert.equal(Number(cot.proveedor_id), 2);
+    assert.equal(cot.moneda, 'USD');
+    assert.notEqual(Number(cot.monto_total), 999);
+
+    const [[ocRow]] = await query(
+      'SELECT proveedor_id, moneda FROM ordenes_compra WHERE id = ?',
+      [oc.body.id]
+    );
+    assert.equal(Number(ocRow.proveedor_id), 2);
+    assert.equal(ocRow.moneda, 'USD');
   });
 
   it('C04 — no elimina cotización ya seleccionada', async () => {

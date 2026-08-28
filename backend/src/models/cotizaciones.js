@@ -194,18 +194,16 @@ async function actualizar(id, datos, items = null) {
     );
     const tieneOc = !!(reqRow && reqRow.orden_compra_id);
 
-    const camposPermitidosSeleccionada = ['archivo_url', 'notas'];
     const estaSeleccionada = verificacion.seleccionada === 1;
-    const camposSolicitados = Object.keys(datos || {});
-    const intentaActualizarCamposRestringidos = camposSolicitados.some(
-      c => !camposPermitidosSeleccionada.includes(c)
-    );
-
-    // Con OC ya formalizada no se cambia proveedor/moneda de la cotización ganadora.
-    // Sin OC (p. ej. REQ aprobado por error de proveedor) sí se permite corregir.
-    if (estaSeleccionada && tieneOc && intentaActualizarCamposRestringidos && !items) {
-      await conn.rollback();
-      return 0;
+    // Con OC: se puede corregir proveedor/moneda/notas/archivo (sin recotizar ni tocar ítems).
+    if (estaSeleccionada && tieneOc) {
+      items = null;
+      const permitidosConOc = new Set([
+        'proveedor_id', 'moneda', 'notas', 'archivo_url', 'fecha_envio',
+      ]);
+      for (const k of Object.keys(datos || {})) {
+        if (!permitidosConOc.has(k)) delete datos[k];
+      }
     }
 
     const campos = {};
@@ -245,6 +243,27 @@ async function actualizar(id, datos, items = null) {
           ]
         );
       }
+    }
+
+    if (
+      tieneOc
+      && (campos.proveedor_id !== undefined || campos.moneda !== undefined)
+    ) {
+      const setsOc = [];
+      const valsOc = [];
+      if (campos.proveedor_id !== undefined) {
+        setsOc.push('proveedor_id = ?');
+        valsOc.push(campos.proveedor_id);
+      }
+      if (campos.moneda !== undefined) {
+        setsOc.push('moneda = ?');
+        valsOc.push(campos.moneda);
+      }
+      valsOc.push(reqRow.orden_compra_id);
+      await conn.query(
+        `UPDATE ordenes_compra SET ${setsOc.join(', ')} WHERE id = ?`,
+        valsOc
+      );
     }
 
     await conn.commit();

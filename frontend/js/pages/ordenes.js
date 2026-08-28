@@ -662,15 +662,10 @@ function renderDetalle(oc) {
           <td>${oc.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Proveedor</td>
           <td>
-            ${UI.labelProveedor(oc)}
+            <strong>${UI.labelProveedor(oc)}</strong>
             ${Auth.puedeHacer(['compras','admin']) && oc.estado !== 'cancelada'
-              ? `<button type="button" onclick="editarProveedorOC(${oc.id})"
-                   class="btn btn-sm btn-outline" title="Cambiar proveedor" style="margin-left:8px;padding:2px 6px;">
-                  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>`
+              ? `<button type="button" class="btn btn-sm btn-outline" onclick="editarProveedorOC(${oc.id})"
+                   style="margin-left:8px;">Cambiar proveedor</button>`
               : ''}
           </td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Monto</td>
