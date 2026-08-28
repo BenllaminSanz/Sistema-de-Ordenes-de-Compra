@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-08-28
+
+Purga de placeholders `sin-correo*@import.local` aunque no tengan par de nombre (se veían en Usuarios).
+
+### Corregido
+- Al arrancar (y con el script `--apply`) se eliminan todos los usuarios de import sin REQ, no solo los emparejados por nombre
+- La pantalla Usuarios ya no lista correos `sin-correo` / `@import.local`
+
 ## [1.9.0] — 2026-08-28
 
 Dashboard general para todos, unificación de usuarios duplicados del import y corrección de proveedor en la OC.

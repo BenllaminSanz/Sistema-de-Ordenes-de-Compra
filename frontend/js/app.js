@@ -217,7 +217,8 @@ const UI = {
     const activo = (u) => u.activo === 1 || u.activo === true;
     const nombresActivos = new Set(arr.filter(activo).map((u) => norm(u.nombre)));
     return arr.filter((u) => {
-      if (/@import\.local$/i.test(u.email || '')) return false;
+      const email = String(u.email || '');
+      if (/@import\.local$/i.test(email) || /^sin-correo\./i.test(email)) return false;
       if (!activo(u) && nombresActivos.has(norm(u.nombre))) return false;
       return true;
     });

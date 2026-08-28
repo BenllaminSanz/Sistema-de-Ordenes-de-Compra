@@ -9,13 +9,22 @@
  *
  * - Conserva el nombre de la cuenta canónica (no lo alarga).
  * - Reasigna FKs (REQ, OC, recepciones, historial, config) al canónico.
- * - Elimina placeholders @import.local sin referencias.
+ * - Elimina placeholders @import.local / sin-correo.* (también huérfanos, si no tienen REQ).
  *
  * Puro en detectarParesNombres; aplicarCorreccionNombres recibe el pool/conn.
  */
 
 export const EMAIL_IMPORT_RE = /@import\.local$/i;
 const NOMBRE_MAX = 120;
+
+export function esEmailPlaceholder(email) {
+  const e = String(email || '').toLowerCase().trim();
+  return EMAIL_IMPORT_RE.test(e) || e.startsWith('sin-correo.');
+}
+
+export function esEmailImport(email) {
+  return esEmailPlaceholder(email);
+}
 
 /**
  * Si una pasada anterior copió el nombre largo a la cuenta de login,
@@ -40,6 +49,18 @@ const FK_USUARIO = [
   ['configuracion_app', 'updated_by'],
 ];
 
+const FK_NULLABLE = [
+  ['historial_estados', 'cambiado_por'],
+  ['configuracion_smtp', 'updated_by'],
+  ['configuracion_app', 'updated_by'],
+];
+
+const FK_OBLIGATORIAS = [
+  ['requerimientos', 'solicitante_id'],
+  ['ordenes_compra', 'autorizado_por'],
+  ['recepciones', 'recibido_por'],
+];
+
 export function normalizarNombre(nombre) {
   return String(nombre || '')
     .toLowerCase()
@@ -54,10 +75,6 @@ export function tokensNombre(nombre) {
   return normalizarNombre(nombre)
     .split(' ')
     .filter((t) => t.length >= 3);
-}
-
-export function esEmailImport(email) {
-  return EMAIL_IMPORT_RE.test(String(email || ''));
 }
 
 export function distanciaLevenshtein(a, b) {
@@ -300,9 +317,9 @@ async function reasignarFks(conn, fromId, toId) {
   return { total, detalle };
 }
 
-async function contarRefs(conn, userId) {
+async function contarRefs(conn, userId, lista = FK_USUARIO) {
   let n = 0;
-  for (const [tabla, col] of FK_USUARIO) {
+  for (const [tabla, col] of lista) {
     const r = await execSilent(
       conn,
       `SELECT COUNT(*) AS cnt FROM \`${tabla}\` WHERE \`${col}\` = ?`,
@@ -311,6 +328,41 @@ async function contarRefs(conn, userId) {
     n += Number(r?.[0]?.cnt) || 0;
   }
   return n;
+}
+
+async function anularFksNulables(conn, userId) {
+  for (const [tabla, col] of FK_NULLABLE) {
+    await execSilent(
+      conn,
+      `UPDATE \`${tabla}\` SET \`${col}\` = NULL WHERE \`${col}\` = ?`,
+      [userId]
+    );
+  }
+}
+
+async function eliminarPlaceholderSiLibre(conn, userId) {
+  await anularFksNulables(conn, userId);
+  const refs = await contarRefs(conn, userId, FK_OBLIGATORIAS);
+  if (refs > 0) return false;
+  const [r] = await conn.query(
+    `DELETE FROM usuarios
+     WHERE id = ?
+       AND (email LIKE ? OR email LIKE ?)`,
+    [userId, '%@import.local', 'sin-correo.%']
+  );
+  return (r?.affectedRows || 0) > 0;
+}
+
+/** Placeholders de import que no entraron en un par corto↔largo. */
+export function placeholdersHuerfanos(usuarios, pares = []) {
+  const ya = new Set(
+    (pares || []).flatMap((p) => [Number(p.duplicado?.id), Number(p.canonica?.id)])
+  );
+  return (usuarios || []).filter((u) => {
+    if (!esEmailPlaceholder(u.email)) return false;
+    if (ya.has(Number(u.id))) return false;
+    return true;
+  });
 }
 
 /**
@@ -329,7 +381,7 @@ export async function aplicarCorreccionNombres(db, { dryRun = true } = {}) {
   const cambios = [];
 
   const plan = pares.map((p) => {
-    const eliminarPlaceholder = esEmailImport(p.duplicado.email);
+    const eliminarPlaceholder = esEmailPlaceholder(p.duplicado.email);
     const reqsAMover = Number(p.duplicado.n_req) || 0;
     if (!eliminarPlaceholder && reqsAMover === 0) return null;
     return {
@@ -340,9 +392,34 @@ export async function aplicarCorreccionNombres(db, { dryRun = true } = {}) {
       renombrar: false,
       reqsAMover,
       eliminarPlaceholder,
+      huerfano: false,
       score: p.score,
     };
   }).filter(Boolean);
+
+  for (const ph of placeholdersHuerfanos(usuarios, pares)) {
+    if (Number(ph.n_req) > 0) continue;
+    plan.push({
+      canonica: null,
+      duplicado: ph,
+      nombreAnterior: ph.nombre,
+      nombreNuevo: ph.nombre,
+      renombrar: false,
+      reqsAMover: 0,
+      eliminarPlaceholder: true,
+      huerfano: true,
+      score: 0,
+    });
+  }
+
+  const resumenBase = {
+    pares: plan.filter((c) => !c.huerfano).length,
+    aRevertir: reverts.length,
+    aRenombrar: 0,
+    reqs: plan.reduce((s, c) => s + c.reqsAMover, 0),
+    aEliminar: plan.filter((c) => c.eliminarPlaceholder).length,
+    omitidos: omitidos.length,
+  };
 
   if (dryRun) {
     return {
@@ -354,60 +431,57 @@ export async function aplicarCorreccionNombres(db, { dryRun = true } = {}) {
         b: o.b,
         omitir: o.omitir,
       })),
-      resumen: {
-        pares: plan.length,
-        aRevertir: reverts.length,
-        aRenombrar: 0,
-        reqs: plan.reduce((s, c) => s + c.reqsAMover, 0),
-        aEliminar: plan.filter((c) => c.eliminarPlaceholder).length,
-        omitidos: omitidos.length,
-      },
+      resumen: resumenBase,
     };
   }
 
   const ownConn = typeof db.getConnection === 'function';
-  const conn = ownConn ? await db.getConnection() : db;
-  try {
-    if (ownConn) await conn.beginTransaction();
 
-    for (const r of reverts) {
+  for (const r of reverts) {
+    const conn = ownConn ? await db.getConnection() : db;
+    try {
+      if (ownConn) await conn.beginTransaction();
       await conn.query('UPDATE usuarios SET nombre = ? WHERE id = ?', [
         r.nombreNuevo,
         r.usuario.id,
       ]);
+      if (ownConn) await conn.commit();
+    } catch (err) {
+      if (ownConn) await conn.rollback();
+      throw err;
+    } finally {
+      if (ownConn) conn.release();
     }
+  }
 
-    for (const item of plan) {
+  for (const item of plan) {
+    const conn = ownConn ? await db.getConnection() : db;
+    let fks = { total: 0, detalle: {} };
+    let eliminado = false;
+    let error = null;
+    try {
+      if (ownConn) await conn.beginTransaction();
       const fromId = item.duplicado.id;
-      const toId = item.canonica.id;
-      const fks = await reasignarFks(conn, fromId, toId);
-      let eliminado = false;
-
-      if (item.eliminarPlaceholder) {
-        const refs = await contarRefs(conn, fromId);
-        if (refs === 0 && fromId !== toId) {
-          await conn.query('DELETE FROM usuarios WHERE id = ? AND email LIKE ?', [
-            fromId,
-            '%@import.local',
-          ]);
-          eliminado = true;
-        }
+      if (item.canonica && Number(item.canonica.id) !== Number(fromId)) {
+        fks = await reasignarFks(conn, fromId, item.canonica.id);
       }
-
-      cambios.push({
-        ...item,
-        nombreAplicado: item.canonica.nombre,
-        fks,
-        eliminado,
-      });
+      if (item.eliminarPlaceholder) {
+        eliminado = await eliminarPlaceholderSiLibre(conn, fromId);
+      }
+      if (ownConn) await conn.commit();
+    } catch (err) {
+      if (ownConn) await conn.rollback();
+      error = err.message;
+    } finally {
+      if (ownConn) conn.release();
     }
-
-    if (ownConn) await conn.commit();
-  } catch (err) {
-    if (ownConn) await conn.rollback();
-    throw err;
-  } finally {
-    if (ownConn) conn.release();
+    cambios.push({
+      ...item,
+      nombreAplicado: item.canonica?.nombre || item.duplicado.nombre,
+      fks,
+      eliminado,
+      error,
+    });
   }
 
   return {
@@ -416,12 +490,9 @@ export async function aplicarCorreccionNombres(db, { dryRun = true } = {}) {
     reverts,
     omitidos: omitidos.map((o) => ({ a: o.a, b: o.b, omitir: o.omitir })),
     resumen: {
-      pares: cambios.length,
-      aRevertir: reverts.length,
-      aRenombrar: 0,
-      reqs: cambios.reduce((s, c) => s + (c.fks?.detalle?.['requerimientos.solicitante_id'] || 0), 0),
+      ...resumenBase,
       aEliminar: cambios.filter((c) => c.eliminado).length,
-      omitidos: omitidos.length,
+      reqs: cambios.reduce((s, c) => s + (c.fks?.detalle?.['requerimientos.solicitante_id'] || 0), 0),
     },
   };
 }

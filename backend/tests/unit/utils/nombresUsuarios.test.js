@@ -10,6 +10,7 @@ import {
   detectarParesNombres,
   planRevertirNombresCortos,
   esEmailImport,
+  placeholdersHuerfanos,
 } from '../../../src/utils/nombresUsuarios.js';
 
 describe('nombresUsuarios — normalizar / tokens', () => {
@@ -90,7 +91,19 @@ describe('nombresUsuarios — canónica vs duplicado', () => {
 
   it('detecta placeholders de import', () => {
     assert.equal(esEmailImport('sin-correo.juan@import.local'), true);
+    assert.equal(esEmailImport('sin-correo.fulano@otra.local'), true);
     assert.equal(esEmailImport('juan.ocampo@parkdalemills.com'), false);
+  });
+
+  it('lista placeholders huérfanos aunque no haya par de nombre', () => {
+    const usuarios = [
+      { id: 1, nombre: 'Marina Flores', email: 'marina.flores@x.com', activo: 1, n_req: 1 },
+      { id: 99, nombre: 'Fulano De Tal', email: 'sin-correo.fulano.de.tal@import.local', activo: 0, n_req: 0 },
+    ];
+    const { pares } = detectarParesNombres(usuarios);
+    const h = placeholdersHuerfanos(usuarios, pares);
+    assert.equal(h.length, 1);
+    assert.equal(h[0].id, 99);
   });
 });
 

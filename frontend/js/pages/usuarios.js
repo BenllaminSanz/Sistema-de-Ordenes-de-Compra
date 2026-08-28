@@ -89,7 +89,10 @@ async function cargarUsuarios() {
     const soloActivos = document.getElementById('chk-activos')?.checked ?? true;
     const qs = soloActivos ? '?activo=true' : '';
     const usuarios = await Api.get(`/auth/usuarios${qs}`);
-    usuariosCache = usuarios;
+    usuariosCache = (usuarios || []).filter((u) => {
+      const email = String(u.email || '').toLowerCase();
+      return !email.endsWith('@import.local') && !email.startsWith('sin-correo.');
+    });
     renderTablaUsuarios(usuariosCache);
   } catch {
     UI.empty(document.getElementById('tabla-usuarios'), 'Error al cargar usuarios');

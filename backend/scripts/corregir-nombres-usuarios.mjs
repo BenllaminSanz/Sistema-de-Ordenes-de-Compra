@@ -11,7 +11,7 @@
  */
 import '../src/config/env.js';
 import pool from '../src/config/db.js';
-import { aplicarCorreccionNombres, esEmailImport } from '../src/utils/nombresUsuarios.js';
+import { aplicarCorreccionNombres, esEmailPlaceholder } from '../src/utils/nombresUsuarios.js';
 
 const APPLY = process.argv.includes('--apply');
 
@@ -40,7 +40,7 @@ try {
 
   const reverts = result.reverts || [];
   if (!result.plan.length && !reverts.length && !result.omitidos.length) {
-    console.log('No hay duplicados de nombre que fusionar.');
+    console.log('No hay duplicados ni placeholders sin-correo/@import.local que limpiar.');
     mainResumen(result);
     await pool.end();
     process.exit(0);
@@ -55,8 +55,14 @@ try {
   }
 
   for (const c of result.plan) {
+    if (c.huerfano) {
+      console.log(`\nPlaceholder huérfano ${fmt(c.duplicado)}`);
+      console.log(c.eliminado ? '  eliminado' : '  se elimina si no tiene REQ/OC/recepciones');
+      if (c.error) console.log(`  error: ${c.error}`);
+      continue;
+    }
     console.log(`\nCanónica  ${fmt(c.canonica)}`);
-    console.log(`Duplicado ${fmt(c.duplicado)}${esEmailImport(c.duplicado.email) ? ' [import]' : ''}`);
+    console.log(`Duplicado ${fmt(c.duplicado)}${esEmailPlaceholder(c.duplicado.email) ? ' [import]' : ''}`);
     if (c.renombrar) {
       console.log(`  nombre: "${c.nombreAnterior}" → "${c.nombreNuevo}"`);
     } else {
@@ -64,8 +70,9 @@ try {
     }
     if (c.reqsAMover) console.log(`  reasignar ${c.reqsAMover} REQ`);
     if (c.eliminarPlaceholder) {
-      console.log(c.eliminado ? '  placeholder @import.local eliminado' : '  placeholder @import.local se elimina si queda sin FKs');
+      console.log(c.eliminado ? '  placeholder sin-correo eliminado' : '  placeholder se elimina si queda sin FKs');
     }
+    if (c.error) console.log(`  error: ${c.error}`);
     if (c.fks?.total) {
       const bits = Object.entries(c.fks.detalle)
         .filter(([, n]) => n > 0)
