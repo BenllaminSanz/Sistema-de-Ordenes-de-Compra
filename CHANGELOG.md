@@ -7,6 +7,15 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.9.3] — 2026-08-28
+
+Buscar REQ/OC por el **nombre actual** del usuario (p. ej. «Isai Fonseca» encuentra a Jose Isai Fonseca). El nombre de login manda sobre el nombre largo del Excel.
+
+### Corregido
+- La búsqueda de REQ ya no se limita a consecutivo/notas: incluye nombre y correo del solicitante (tokens)
+- Igual en el listado de OC
+- Fusión Fonseca y similares por correo corporativo si el par corto↔largo no corrió en el servidor
+
 ## [1.9.2] — 2026-08-28
 
 Corregir proveedor/moneda de la cotización aunque ya exista OC (el botón Editar ya no se bloquea).

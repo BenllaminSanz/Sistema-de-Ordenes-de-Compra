@@ -251,6 +251,43 @@ export function detectarParesNombres(usuarios) {
     }
   }
 
+  // Pares por correo corporativo conocido (p. ej. Fonseca): el nombre de login
+  // manda; el placeholder/inactivo con el mismo apellido se fusiona aunque
+  // el matching corto⊂largo no haya corrido en el servidor.
+  for (const alias of REVERTIR_A_NOMBRE_CORTO) {
+    const canon = list.find(
+      (u) => String(u.email || '').toLowerCase() === String(alias.email).toLowerCase()
+    );
+    if (!canon) continue;
+    const tCanon = tokensNombre(alias.hacia || canon.nombre);
+    if (tCanon.length < 2) continue;
+    for (const u of list) {
+      if (Number(u.id) === Number(canon.id)) continue;
+      const t = tokensNombre(u.nombre);
+      if (!tokensContenidosEn(tCanon, t) && !tokensContenidosEn(t, tCanon)) continue;
+      const ambosActivosReales = (Number(u.activo) === 1 || u.activo === true)
+        && !esEmailPlaceholder(u.email)
+        && (Number(canon.activo) === 1 || canon.activo === true)
+        && !esEmailPlaceholder(canon.email);
+      if (ambosActivosReales) continue;
+      const ya = candidatos.some(
+        (c) => !c.omitir
+          && ((Number(c.a?.id) === Number(canon.id) && Number(c.b?.id) === Number(u.id))
+            || (Number(c.b?.id) === Number(canon.id) && Number(c.a?.id) === Number(u.id)))
+      );
+      if (ya) continue;
+      candidatos.push({
+        a: canon,
+        b: u,
+        canonica: canon,
+        duplicado: u,
+        nombreNuevo: canon.nombre,
+        score: 90,
+        omitir: null,
+      });
+    }
+  }
+
   const partners = new Map();
   for (const p of candidatos) {
     if (p.omitir) continue;

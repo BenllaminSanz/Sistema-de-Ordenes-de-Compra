@@ -78,8 +78,24 @@ async function listar(filtros = {}) {
   }
   if (tipo)           { where.push('r.tipo = ?');                       params.push(tipo); }
   if (solicitante_id) { where.push('r.solicitante_id = ?');             params.push(solicitante_id); }
-  if (busqueda)       { where.push('(r.consecutivo LIKE ? OR r.notas LIKE ?)');
-                        params.push(`%${busqueda}%`, `%${busqueda}%`); }
+  if (busqueda) {
+    const q = String(busqueda).trim();
+    const like = `%${q}%`;
+    const partes = [
+      'r.consecutivo LIKE ?',
+      'r.titulo_solicitud LIKE ?',
+      'r.notas LIKE ?',
+      'u.nombre LIKE ?',
+      'u.email LIKE ?',
+    ];
+    params.push(like, like, like, like, like);
+    const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
+    if (tokens.length >= 2) {
+      partes.push(`(${tokens.map(() => 'u.nombre LIKE ?').join(' AND ')})`);
+      for (const t of tokens) params.push(`%${t}%`);
+    }
+    where.push(`(${partes.join(' OR ')})`);
+  }
 
   const clausulaWhere = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const offset = (pagina - 1) * limite;
@@ -106,7 +122,10 @@ async function listar(filtros = {}) {
   );
 
   const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total FROM requerimientos r ${clausulaWhere}`,
+    `SELECT COUNT(*) AS total
+     FROM requerimientos r
+     JOIN usuarios u ON u.id = r.solicitante_id
+     ${clausulaWhere}`,
     params
   );
 

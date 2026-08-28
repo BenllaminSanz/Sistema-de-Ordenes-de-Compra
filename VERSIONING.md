@@ -73,6 +73,7 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 | `v1.9.0` | Dashboard general, usuarios duplicados, proveedor en OC |
 | `v1.9.1` | Purga placeholders sin-correo del import |
 | `v1.9.2` | Editar proveedor/moneda de cotización con OC generada |
+| `v1.9.3` | Búsqueda de REQ/OC por nombre actual del usuario |
 
 ## Convención de mensajes de commit (recomendado)
 

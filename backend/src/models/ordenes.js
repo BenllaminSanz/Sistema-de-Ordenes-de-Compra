@@ -90,12 +90,24 @@ async function listar(filtros = {}) {
   }
 
   if (busqueda) {
-    const like = `%${String(busqueda).trim()}%`;
-    where.push(`(
-      oc.numero_oc LIKE ? OR oc.datatextnow_id LIKE ? OR r.consecutivo LIKE ?
-      OR p.nombre LIKE ? OR p.num_proveedor LIKE ?
-    )`);
-    params.push(like, like, like, like, like);
+    const q = String(busqueda).trim();
+    const like = `%${q}%`;
+    const partes = [
+      'oc.numero_oc LIKE ?',
+      'oc.datatextnow_id LIKE ?',
+      'r.consecutivo LIKE ?',
+      'p.nombre LIKE ?',
+      'p.num_proveedor LIKE ?',
+      'sol.nombre LIKE ?',
+      'sol.email LIKE ?',
+    ];
+    params.push(like, like, like, like, like, like, like);
+    const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
+    if (tokens.length >= 2) {
+      partes.push(`(${tokens.map(() => 'sol.nombre LIKE ?').join(' AND ')})`);
+      for (const t of tokens) params.push(`%${t}%`);
+    }
+    where.push(`(${partes.join(' OR ')})`);
   }
 
   if (solicitante_id) {
@@ -116,6 +128,7 @@ async function listar(filtros = {}) {
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const joinsFiltro = `
      JOIN requerimientos r ON r.id = oc.requerimiento_id
+     LEFT JOIN usuarios sol ON sol.id = r.solicitante_id
      LEFT JOIN cotizaciones c ON c.id = oc.cotizacion_id
      LEFT JOIN proveedores p ON p.id = COALESCE(oc.proveedor_id, c.proveedor_id)`;
   const offset = (pagina - 1) * limite;

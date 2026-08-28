@@ -58,6 +58,28 @@ describeIntegration('Requerimientos', () => {
     assert.match(res.body.mensaje || '', /proveedor/i);
   });
 
+  it('busca REQ por el nombre actual del solicitante (tokens, p. ej. Isai Fonseca)', async () => {
+    await createRequerimiento('sol1');
+    const porNombre = await agentFor('compras').get(
+      `/api/requerimientos?busqueda=${encodeURIComponent('Solicitante Uno')}`
+    );
+    assert.equal(porNombre.status, 200);
+    assert.ok((porNombre.body.datos || []).length >= 1, JSON.stringify(porNombre.body));
+    assert.ok(
+      (porNombre.body.datos || []).some((r) => r.solicitante_email === 'sol1@test.local')
+    );
+
+    const porTokens = await agentFor('compras').get(
+      `/api/requerimientos?busqueda=${encodeURIComponent('Uno')}`
+    );
+    assert.ok((porTokens.body.datos || []).some((r) => r.solicitante_email === 'sol1@test.local'));
+
+    const sinMatch = await agentFor('compras').get(
+      `/api/requerimientos?busqueda=${encodeURIComponent('NoExisteXYZ123')}`
+    );
+    assert.equal((sinMatch.body.datos || []).length, 0);
+  });
+
   it('solicitante lista el catálogo general de REQ (consulta)', async () => {
     await createRequerimiento('sol1');
     await createRequerimiento('sol2');
