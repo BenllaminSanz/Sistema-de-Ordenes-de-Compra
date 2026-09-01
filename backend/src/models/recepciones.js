@@ -426,10 +426,79 @@ async function eliminar(id) {
 }
 
 /**
+ * Filas de Excel OC: exactamente una por recepción (GROUP BY recepcion_id).
+ * % = cantidad de ESA entrega / cantidad total pedida en la OC.
+ */
+async function lineasEntregaExcelOrden(orden_compra_id) {
+  const oc = await obtenerOcPorId(orden_compra_id);
+  if (!oc) return [];
+
+  const catalogo = construirResumenItemsOc(oc, {});
+  const totalSol = catalogo.reduce((s, it) => s + (parseFloat(it.cantidad_solicitada) || 0), 0);
+
+  const [grupos] = await pool.query(
+    `SELECT
+        r.id AS recepcion_id,
+        r.fecha_recepcion AS fecha_entrega,
+        SUM(ri.cantidad_recibida) AS cantidad_recibida,
+        GROUP_CONCAT(DISTINCT NULLIF(TRIM(ri.codigo), '') SEPARATOR ', ') AS codigo,
+        GROUP_CONCAT(
+          CONCAT(
+            IF(NULLIF(TRIM(ri.codigo), '') IS NULL, '', CONCAT(TRIM(ri.codigo), ' — ')),
+            COALESCE(ri.descripcion, ''),
+            ' (', ri.cantidad_recibida,
+            IF(NULLIF(TRIM(ri.unidad), '') IS NULL, '', CONCAT(' ', ri.unidad)),
+            ')'
+          )
+          ORDER BY ri.id SEPARATOR '; '
+        ) AS descripcion,
+        GROUP_CONCAT(DISTINCT NULLIF(TRIM(ri.numero_recibo), '') SEPARATOR ', ') AS numero_recibo,
+        GROUP_CONCAT(DISTINCT NULLIF(TRIM(ri.unidad), '') SEPARATOR ', ') AS unidad
+     FROM recepciones r
+     INNER JOIN recepcion_items ri
+        ON ri.recepcion_id = r.id AND ri.cantidad_recibida > 0
+     WHERE r.orden_compra_id = ?
+     GROUP BY r.id, r.fecha_recepcion
+     ORDER BY r.fecha_recepcion ASC, r.id ASC`,
+    [orden_compra_id]
+  );
+
+  if (!grupos.length) {
+    return [{
+      codigo: catalogo.map((it) => it.codigo).filter(Boolean).join(', '),
+      descripcion: catalogo.map((it) => it.descripcion).filter(Boolean).join('; '),
+      unidad: catalogo.length === 1 ? (catalogo[0].unidad || '') : '',
+      cantidad_solicitada: totalSol,
+      cantidad_recibida: 0,
+      pct_entrega: '',
+      fecha_entrega: null,
+      numero_recibo: '',
+    }];
+  }
+
+  return grupos.map((g) => {
+    const rec = parseFloat(g.cantidad_recibida) || 0;
+    const pct = totalSol > 0 ? Math.min(100, Math.round((rec / totalSol) * 100)) : '';
+    const unidades = String(g.unidad || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return {
+      codigo: g.codigo || '',
+      descripcion: g.descripcion || '',
+      unidad: unidades.length === 1 ? unidades[0] : '',
+      cantidad_solicitada: totalSol,
+      cantidad_recibida: rec,
+      pct_entrega: pct,
+      fecha_entrega: g.fecha_entrega || null,
+      numero_recibo: g.numero_recibo || '',
+    };
+  });
+}
+
+/**
  * Ítems de la OC con cantidades solicitadas y recibidas acumuladas.
  * @param {object} [opciones]
  * @param {number} [opciones.excluir_recepcion_id] — al editar, excluye esa recepción del acumulado
  */
+
 async function resumenItemsOrden(orden_compra_id, opciones = {}) {
   const { excluir_recepcion_id = null, conn = null } = opciones;
   const db = conn || pool;
@@ -458,4 +527,5 @@ export {
   actualizar,
   eliminar,
   resumenItemsOrden,
+  lineasEntregaExcelOrden,
 };

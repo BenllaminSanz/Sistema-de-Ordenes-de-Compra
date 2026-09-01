@@ -27,13 +27,13 @@ function slugNombre(nombre) {
 }
 
 function camposTituloNotas(f) {
-  const titulo = String(f.titulo || f.descripcion || f.consecutivo || '')
+  const titulo = String(f.titulo || f.descripcion || '')
     .trim()
     .slice(0, 300);
   const notas = String(f.status_texto != null ? f.status_texto : (f.notas || ''))
     .trim()
     .slice(0, 4000);
-  return { titulo: titulo || String(f.consecutivo || '').slice(0, 300), notas };
+  return { titulo, notas };
 }
 
 function parseProveedorExcel(texto) {
@@ -484,6 +484,7 @@ export async function importarBaseRequerimientos(opts = {}) {
     const existMap = new Map(
       existentes.map((r) => [String(r.consecutivo).trim().toUpperCase(), r.id])
     );
+    const tituloFijado = new Set();
 
     for (const f of filas) {
       const key = String(f.consecutivo).trim().toUpperCase();
@@ -491,10 +492,18 @@ export async function importarBaseRequerimientos(opts = {}) {
         try {
           const reqId = existMap.get(key);
           const { titulo, notas } = camposTituloNotas(f);
-          await conn.query(
-            'UPDATE requerimientos SET titulo_solicitud = ?, notas = ? WHERE id = ?',
-            [titulo, notas, reqId]
-          );
+          if (titulo && !tituloFijado.has(key)) {
+            await conn.query(
+              'UPDATE requerimientos SET titulo_solicitud = ?, notas = ? WHERE id = ?',
+              [titulo, notas, reqId]
+            );
+            tituloFijado.add(key);
+          } else {
+            await conn.query(
+              'UPDATE requerimientos SET notas = ? WHERE id = ?',
+              [notas, reqId]
+            );
+          }
           reporte.actualizados += 1;
         } catch (rowErr) {
           reporte.errores.push({
@@ -512,6 +521,7 @@ export async function importarBaseRequerimientos(opts = {}) {
           : actorUserId;
 
         const { titulo, notas } = camposTituloNotas(f);
+        const tituloFinal = titulo || 'Sin descripción';
         let notasFinal = notas;
         const createdAt = f.fecha_sol ? `${f.fecha_sol} 12:00:00` : null;
 
@@ -539,7 +549,7 @@ export async function importarBaseRequerimientos(opts = {}) {
           [
             f.consecutivo,
             solicitanteId,
-            titulo,
+            tituloFinal,
             f.area,
             f.departamento,
             f.tipo,
@@ -551,6 +561,7 @@ export async function importarBaseRequerimientos(opts = {}) {
         );
         const reqId = ins.insertId;
         existMap.set(key, reqId);
+        if (titulo) tituloFijado.add(key);
 
         await conn.query(
           `INSERT INTO historial_estados

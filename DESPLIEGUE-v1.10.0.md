@@ -29,7 +29,8 @@ Verificar: `GET /api/health` → `"version": "1.10.0"`.
 - Enviar reporte diario: el correo menciona **órdenes de compra**.
 - Detalle de un REQ ya enviado a revisión: Compras/Admin ven **✎ Editar** en el título; el solicitante no.
 - Listado de requerimientos: columna **Título**.
-- Recargar Excel BASE GRAL **sin wipe**: un N° existente debe actualizar título y notas; no debe duplicar el REQ.
+- Recargar Excel BASE GRAL **sin wipe**: un N° existente debe actualizar título y notas; no debe duplicar el REQ. El **título** = columna **Descripción del ítem** (no el consecutivo).
+- Excel de OC: una OC con 3 recepciones sale en **3 filas**; **% entrega** es el de esa entrega (no el acumulado); columnas **Fecha entrega** y **No. recibo**.
 
 Al arrancar, el backend agrega `configuracion_app.reporte_diario_dias` si falta (`1,2,3,4,5`), `purga_borradores` (activa por defecto) y `purga_borradores_ultimo`. Conservar `.env` y `backend/uploads/`.
 

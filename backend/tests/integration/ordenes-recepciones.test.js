@@ -351,4 +351,67 @@ describeIntegration('Órdenes de compra y recepciones', () => {
     assert.match(blob, /PO-SOL1-XLS/);
     assert.doesNotMatch(blob, /PO-SOL2-XLS/);
   });
+
+  it('listado y Excel: una OC con 3 recepciones no se triplica', async () => {
+    const created = await createRequerimiento('sol1', {
+      titulo_solicitud: 'OC tres entregas varios items',
+      items: [
+        { catalogo_id: 1, cantidad: 3 },
+        { catalogo_id: 2, cantidad: 3 },
+      ],
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.id;
+    assert.equal((await patchEstado('sol1', id, 'en_revision')).status, 200);
+    assert.equal((await patchEstado('compras', id, 'recibido')).status, 200);
+    assert.equal((await patchEstado('compras', id, 'aprobado')).status, 200);
+
+    const oc = await crearOc('compras', {
+      requerimiento_id: id,
+      datatextnow_id: 'PO-TRIPLE-XLS',
+      fecha_po: '2026-05-01',
+    });
+    assert.equal(oc.status, 201, JSON.stringify(oc.body));
+    const ocId = oc.body.id;
+    const detalle = await agentFor('compras').get(`/api/ordenes-compra/${ocId}`);
+    const ocItems = detalle.body.items || [];
+    assert.ok(ocItems.length >= 2, JSON.stringify(detalle.body));
+    const payloadItems = ocItems.map((item) => ({
+      item_key: item.origen === 'cotizacion' ? `cot-${item.id}` : `cat-${item.id}`,
+      descripcion: item.descripcion,
+      codigo: item.codigo,
+      cantidad_solicitada: item.cantidad,
+      cantidad_recibida: 1,
+      unidad: item.unidad || 'pza',
+    }));
+
+    for (let i = 0; i < 3; i++) {
+      const rec = await agentFor('compras')
+        .post(`/api/ordenes-compra/${ocId}/recepciones`)
+        .send({
+          estado: 'recibido_parcial',
+          fecha_recepcion: `2026-05-0${i + 1}`,
+          items: payloadItems,
+        });
+      assert.equal(rec.status, 201, JSON.stringify(rec.body));
+    }
+
+    const lista = await agentFor('compras').get('/api/ordenes-compra?busqueda=PO-TRIPLE-XLS&limite=50');
+    assert.equal(lista.status, 200);
+    const mismas = (lista.body.datos || []).filter((o) => o.datatextnow_id === 'PO-TRIPLE-XLS' || o.id === ocId);
+    assert.equal(mismas.length, 1, `listado duplicado: ${mismas.length}`);
+
+    const xls = await agentFor('compras')
+      .get('/api/reportes/ordenes-compra?libre=1&busqueda=PO-TRIPLE-XLS')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    assert.equal(xls.status, 200);
+    const rows = readXlsxRows(xls.body);
+    const deEsta = rows.filter((r) => r.some((c) => String(c).includes('PO-TRIPLE-XLS')));
+    assert.equal(deEsta.length, 3, `esperaba 3 filas (una por recepción), hubo ${deEsta.length}: ${JSON.stringify(deEsta)}`);
+  });
 });

@@ -14,7 +14,7 @@ Título editable del REQ, Excel alineado a filtros de la página, reporte diario
 ### Añadido
 - Título del requerimiento editable en el detalle (Compras/Admin) en cualquier estado
 - Al recargar BASE GRAL, los N° existentes actualizan título y notas (no se omiten)
-- Excel de OC: una fila por ítem, con **% entregado** y **fecha de última recepción**
+- Excel de OC: **una fila por recepción** (entrega), con **% de esa entrega**, fecha y No. recibo
 - Fecha de recepción editable (Compras/Admin; por defecto el día de hoy)
 - Días del reporte diario configurables en Configuración (por defecto lunes a viernes)
 - El resumen de las 7:00 (hora México) incluye KPIs y FIFO de **órdenes de compra**
@@ -31,6 +31,11 @@ Título editable del REQ, Excel alineado a filtros de la página, reporte diario
 - Listados REQ/OC del solicitante arrancan en lo suyo; «Todos» + usuarios activos en el filtro
 - Export Excel de REQ y de OC aplica los **mismos filtros de la página** (estado, tipo, usuario, búsqueda, área, sin PO…) más el periodo que se elige al exportar
 - El solicitante también puede exportar Excel de OC (con los filtros de su lista; por defecto las suyas)
+- Import Excel: título desde **Descripción del ítem** (si hay varias filas del mismo N°, se queda la primera descripción; ya no se usa el consecutivo como título)
+
+### Corregido
+- Excel de OC: el **% entrega** es el de esa recepción, no el acumulado de la OC
+- Una OC con varias recepciones ya no duplica filas en el listado ni en el Excel (3 entregas → 3 filas, no 9)
 
 ## [1.9.4] — 2026-08-28
 

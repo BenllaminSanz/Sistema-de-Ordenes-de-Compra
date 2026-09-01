@@ -163,7 +163,12 @@ async function listar(filtros = {}) {
           AND cat.proveedor_id IS NOT NULL
         LIMIT 1)
      )
-     LEFT JOIN recepciones rec ON rec.orden_compra_id = oc.id
+     LEFT JOIN recepciones rec ON rec.id = (
+       SELECT r2.id FROM recepciones r2
+       WHERE r2.orden_compra_id = oc.id
+       ORDER BY r2.fecha_recepcion DESC, r2.id DESC
+       LIMIT 1
+     )
      ${whereClause}
      ORDER BY ${
        // Activas sin orden por columna: prioriza sin PO/NA y luego más antiguas (cola de trabajo)

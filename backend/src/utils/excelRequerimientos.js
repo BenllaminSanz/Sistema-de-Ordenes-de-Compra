@@ -266,7 +266,7 @@ function parseHojaLegacy(data, filas, meta) {
       proveedor: String(row[2] || '').trim(),
       area: ad.area,
       departamento: ad.departamento,
-      titulo: descripcion || consecutivo,
+      titulo: descripcion,
       descripcion,
       notas: notasStatus,
       status_texto: statusTxt,
@@ -378,7 +378,14 @@ function resolverMapaBaseGral(headerRow) {
   setIf('area', /^area$/, /^área$/);
   setIf('departamento', /^departamento$/, /^depto$/);
   setIf('compania', /compania/, /compañia/, /company/);
-  setIf('tipoServicio', /tipo de servicio/, /^descripcion$/, /^description$/);
+  setIf(
+    'tipoServicio',
+    /descripcion del item/,
+    /tipo de servicio/,
+    /^descripcion$/,
+    /^description$/
+  );
+  setIf('codigo', /codigo/, /no\.?\s*de serie/, /no\.?\s*parte/);
   setIf('status', /^status$/, /^estatus$/);
 
   // Segunda columna Usuario (si hay dos)
@@ -492,7 +499,7 @@ function parseHojaBaseGral(data, filas, meta) {
       proveedor,
       area: ad.area,
       departamento: ad.departamento,
-      titulo: descripcion || consecutivo,
+      titulo: descripcion,
       descripcion,
       notas: statusTxt,
       status_texto: statusTxt,
@@ -510,7 +517,9 @@ function parseHojaBaseGral(data, filas, meta) {
       crearOc,
       ocEstado,
       avisos,
-      codigo_sugerido: extraerCodigoDesdeDescripcion(descripcion),
+      codigo_sugerido:
+        String(cellAt(row, map.codigo) || '').trim()
+        || extraerCodigoDesdeDescripcion(descripcion),
     });
     meta.baseGral += 1;
   }
@@ -871,7 +880,7 @@ function generarExcelRequerimientosResumen(reqs) {
   return generarExcelBaseGral(filas);
 }
 
-const HEADERS_REQUERIMIENTOS_POR_ITEM = [
+export const HEADERS_REQUERIMIENTOS_POR_ITEM = [
   'Orden de compra',
   'Fecha',
   'N°',
@@ -994,18 +1003,20 @@ const HEADERS_OC_POR_ITEM = [
   'Cantidad recibida',
   'Unidad',
   '% entrega',
-  'Fecha última entrega',
+  'Fecha entrega',
+  'No. recibo',
 ];
 
 const COLS_OC_POR_ITEM = [
   { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 },
   { wch: 12 }, { wch: 32 }, { wch: 12 }, { wch: 8 }, { wch: 22 },
   { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 18 },
-  { wch: 40 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 16 },
+  { wch: 40 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 14 },
 ];
 
 /**
- * Excel de OC: una fila por ítem, con % de entrega y fecha de la última recepción.
+ * Excel de OC: una fila por recepción (entrega).
+ * % entrega = cantidad de ESA entrega / cantidad total solicitada de la OC.
  */
 export function generarExcelOrdenesPorItem(filas = []) {
   const wsData = [HEADERS_OC_POR_ITEM];
@@ -1026,7 +1037,8 @@ export function generarExcelOrdenesPorItem(filas = []) {
         cantidad_recibida: '',
         unidad: '',
         pct_entrega: '',
-        fecha_ultima_entrega: null,
+        fecha_entrega: null,
+        numero_recibo: '',
       }];
 
     items.forEach((it) => {
@@ -1060,7 +1072,10 @@ export function generarExcelOrdenesPorItem(filas = []) {
         rec,
         it.unidad || '',
         pct === '' ? '' : pct,
-        it.fecha_ultima_entrega ? formatFechaBaseGral(it.fecha_ultima_entrega) : '',
+        (it.fecha_entrega || it.fecha_ultima_entrega)
+          ? formatFechaBaseGral(it.fecha_entrega || it.fecha_ultima_entrega)
+          : '',
+        it.numero_recibo || '',
       ];
       wsData.push(row);
       wsStyles.push(row.map(() => style));

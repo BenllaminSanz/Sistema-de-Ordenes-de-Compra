@@ -8,7 +8,7 @@ import {
   formatoProveedorBaseGral,
   statusDesdeNotas,
 } from '../utils/excelRequerimientos.js';
-import { resumenItemsOrden } from '../models/recepciones.js';
+import { lineasEntregaExcelOrden } from '../models/recepciones.js';
 import {
   construirIndiceAreasDeptos,
   resolverAreaDepartamentoVista,
@@ -167,9 +167,16 @@ export async function generarReporteOrdenesCompra(req, res) {
     if (solicitante_id) filtros.solicitante_id = solicitante_id;
     aplicarFiltroSolicitante(req.usuario, solicitante_id, filtros);
 
-    const { datos: ocs } = await Ordenes.listar({
+    const { datos: ocsRaw } = await Ordenes.listar({
       ...filtros,
       limite: 10000,
+    });
+    const vistos = new Set();
+    const ocs = (ocsRaw || []).filter((oc) => {
+      const id = Number(oc.id);
+      if (!id || vistos.has(id)) return false;
+      vistos.add(id);
+      return true;
     });
 
     const indice = await construirIndiceAreasDeptos();
@@ -180,7 +187,7 @@ export async function generarReporteOrdenesCompra(req, res) {
       const resumenes = await Promise.all(
         chunk.map(async (oc) => {
           try {
-            return await resumenItemsOrden(oc.id);
+            return await lineasEntregaExcelOrden(oc.id);
           } catch {
             return [];
           }
