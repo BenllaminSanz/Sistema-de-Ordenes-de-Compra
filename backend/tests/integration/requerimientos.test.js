@@ -9,6 +9,8 @@ import {
   reqAprobadoSinCotizacion,
 } from '../helpers/factories.js';
 import { query } from '../helpers/db.js';
+import { buildXlsxBuffer, readXlsxRows } from '../helpers/excel.js';
+import { HEADERS_BASE_GRAL } from '../../src/utils/excelRequerimientos.js';
 
 describeIntegration('Requerimientos', () => {
   it('crea REQ con ítems de catálogo en borrador', async () => {
@@ -80,7 +82,7 @@ describeIntegration('Requerimientos', () => {
     assert.equal((sinMatch.body.datos || []).length, 0);
   });
 
-  it('solicitante lista el catálogo general de REQ (consulta)', async () => {
+  it('solicitante lista solo sus REQ por defecto', async () => {
     await createRequerimiento('sol1');
     await createRequerimiento('sol2');
 
@@ -88,7 +90,17 @@ describeIntegration('Requerimientos', () => {
     assert.equal(res.status, 200);
     const datos = res.body.datos || res.body;
     assert.ok(Array.isArray(datos));
-    assert.ok(datos.length >= 2);
+    assert.ok(datos.length >= 1);
+    assert.ok(datos.every((r) => r.solicitante_email === 'sol1@test.local'));
+    assert.ok(!datos.some((r) => r.solicitante_email === 'sol2@test.local'));
+  });
+
+  it('solicitante ve REQ de todos con solicitante_id=all', async () => {
+    await createRequerimiento('sol1');
+    await createRequerimiento('sol2');
+    const res = await agentFor('sol1').get('/api/requerimientos?solicitante_id=all');
+    assert.equal(res.status, 200);
+    const datos = res.body.datos || res.body;
     const emails = datos.map((r) => r.solicitante_email);
     assert.ok(emails.includes('sol1@test.local'));
     assert.ok(emails.includes('sol2@test.local'));
@@ -186,13 +198,30 @@ describeIntegration('Requerimientos', () => {
     assert.equal(String(res.body.departamento).toUpperCase(), 'SEGURIDAD');
   });
 
-  it('editar solo permitido en borrador o incompleto', async () => {
+  it('solicitante puede editar su REQ en revisión', async () => {
     const created = await createRequerimiento('sol1');
     await patchEstado('sol1', created.body.id, 'en_revision');
     const res = await agentFor('sol1')
       .put(`/api/requerimientos/${created.body.id}`)
       .send({
-        titulo_solicitud: 'Intento de edicion en revision',
+        titulo_solicitud: 'Titulo corregido aun en revision',
+        ...AREA_DEPT,
+        tipo: 'PARTES',
+        items: [{ catalogo_id: 1, cantidad: 1 }],
+      });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.titulo_solicitud, 'Titulo corregido aun en revision');
+    assert.equal(res.body.estado, 'en_revision');
+  });
+
+  it('solicitante no puede editar el REQ una vez recibido', async () => {
+    const created = await createRequerimiento('sol1');
+    await patchEstado('sol1', created.body.id, 'en_revision');
+    await patchEstado('compras', created.body.id, 'recibido');
+    const res = await agentFor('sol1')
+      .put(`/api/requerimientos/${created.body.id}`)
+      .send({
+        titulo_solicitud: 'Intento de edicion ya recibido',
         ...AREA_DEPT,
         tipo: 'PARTES',
         items: [{ catalogo_id: 1, cantidad: 1 }],
@@ -233,5 +262,90 @@ describeIntegration('Requerimientos', () => {
       .patch(`/api/requerimientos/${created.body.id}/notas`)
       .send({ notas: 'intento del dueño' });
     assert.equal(res.status, 403);
+  });
+
+  it('compras puede editar título en REQ aprobado', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const res = await agentFor('compras')
+      .patch(`/api/requerimientos/${req.id}/titulo`)
+      .send({ titulo_solicitud: 'Título corregido desde Compras' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.titulo_solicitud, 'Título corregido desde Compras');
+  });
+
+  it('admin puede editar título en REQ aprobado', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const res = await agentFor('admin')
+      .patch(`/api/requerimientos/${req.id}/titulo`)
+      .send({ titulo_solicitud: 'Título corregido por Admin' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.titulo_solicitud, 'Título corregido por Admin');
+  });
+
+  it('solicitante no puede editar título una vez enviado a revisión', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const res = await agentFor('sol1')
+      .patch(`/api/requerimientos/${req.id}/titulo`)
+      .send({ titulo_solicitud: 'Intento del solicitante publicado' });
+    assert.equal(res.status, 403);
+  });
+
+  it('import Excel actualiza título (descripción) y notas (Status) de N° existentes', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const [[{ consecutivo }]] = await query(
+      'SELECT consecutivo FROM requerimientos WHERE id = ?',
+      [req.id]
+    );
+    assert.ok(consecutivo);
+
+    const rows = [
+      HEADERS_BASE_GRAL,
+      [
+        '', '', consecutivo, '', 'PARTES',
+        '', '', '', '', 'Solicitante Uno',
+        'Aprobado', AREA_DEPT.area, AREA_DEPT.departamento, '31',
+        'Descripcion del reporte de excel', '', 'Bitacora de estatus del Excel',
+      ],
+    ];
+    const buffer = buildXlsxBuffer(rows);
+    const res = await agentFor('compras')
+      .post('/api/requerimientos/importar')
+      .attach('archivo', buffer, 'base-gral.xlsx');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.actualizados, 1, JSON.stringify(res.body));
+
+    const got = await agentFor('compras').get(`/api/requerimientos/${req.id}`);
+    assert.equal(got.body.titulo_solicitud, 'Descripcion del reporte de excel');
+    assert.equal(got.body.notas, 'Bitacora de estatus del Excel');
+  });
+
+  it('export Excel de REQ respeta filtro tipo', async () => {
+    const partes = await createRequerimiento('sol1', {
+      tipo: 'PARTES',
+      titulo_solicitud: 'Solo partes export',
+    });
+    const serv = await createRequerimiento('sol1', {
+      tipo: 'SERVICIOS',
+      titulo_solicitud: 'Solo servicios export',
+      items: [],
+      items_libres: [{ descripcion: 'Servicio x', cantidad: 1, unidad: 'pza' }],
+    });
+    assert.equal(partes.status, 201, JSON.stringify(partes.body));
+    assert.equal(serv.status, 201, JSON.stringify(serv.body));
+
+    const res = await agentFor('compras')
+      .get('/api/requerimientos/exportar?completo=1&tipo=PARTES')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    assert.equal(res.status, 200);
+    const rows = readXlsxRows(res.body);
+    const blob = JSON.stringify(rows);
+    assert.match(blob, /PARTES/);
+    assert.doesNotMatch(blob, /SERVICIOS/);
+    assert.doesNotMatch(blob, /Servicio x/);
   });
 });

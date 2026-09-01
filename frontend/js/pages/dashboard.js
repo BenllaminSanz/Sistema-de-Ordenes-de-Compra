@@ -3,6 +3,9 @@
  */
 
 Auth.requiereAuth();
+if (Auth.puedeHacer(['solicitante'])) {
+  window.location.href = 'requerimientos.html';
+}
 renderSidebar();
 renderTopbar('Dashboard');
 

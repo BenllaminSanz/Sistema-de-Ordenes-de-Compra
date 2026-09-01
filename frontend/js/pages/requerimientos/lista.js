@@ -56,8 +56,12 @@ async function cargarFiltroSolicitantesReq(valorPreferido) {
     const usuarios = await Api.get('/auth/usuarios');
     const crudos = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
     const lista = UI.usuariosParaFiltro(crudos);
+    const yo = Auth.getUsuario();
+    const esSol = Auth.puedeHacer(['solicitante']);
     const actual = valorPreferido || sel.value;
-    sel.innerHTML = '<option value="">Usuario: todos</option>';
+    sel.innerHTML = esSol
+      ? '<option value="all">Usuario: todos</option>'
+      : '<option value="">Usuario: todos</option>';
     lista
       .slice()
       .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
@@ -69,6 +73,7 @@ async function cargarFiltroSolicitantesReq(valorPreferido) {
         sel.appendChild(opt);
       });
     if (actual) sel.value = String(actual);
+    else if (esSol && yo?.id) sel.value = String(yo.id);
     sel.dataset.loaded = '1';
     sel.onchange = () => onFiltroReqChange();
     if (actual) abrirFiltrosAvanzadosReq(true);
@@ -82,10 +87,10 @@ function contarFiltrosAvanzadosReq() {
   let n = 0;
   if (document.getElementById('fil-area')?.value) n++;
   if (document.getElementById('fil-departamento')?.value) n++;
-  if (
-    Auth.puedeHacer(['compras', 'admin'])
-    && document.getElementById('fil-solicitante')?.value
-  ) n++;
+  const solVal = document.getElementById('fil-solicitante')?.value;
+  const yoId = Auth.getUsuario()?.id;
+  if (Auth.puedeHacer(['compras', 'admin']) && solVal) n++;
+  if (Auth.puedeHacer(['solicitante']) && solVal && solVal !== String(yoId)) n++;
   return n;
 }
 
@@ -161,7 +166,11 @@ function limpiarFiltrosReq() {
   const depto = document.getElementById('fil-departamento');
   if (depto) depto.value = '';
   const sol = document.getElementById('fil-solicitante');
-  if (sol) sol.value = '';
+  if (sol) {
+    sol.value = Auth.puedeHacer(['solicitante']) && Auth.getUsuario()?.id
+      ? String(Auth.getUsuario().id)
+      : '';
+  }
   abrirFiltrosAvanzadosReq(false);
   actualizarUiFiltrosReq();
   cargarRequerimientos(1);
@@ -191,6 +200,9 @@ async function cargarRequerimientos(pagina) {
   if (area)     qs += `&area=${encodeURIComponent(area)}`;
   if (depto)    qs += `&departamento=${encodeURIComponent(depto)}`;
   if (solicitante) qs += `&solicitante_id=${encodeURIComponent(solicitante)}`;
+  else if (Auth.puedeHacer(['solicitante']) && Auth.getUsuario()?.id) {
+    qs += `&solicitante_id=${encodeURIComponent(Auth.getUsuario().id)}`;
+  }
   if (_ordenReq.por) qs += `&ordenar_por=${encodeURIComponent(_ordenReq.por)}`;
   if (_ordenReq.dir) qs += `&orden=${encodeURIComponent(_ordenReq.dir)}`;
 
@@ -212,10 +224,10 @@ async function cargarRequerimientos(pagina) {
         <table>
           <thead><tr>
             ${thSortableReq('consecutivo', 'Consecutivo')}
+            ${thSortableReq('titulo', 'Título')}
             ${thSortableReq('tipo', 'Tipo')}
             ${thSortableReq('area', 'Área')}
             ${thSortableReq('departamento', 'Depto')}
-            <th>Notas / Detalles</th>
             ${thSortableReq('solicitante', 'Solicitante')}
             <th>Cotización</th>
             ${thSortableReq('estado', 'Estado')}
@@ -226,11 +238,11 @@ async function cargarRequerimientos(pagina) {
             ${datos.map(r => `
             <tr>
               <td class="fw-600">${r.consecutivo || '<span class="text-muted" title="Se asigna al enviar a revisión">—</span>'}</td>
+              <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${UI.esc(r.titulo_solicitud || r.notas || '')}">${UI.esc(r.titulo_solicitud || '—')}</td>
               <td>${r.tipo}</td>
               <td>${r.area || '—'}</td>
               <td>${r.departamento || '—'}</td>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${UI.esc(r.notas || r.descripcion || '')}">${UI.esc(r.notas || r.descripcion || '')}</td>
               <td>${r.solicitante_nombre}</td>
               <td>${r.requiere_cotizacion ? '✔' : '—'}</td>
               <td>${UI.badge(r.estado)}</td>

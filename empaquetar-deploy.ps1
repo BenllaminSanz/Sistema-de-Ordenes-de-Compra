@@ -24,6 +24,7 @@ $omitirRaiz = @(
     "terminals",
     ".claude",
     "docs-generados",
+    "docs",
     ".env"
 )
 

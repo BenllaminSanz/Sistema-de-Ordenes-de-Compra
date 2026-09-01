@@ -1,13 +1,15 @@
-import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, actualizarAreaDepartamento as _actualizarAreaDepartamento, actualizarNotas as _actualizarNotas, cambiarEstado as _cambiarEstado, eliminar as _eliminar, asignarCatalogoAItemLibre as _asignarCatalogoAItemLibre } from '../models/requerimientos.js';
+import { listar as _listar, obtenerPorId, crear as _crear, actualizar as _actualizar, actualizarAreaDepartamento as _actualizarAreaDepartamento, actualizarNotas as _actualizarNotas, actualizarTitulo as _actualizarTitulo, cambiarEstado as _cambiarEstado, eliminar as _eliminar, asignarCatalogoAItemLibre as _asignarCatalogoAItemLibre } from '../models/requerimientos.js';
 import * as CotizacionModel from '../models/cotizaciones.js';
 import { validarAreaDepartamento } from '../config/departamentosStore.js';
 import { validarMismoProveedorCatalogo, calcularRequiereCotizacion } from '../utils/catalogoItems.js';
 import { parseExcelRequerimientos, generarExcelRequerimientos } from '../utils/excelRequerimientos.js';
+import { ymd } from '../utils/fechas.js';
 import { importarBaseRequerimientos } from '../utils/importBaseReq.js';
 import { notificarComprasReqEnRevision } from '../utils/emailService.js';
 import { puedeCambiarEstadoRequerimiento } from '../domain/reqEstados.js';
 import pool from '../config/db.js';
 import logger from '../utils/logger.js';
+import { aplicarFiltroSolicitante } from '../utils/filtroSolicitante.js';
 
 async function validarAreaDeptoReq(area, departamento) {
   if (!area || !departamento) {
@@ -24,8 +26,7 @@ async function listar(req, res) {
       orden, ordenar_por, pagina, limite,
     } = req.query;
 
-    // Todos los autenticados consultan el listado general; el filtro de usuario es opcional.
-    const solicitante_id = req.query.solicitante_id;
+    const filtrosListado = aplicarFiltroSolicitante(req.usuario, req.query.solicitante_id, {});
 
     const resultado = await _listar({
       titulo_solicitud,
@@ -34,7 +35,7 @@ async function listar(req, res) {
       departamento,
       tipo,
       busqueda,
-      solicitante_id,
+      solicitante_id: filtrosListado.solicitante_id,
       orden,
       ordenar_por,
       pagina,
@@ -402,16 +403,41 @@ async function subirReferenciaItem(req, res) {
 // ─── GET /requerimientos/exportar ────────────────────────────────────────────
 async function exportarExcel(req, res) {
   try {
-    const { parsePeriodoExport, sqlRangoFecha } = await import('../utils/fechas.js');
+    const { parsePeriodoExport } = await import('../utils/fechas.js');
     const periodo = parsePeriodoExport(req.query, { defaultCompleto: true });
-    const rango = sqlRangoFecha('r.created_at', periodo.fecha_desde, periodo.fecha_hasta);
-    const filtroAnio = rango.sql
-      ? `WHERE 1=1 ${rango.sql}`
-      : '';
-    const paramsPeriodo = rango.params;
+    const filtrosPagina = aplicarFiltroSolicitante(req.usuario, req.query.solicitante_id, {
+      estado: req.query.estado,
+      tipo: req.query.tipo,
+      area: req.query.area,
+      departamento: req.query.departamento,
+      busqueda: req.query.busqueda,
+    });
+    const { datos: listados } = await _listar({
+      ...filtrosPagina,
+      limite: 20000,
+      pagina: 1,
+    });
+    let ids = (listados || []).map((r) => r.id);
+    if (periodo.fecha_desde || periodo.fecha_hasta) {
+      ids = (listados || [])
+        .filter((r) => {
+          const d = ymd(r.created_at);
+          if (!d) return false;
+          if (periodo.fecha_desde && d < periodo.fecha_desde) return false;
+          if (periodo.fecha_hasta && d > periodo.fecha_hasta) return false;
+          return true;
+        })
+        .map((r) => r.id);
+    }
+    if (!ids.length) {
+      const bufferVacio = generarExcelRequerimientos([]);
+      const fechaVacio = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="BASE_GRAL_REQ_FILTROS_${fechaVacio}.xlsx"`);
+      return res.send(bufferVacio);
+    }
 
     // Proveedor: OC → cotización seleccionada → primer ítem de catálogo del REQ
-    // Detalle: título + notas + resumen de ítems (no solo el tipo PARTES/SERVICIOS)
     const [reqs] = await pool.query(`
       SELECT
         r.id, r.consecutivo, r.tipo, r.titulo_solicitud, r.notas,
@@ -467,9 +493,9 @@ async function exportarExcel(req, res) {
           AND cat.proveedor_id IS NOT NULL
         LIMIT 1
       )
-      ${filtroAnio}
+      WHERE r.id IN (?)
       ORDER BY r.tipo ASC, r.created_at ASC
-    `, paramsPeriodo);
+    `, [ids]);
 
     const reqIds = reqs.map((req) => req.id).filter(Boolean);
     if (reqIds.length) {
@@ -686,4 +712,34 @@ async function actualizarNotas(req, res) {
   }
 }
 
-export { listar, obtener, crear, actualizar, actualizarAreaDepartamento, actualizarNotas, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel, asignarCatalogoItemLibre };
+/**
+ * PATCH /requerimientos/:id/titulo
+ * Tras enviar a revisión: solo Compras y Admin.
+ * El solicitante solo puede cambiarlo en borrador/incompleto (PUT del formulario).
+ */
+async function actualizarTitulo(req, res) {
+  try {
+    const titulo = req.body?.titulo_solicitud;
+    if (titulo === undefined) {
+      return res.status(400).json({ mensaje: 'El campo titulo_solicitud es requerido' });
+    }
+    const existente = await obtenerPorId(req.params.id);
+    if (!existente) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
+    const afectados = await _actualizarTitulo(
+      req.params.id,
+      titulo,
+      req.usuario?.id
+    );
+    if (!afectados) {
+      return res.status(404).json({ mensaje: 'Requerimiento no encontrado' });
+    }
+    res.json(await obtenerPorId(req.params.id));
+  } catch (err) {
+    logger.error('[actualizar titulo REQ]', err);
+    res.status(500).json({ mensaje: 'Error al guardar el título' });
+  }
+}
+
+export { listar, obtener, crear, actualizar, actualizarAreaDepartamento, actualizarNotas, actualizarTitulo, cambiarEstado, eliminar, subirReferenciaItem, exportarExcel, importarExcel, asignarCatalogoItemLibre };

@@ -26,6 +26,16 @@ function slugNombre(nombre) {
     .slice(0, 40) || 'usuario';
 }
 
+function camposTituloNotas(f) {
+  const titulo = String(f.titulo || f.descripcion || f.consecutivo || '')
+    .trim()
+    .slice(0, 300);
+  const notas = String(f.status_texto != null ? f.status_texto : (f.notas || ''))
+    .trim()
+    .slice(0, 4000);
+  return { titulo: titulo || String(f.consecutivo || '').slice(0, 300), notas };
+}
+
 function parseProveedorExcel(texto) {
   const s = String(texto || '').trim();
   if (!s) return { num: null, nombre: null, raw: '' };
@@ -386,7 +396,8 @@ export async function importarBaseRequerimientos(opts = {}) {
     wipe,
     totalFilas: filas.length,
     importados: 0,
-    saltados: 0, // ya existían en BD (por consecutivo)
+    saltados: 0, // legado: ya no se omiten; se actualizan título/notas
+    actualizados: 0, // N° existentes: se pisa título (descripción) y notas (Status)
     ocsCreadas: 0,
     itemsCatalogo: 0,
     itemsLibres: 0,
@@ -408,9 +419,18 @@ export async function importarBaseRequerimientos(opts = {}) {
     // Solo simular validaciones de catálogo/usuarios
     const catalogo = await cargarCatalogoPorCodigo(pool);
     const users = await cargarMapaUsuarios(pool);
+    const [existentesDry] = wipe
+      ? [[]]
+      : await pool.query('SELECT consecutivo FROM requerimientos WHERE consecutivo IS NOT NULL');
+    const existDry = new Set(
+      (existentesDry || []).map((r) => String(r.consecutivo).trim().toUpperCase())
+    );
     for (const f of filas) {
+      const key = String(f.consecutivo).trim().toUpperCase();
+      if (existDry.has(key)) reporte.actualizados += 1;
+      else reporte.importados += 1;
       reporte.porEstadoReq[f.reqEstado] = (reporte.porEstadoReq[f.reqEstado] || 0) + 1;
-      if (f.crearOc) {
+      if (f.crearOc && !existDry.has(key)) {
         reporte.porEstadoOc[f.ocEstado] = (reporte.porEstadoOc[f.ocEstado] || 0) + 1;
       }
       if (f.usuario && !matchUsuario(users, f.usuario)) {
@@ -437,9 +457,11 @@ export async function importarBaseRequerimientos(opts = {}) {
       seenU.add(k);
       return true;
     });
-    reporte.importados = filas.length;
     reporte.ocsCreadas = filas.filter((f) => f.crearOc).length;
-    reporte.mensaje = `Dry-run: ${filas.length} REQ, ${reporte.ocsCreadas} OC, ${reporte.duplicados.length} duplicados omitidos, ${reporte.usuariosCreados.length} usuarios a crear`;
+    reporte.mensaje =
+      `Dry-run: ${reporte.importados} REQ nuevos, ${reporte.actualizados} a actualizar (título/notas)` +
+      `, ${reporte.ocsCreadas} OC, ${reporte.duplicados.length} duplicados omitidos` +
+      `, ${reporte.usuariosCreados.length} usuarios a crear`;
     reporte.ok = true;
     return reporte;
   }
@@ -456,22 +478,29 @@ export async function importarBaseRequerimientos(opts = {}) {
     const catalogo = await cargarCatalogoPorCodigo(conn);
     const proveedores = await cargarProveedores(conn);
 
-    // Si no wipe, saltamos consecutivos ya existentes
     const [existentes] = await conn.query(
-      'SELECT consecutivo FROM requerimientos WHERE consecutivo IS NOT NULL'
+      'SELECT id, consecutivo FROM requerimientos WHERE consecutivo IS NOT NULL'
     );
-    const existSet = new Set(existentes.map((r) => String(r.consecutivo).trim().toUpperCase()));
+    const existMap = new Map(
+      existentes.map((r) => [String(r.consecutivo).trim().toUpperCase(), r.id])
+    );
 
     for (const f of filas) {
       const key = String(f.consecutivo).trim().toUpperCase();
-      if (existSet.has(key)) {
-        reporte.saltados += 1;
-        // No es error operativo: en servidor/normal solo se agregan faltantes
-        if (reporte.errores.length < 30) {
+      if (existMap.has(key)) {
+        try {
+          const reqId = existMap.get(key);
+          const { titulo, notas } = camposTituloNotas(f);
+          await conn.query(
+            'UPDATE requerimientos SET titulo_solicitud = ?, notas = ? WHERE id = ?',
+            [titulo, notas, reqId]
+          );
+          reporte.actualizados += 1;
+        } catch (rowErr) {
           reporte.errores.push({
             consecutivo: f.consecutivo,
             filaExcel: f.filaExcel,
-            error: 'Ya existe en el sistema (omitido)',
+            error: rowErr.message,
           });
         }
         continue;
@@ -482,8 +511,8 @@ export async function importarBaseRequerimientos(opts = {}) {
           ? await asegurarUsuarioInactivo(conn, f.usuario, userCache, reporte)
           : actorUserId;
 
-        const titulo = (f.titulo || f.consecutivo).slice(0, 500);
-        let notas = (f.notas || '').slice(0, 5000);
+        const { titulo, notas } = camposTituloNotas(f);
+        let notasFinal = notas;
         const createdAt = f.fecha_sol ? `${f.fecha_sol} 12:00:00` : null;
 
         // Catálogo
@@ -493,7 +522,6 @@ export async function importarBaseRequerimientos(opts = {}) {
         if (cat) {
           usaLibre = false;
         } else if (code) {
-          notas = `${notas}${notas ? ' | ' : ''}[Import] Código "${code}" no existe en catálogo`.slice(0, 5000);
           if (reporte.sinCatalogo.length < 200) {
             reporte.sinCatalogo.push({
               consecutivo: f.consecutivo,
@@ -501,8 +529,6 @@ export async function importarBaseRequerimientos(opts = {}) {
               desc: (f.descripcion || '').slice(0, 80),
             });
           }
-        } else if (f.descripcion) {
-          notas = `${notas}${notas ? ' | ' : ''}[Import] Sin código de catálogo identificable`.slice(0, 5000);
         }
 
         const [ins] = await conn.query(
@@ -517,14 +543,14 @@ export async function importarBaseRequerimientos(opts = {}) {
             f.area,
             f.departamento,
             f.tipo,
-            notas || f.consecutivo,
+            notasFinal,
             usaLibre ? 1 : 0,
             f.reqEstado,
             createdAt,
           ]
         );
         const reqId = ins.insertId;
-        existSet.add(key);
+        existMap.set(key, reqId);
 
         await conn.query(
           `INSERT INTO historial_estados
@@ -642,8 +668,8 @@ export async function importarBaseRequerimientos(opts = {}) {
     reporte.ok = true;
     reporte.mensaje =
       `Nuevos: ${reporte.importados} REQ` +
+      (reporte.actualizados ? `, actualizados (título/notas): ${reporte.actualizados}` : '') +
       (reporte.ocsCreadas ? `, ${reporte.ocsCreadas} OC` : '') +
-      `. Omitidos (ya existían): ${reporte.saltados}` +
       (reporte.duplicados.length ? `. Duplicados en archivo: ${reporte.duplicados.length}` : '') +
       (reporte.usuariosCreados.length ? `. Usuarios inactivos creados: ${reporte.usuariosCreados.length}` : '') +
       (reporte.sinCatalogo.length ? `. Sin catálogo: ${reporte.sinCatalogo.length}` : '') +

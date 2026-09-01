@@ -117,6 +117,10 @@ export const actualizarNotasRequerimientoSchema = z.object({
   notas: z.union([z.string().max(4000), z.null()]).optional(),
 });
 
+export const actualizarTituloRequerimientoSchema = z.object({
+  titulo_solicitud: z.string().min(5, 'El título debe tener al menos 5 caracteres').max(300).trim(),
+});
+
 // ============================================================
 // ESQUEMAS DE CAMBIO DE ESTADO (Requerimientos)
 // ============================================================

@@ -242,7 +242,7 @@ function parseHojaLegacy(data, filas, meta) {
     const observacion = String(row[12] || '').trim();
     const descripcion = String(row[5] || '').trim();
     const statusTxt = String(row[7] || '').trim();
-    const notasCombinadas = [descripcion, observacion, statusTxt].filter(Boolean).join(' | ');
+    const notasStatus = [observacion, statusTxt].filter(Boolean).join(' | ');
     const poInfo = normalizarPoExcel(ocNumero);
     const reqEstado = detectarEstadoLegacy(row);
     const mapEst =
@@ -268,7 +268,7 @@ function parseHojaLegacy(data, filas, meta) {
       departamento: ad.departamento,
       titulo: descripcion || consecutivo,
       descripcion,
-      notas: notasCombinadas,
+      notas: notasStatus,
       status_texto: statusTxt,
       usuario: String(row[6] || '').trim(),
       oc_numero: poInfo.po,
@@ -479,12 +479,6 @@ function parseHojaBaseGral(data, filas, meta) {
 
     // Cancelada: no OC por defecto; si trae PO real, opcionalmente se podría crear cancelada
     // (acordado: solo REQ rechazado)
-    const notasParts = [
-      descripcion,
-      statusTxt ? `Status: ${statusTxt}` : '',
-      avisos.length ? `Import: ${avisos.join('; ')}` : '',
-    ].filter(Boolean);
-
     const totalRaw = cellAt(row, map.total);
     const monedaRaw = cellAt(row, map.moneda);
 
@@ -500,7 +494,7 @@ function parseHojaBaseGral(data, filas, meta) {
       departamento: ad.departamento,
       titulo: descripcion || consecutivo,
       descripcion,
-      notas: notasParts.join(' | '),
+      notas: statusTxt,
       status_texto: statusTxt,
       usuario,
       oc_numero: po,
@@ -749,8 +743,8 @@ export function generarExcelBaseGral(filas = [], opts = {}) {
         ? Number(f.total)
         : (f.oc_monto_total != null ? Number(f.oc_monto_total) : (f.monto_total != null ? Number(f.monto_total) : ''));
     const moneda = f.moneda ?? f.oc_moneda ?? '';
-    const tipoServicio = f.tipo_servicio ?? f.titulo_solicitud ?? f.descripcion ?? f.notas ?? '';
-    const status = f.status ?? f.status_texto ?? f.notas_status ?? '';
+    const tipoServicio = f.tipo_servicio ?? f.titulo_solicitud ?? f.descripcion ?? '';
+    const status = f.status ?? f.status_texto ?? f.notas_status ?? statusDesdeNotas(f.notas);
 
     const noProv =
       f.proveedor_num != null && String(f.proveedor_num).trim() !== ''
@@ -816,48 +810,30 @@ export function generarExcelBaseGral(filas = [], opts = {}) {
  * Export de requerimientos → layout BASE GRAL unificado (igual que General y OC).
  */
 /**
- * Detalle del REQ para columna "Tipo de servicio" del BASE GRAL.
- * Incluye título, notas de solicitud e ítems (código + descripción + cantidad).
- * No usa solo el tipo PARTES/SERVICIOS (eso va en columna "Tipo").
+ * Columna Status del BASE GRAL a partir de notas del REQ.
+ * Acepta el formato legado `Status: … | Import: …` y las notas actuales (texto libre).
+ */
+export function statusDesdeNotas(notas) {
+  const n = String(notas || '').trim();
+  if (!n) return '';
+  const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
+  if (m) return m[1].trim();
+  return n.replace(/\s*\|\s*Import:.*$/i, '').trim();
+}
+
+/**
+ * Columna "Tipo de servicio" del BASE GRAL = título del requerimiento
+ * (la descripción del reporte). El tipo PARTES/SERVICIOS va en "Tipo".
  */
 export function detalleRequerimientoExport(req = {}) {
-  const partes = [];
-  const titulo = String(req.titulo_solicitud || '').trim();
-  if (titulo) partes.push(titulo);
-
-  const itemsCat = String(req.items_resumen || '').trim();
-  const itemsLib = String(req.items_libres_resumen || '').trim();
-  const items = [itemsCat, itemsLib].filter(Boolean).join('; ');
-  if (items) partes.push(items);
-
-  let notas = String(req.notas || '').trim();
-  // Quitar bitácora Status:… (va a columna Status) y ruido de import
-  notas = notas
-    .replace(/\s*\|\s*Status:\s*.+$/i, '')
-    .replace(/^Status:\s*.+?(?:\s*\|\s*Import:.*)?$/i, '')
-    .replace(/\s*\|\s*Import:.*$/i, '')
-    .trim();
-  if (notas && notas !== titulo && !partes.includes(notas)) {
-    // Evitar repetir si las notas ya están en el resumen de ítems
-    if (!items || !items.includes(notas.slice(0, Math.min(40, notas.length)))) {
-      partes.push(notas);
-    }
-  }
-
-  return partes.filter(Boolean).join(' | ') || titulo || items || '';
+  return String(req.titulo_solicitud || req.titulo || '').trim();
 }
 
 function generarExcelRequerimientosResumen(reqs) {
   const indice = construirIndiceAreasDeptosSync();
   const filas = (reqs || []).map((req) => {
-    const n = String(req.notas || '');
-    // Status: bitácora del import o notas de seguimiento (no el detalle completo del REQ)
-    let statusNotas = '';
-    const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
-    if (m) statusNotas = m[1].trim();
-
     const ad = resolverAreaDepartamentoVista(req.area, req.departamento, indice);
-    const detalle = detalleRequerimientoExport(req);
+    const titulo = detalleRequerimientoExport(req);
 
     return {
       orden_compra: req.oc_datatextnow_id || '',
@@ -875,12 +851,10 @@ function generarExcelRequerimientosResumen(reqs) {
       oc_estado: req.oc_estado,
       area: ad.area || '',
       departamento: ad.departamento || '',
-      // Columna "Tipo de servicio" = detalle del requerimiento (no el tipo PARTES/SERVICIOS)
-      tipo_servicio: detalle,
-      titulo_solicitud: detalle,
-      descripcion: detalle,
-      notas: detalle,
-      status: statusNotas,
+      tipo_servicio: titulo,
+      titulo_solicitud: titulo,
+      descripcion: titulo,
+      status: statusDesdeNotas(req.notas),
       _fill: fillPorEstadoSistema({ estado: req.estado, oc_estado: req.oc_estado }),
     };
   });
@@ -939,9 +913,7 @@ export function generarExcelRequerimientos(reqs = []) {
 
   for (const req of reqs) {
     const ad = resolverAreaDepartamentoVista(req.area, req.departamento, indice);
-    const n = String(req.notas || '');
-    const statusMatch = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
-    const status = statusMatch ? statusMatch[1].trim() : '';
+    const status = statusDesdeNotas(req.notas);
     const fill = fillPorEstadoSistema({ estado: req.estado, oc_estado: req.oc_estado });
     const style = cellStyle(fill);
     const items = Array.isArray(req.items_reporte) && req.items_reporte.length
@@ -996,6 +968,114 @@ export function generarExcelRequerimientos(reqs = []) {
     }
   }
   ws['!cols'] = COLS_REQUERIMIENTOS_POR_ITEM;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
+}
+
+const HEADERS_OC_POR_ITEM = [
+  'Orden de compra',
+  'Fecha',
+  'N°',
+  'Fecha de solicitud',
+  'Tipo',
+  'No. proveedor',
+  'Proveedor',
+  'Total',
+  'Moneda',
+  'Usuario',
+  'Estado',
+  'Area',
+  'Departamento',
+  'Compañía',
+  'Código / No. de serie',
+  'Descripción del ítem',
+  'Cantidad solicitada',
+  'Cantidad recibida',
+  'Unidad',
+  '% entrega',
+  'Fecha última entrega',
+];
+
+const COLS_OC_POR_ITEM = [
+  { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 },
+  { wch: 12 }, { wch: 32 }, { wch: 12 }, { wch: 8 }, { wch: 22 },
+  { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 18 },
+  { wch: 40 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 16 },
+];
+
+/**
+ * Excel de OC: una fila por ítem, con % de entrega y fecha de la última recepción.
+ */
+export function generarExcelOrdenesPorItem(filas = []) {
+  const wsData = [HEADERS_OC_POR_ITEM];
+  const wsStyles = [HEADERS_OC_POR_ITEM.map(() => HEADER_STYLE)];
+
+  for (const f of filas) {
+    const fill = f._fill || fillPorEstadoSistema({
+      estado: f.req_estado,
+      oc_estado: f.oc_estado || f.estado_oc,
+    });
+    const style = cellStyle(fill);
+    const items = Array.isArray(f.items) && f.items.length
+      ? f.items
+      : [{
+        codigo: '',
+        descripcion: '',
+        cantidad_solicitada: '',
+        cantidad_recibida: '',
+        unidad: '',
+        pct_entrega: '',
+        fecha_ultima_entrega: null,
+      }];
+
+    items.forEach((it) => {
+      const sol = it.cantidad_solicitada === '' || it.cantidad_solicitada == null
+        ? ''
+        : Number(it.cantidad_solicitada);
+      const rec = it.cantidad_recibida === '' || it.cantidad_recibida == null
+        ? ''
+        : Number(it.cantidad_recibida);
+      const pct = it.pct_entrega === '' || it.pct_entrega == null
+        ? (sol > 0 && rec !== '' ? Math.min(100, Math.round((rec / sol) * 100)) : '')
+        : it.pct_entrega;
+      const row = [
+        f.orden_compra ?? f.po ?? '',
+        f.fecha ?? (f.fecha_po ? formatFechaBaseGral(f.fecha_po) : ''),
+        f.n ?? f.consecutivo ?? '',
+        f.fecha_solicitud ?? (f.created_at ? formatFechaBaseGral(f.created_at) : ''),
+        f.tipo || '',
+        f.proveedor_num ?? '',
+        f.proveedor_nombre ?? '',
+        f.total === '' || f.total == null ? '' : Number(f.total),
+        f.moneda ?? '',
+        f.usuario ?? f.solicitante_nombre ?? '',
+        f.estado ?? '',
+        f.area ?? '',
+        f.departamento ?? '',
+        f.compania ?? '31',
+        it.codigo || '',
+        it.descripcion || '',
+        sol,
+        rec,
+        it.unidad || '',
+        pct === '' ? '' : pct,
+        it.fecha_ultima_entrega ? formatFechaBaseGral(it.fecha_ultima_entrega) : '',
+      ];
+      wsData.push(row);
+      wsStyles.push(row.map(() => style));
+    });
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (ws[addr]) ws[addr].s = wsStyles[R]?.[C] || {};
+    }
+  }
+  ws['!cols'] = COLS_OC_POR_ITEM;
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true });

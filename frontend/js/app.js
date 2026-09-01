@@ -44,6 +44,10 @@ const Auth = {
     const rol = this.normalizarRol(u.rol);
     return roles.some((r) => this.normalizarRol(r) === rol);
   },
+  /** Destino tras login / páginas no permitidas. */
+  rutaInicio() {
+    return this.puedeHacer(['solicitante']) ? 'requerimientos.html' : 'dashboard.html';
+  },
 };
 
 // ─── API CLIENT ───────────────────────────────────────────────────────────────
@@ -481,8 +485,13 @@ async function cargarNotificaciones(renderPanel = false) {
     const verTodos = document.getElementById('notif-ver-todos');
     if (verTodos) {
       // Preferir Dashboard bandeja; fallback al listado de la cola
-      verTodos.href = data.link_dashboard || data.link_todos || 'dashboard.html#bandeja';
-      verTodos.textContent = 'Abrir bandeja';
+      if (Auth.puedeHacer(['solicitante'])) {
+        verTodos.href = 'requerimientos.html';
+        verTodos.textContent = 'Ver requerimientos';
+      } else {
+        verTodos.href = data.link_dashboard || data.link_todos || 'dashboard.html#bandeja';
+        verTodos.textContent = 'Abrir bandeja';
+      }
       verTodos.onclick = null;
     }
     const title = document.getElementById('notif-panel-title');
@@ -606,6 +615,7 @@ function renderSidebar() {
       Sistema OC
     </div>
     <nav>
+      ${esCompras ? `
       <span class="nav-section">General</span>
       <a href="dashboard.html">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
@@ -613,7 +623,7 @@ function renderSidebar() {
              y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
              <rect x="3" y="14" width="7" height="7"/></svg>
         Dashboard
-      </a>
+      </a>` : ''}
 
       <span class="nav-section">Operaciones</span>
       <a href="requerimientos.html">

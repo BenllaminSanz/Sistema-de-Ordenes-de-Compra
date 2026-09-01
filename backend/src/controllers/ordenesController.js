@@ -9,10 +9,11 @@ import {
   actualizarNotas as _actualizarNotas,
 } from '../models/ordenes.js';
 import logger from '../utils/logger.js';
+import { aplicarFiltroSolicitante } from '../utils/filtroSolicitante.js';
 
 async function listar(req, res) {
   try {
-    const filtros = { ...req.query };
+    const filtros = aplicarFiltroSolicitante(req.usuario, req.query.solicitante_id, { ...req.query });
     res.json(await _listar(filtros));
   } catch (err) {
     logger.error('[listar OC]', err);

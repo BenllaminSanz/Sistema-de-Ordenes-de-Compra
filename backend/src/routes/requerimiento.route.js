@@ -10,6 +10,7 @@ import {
   actualizar,
   actualizarAreaDepartamento,
   actualizarNotas,
+  actualizarTitulo,
   cambiarEstado,
   eliminar,
   subirReferenciaItem,
@@ -24,6 +25,7 @@ import {
   actualizarRequerimientoSchema,
   actualizarAreaDepartamentoSchema,
   actualizarNotasRequerimientoSchema,
+  actualizarTituloRequerimientoSchema,
   cambiarEstadoRequerimientoSchema
 } from '../validations/schemas.js';
 
@@ -133,6 +135,13 @@ router.patch(
   autorizar('compras', 'admin'),
   validate(actualizarNotasRequerimientoSchema),
   actualizarNotas
+);
+
+router.patch(
+  '/:id/titulo',
+  autorizar('compras', 'admin'),
+  validate(actualizarTituloRequerimientoSchema),
+  actualizarTitulo
 );
 
 router.patch(

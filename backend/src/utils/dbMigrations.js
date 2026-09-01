@@ -180,6 +180,21 @@ async function ensureConfiguracionAppTable() {
     'reporte_diario_ultimo',
     'DATE NULL COMMENT \'Último día (America/Mexico_City) en que se envió el resumen\''
   );
+  await addColumnIfMissing(
+    'configuracion_app',
+    'reporte_diario_dias',
+    "VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5' COMMENT 'Días ISO 1=lun..7=dom para el resumen diario'"
+  );
+  await addColumnIfMissing(
+    'configuracion_app',
+    'purga_borradores_ultimo',
+    'DATE NULL COMMENT \'Último día (America/Mexico_City) en que corrió la purga de borradores/incompletos\''
+  );
+  await addColumnIfMissing(
+    'configuracion_app',
+    'purga_borradores',
+    "TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = purga mensual de borradores/incompletos activa'"
+  );
 }
 
 /**

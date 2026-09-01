@@ -177,7 +177,8 @@ async function registro(req, res) {
 async function listarUsuarios(req, res) {
   try {
     const { activo } = req.query;
-    const usuarios = await listar({ activo });
+    const soloActivos = req.usuario?.rol === 'solicitante' ? 1 : activo;
+    const usuarios = await listar({ activo: soloActivos });
     res.json(
       (usuarios || []).map((u) => ({ ...u, rol: normalizarRolAuth(u.rol) }))
     );

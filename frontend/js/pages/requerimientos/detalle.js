@@ -186,6 +186,74 @@ function _redondearMonto(n) {
   return typeof redondear2 === 'function' ? redondear2(n) : Math.round(n * 100) / 100;
 }
 
+function renderFilaTituloReq(req) {
+  const puedeEditar = Auth.puedeHacer(['compras', 'admin']);
+  const titulo = String(req.titulo_solicitud || '').trim();
+  const tituloHtml = titulo
+    ? UI.esc(titulo)
+    : '<em style="color:#64748b;">Sin título</em>';
+  return `
+      <tr>
+        <td style="padding:6px 0;color:#6b7280;vertical-align:top">Título</td>
+        <td>
+          <div id="req-titulo-vista" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <span class="fw-600" id="req-titulo-texto" style="flex:1;min-width:160px">${tituloHtml}</span>
+            ${puedeEditar ? `
+            <button type="button" class="btn btn-sm btn-outline"
+                    style="padding:1px 8px;font-size:11px"
+                    onclick="mostrarEditorTituloReq()"
+                    title="Editar título">✎ Editar</button>` : ''}
+          </div>
+          <div id="req-titulo-editor" style="display:none">
+            <textarea id="req-titulo-textarea" class="form-control" rows="2"
+              placeholder="Descripción / título del requerimiento (mínimo 5 caracteres)">${UI.esc(titulo)}</textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="cancelarEditorTituloReq()">Cancelar</button>
+              <button type="button" class="btn btn-primary btn-sm" id="req-titulo-btn-guardar"
+                      onclick="guardarTituloReq()">Guardar título</button>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+}
+
+window.mostrarEditorTituloReq = function () {
+  const vista = document.getElementById('req-titulo-vista');
+  const editor = document.getElementById('req-titulo-editor');
+  const ta = document.getElementById('req-titulo-textarea');
+  if (ta) ta.value = requerimientoActual?.titulo_solicitud || '';
+  if (vista) vista.style.display = 'none';
+  if (editor) editor.style.display = 'block';
+};
+
+window.cancelarEditorTituloReq = function () {
+  const vista = document.getElementById('req-titulo-vista');
+  const editor = document.getElementById('req-titulo-editor');
+  if (vista) vista.style.display = 'flex';
+  if (editor) editor.style.display = 'none';
+};
+
+window.guardarTituloReq = async function () {
+  const id = requerimientoActual?.id;
+  if (!id) return;
+  const ta = document.getElementById('req-titulo-textarea');
+  const btn = document.getElementById('req-titulo-btn-guardar');
+  const titulo = String(ta?.value || '').trim();
+  if (titulo.length < 5) {
+    return Toast.error('El título debe tener al menos 5 caracteres');
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    const updated = await Api.patch(`/requerimientos/${id}/titulo`, { titulo_solicitud: titulo });
+    Toast.success('Título actualizado');
+    if (typeof abrirDetalle === 'function') abrirDetalle(updated.id || id);
+    else Object.assign(requerimientoActual, updated);
+  } catch (err) {
+    Toast.error(err.mensaje || 'Error al guardar el título');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar título'; }
+  }
+};
+
 function renderNotasDetallesReq(req) {
   const puedeEditar = Auth.puedeHacer(['compras', 'admin']);
   const texto = (req.notas || req.descripcion || '').trim();
@@ -426,14 +494,14 @@ function renderUltimoEstatus(ue, { destacado = false } = {}) {
 
 function renderDetalle(req) {
   document.getElementById('detalle-titulo').textContent =
-    `${req.consecutivo || 'Borrador (sin consecutivo)'} — ${req.tipo}`;
+    `${req.consecutivo || 'Borrador (sin consecutivo)'} — ${req.titulo_solicitud || req.tipo}`;
 
   document.getElementById('detalle-info').innerHTML = `
     <div class="card-title">Información del requerimiento</div>
     <table style="width:100%;border-collapse:collapse">
       <tr><td style="padding:6px 0;color:#6b7280;width:140px">Consecutivo</td>
           <td class="fw-600">${req.consecutivo || '<span class="text-muted">Provisional — se asigna al enviar a revisión</span>'}</td></tr>
-      ${req.titulo_solicitud ? `<tr><td style="padding:6px 0;color:#6b7280">Título</td><td class="fw-600">${UI.esc(req.titulo_solicitud)}</td></tr>` : ''}
+      ${renderFilaTituloReq(req)}
       <tr><td style="padding:6px 0;color:#6b7280">Tipo</td>
           <td>${req.tipo}</td></tr>
       <tr><td style="padding:6px 0;color:#6b7280">Área</td>
@@ -506,9 +574,11 @@ function renderDetalle(req) {
       </ul>
     </div>` : ''}
 
-    ${(req.estado === 'borrador' || req.estado === 'incompleto') && (Auth.getUsuario() && Auth.getUsuario().id === req.solicitante_id) ? `
+    ${Auth.getUsuario() && Auth.getUsuario().id === req.solicitante_id && ['borrador', 'incompleto', 'en_revision'].includes(req.estado) ? `
     <div style="margin-top:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:7px;padding:10px 12px;font-size:13px">
-      <strong>📝 Borrador</strong> — Puedes editar este requerimiento antes de enviarlo a revisión.
+      ${req.estado === 'en_revision'
+        ? '<strong>📝 En revisión</strong> — Aún puedes editar este requerimiento mientras Compras no lo reciba.'
+        : '<strong>📝 Borrador</strong> — Puedes editar este requerimiento antes de enviarlo a revisión.'}
     </div>` : ''}
 
     ${req.ultimo_estatus?.notas ? `
@@ -594,9 +664,11 @@ function renderAcciones(req) {
   acciones.push({ label:'🖨️ Imprimir', accion:'imprimirRequerimiento', clase:'btn-outline' });
 
   const esDueno = u && req.solicitante_id === u.id;
-  if (esDueno && (req.estado === 'borrador' || req.estado === 'incompleto')) {
+  if (esDueno && ['borrador', 'incompleto', 'en_revision'].includes(req.estado)) {
     acciones.push({ label:'✏️ Editar', accion:'editarRequerimientoActual', clase:'btn-outline' });
-    acciones.push({ label:'📤 Enviar a revisión', estado:'en_revision', clase:'btn-primary' });
+    if (req.estado === 'borrador' || req.estado === 'incompleto') {
+      acciones.push({ label:'📤 Enviar a revisión', estado:'en_revision', clase:'btn-primary' });
+    }
   }
   // Eliminar solo en borrador (aún no enviado formalmente a revisión)
   if (req.estado === 'borrador' && (esDueno || ['compras', 'admin'].includes(u?.rol))) {
@@ -816,7 +888,10 @@ async function imprimirRequerimiento() {
       <body>
         <div id="print-sheet">
           ${buildPrintEncabezadoHtml()}
-          <h2 class="print-titulo">Requerimiento: ${requerimientoActual.consecutivo}</h2>
+          <h2 class="print-titulo">Requerimiento: ${requerimientoActual.consecutivo || 'Borrador'}</h2>
+          ${requerimientoActual.titulo_solicitud
+            ? `<p style="margin:0 0 8px;font-size:11pt;font-weight:600">${UI.esc(requerimientoActual.titulo_solicitud)}</p>`
+            : ''}
           <div class="print-contenido">${detalleElement.innerHTML}</div>
           ${cotizacionHtml}
           ${firmasHtml}

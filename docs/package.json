@@ -1,0 +1,13 @@
+{
+  "name": "docs-sistema-oc",
+  "version": "1.10.0",
+  "private": true,
+  "type": "module",
+  "description": "Generador del Manual de Operaciones (Word)",
+  "scripts": {
+    "manual": "node generar-manual-operaciones.mjs"
+  },
+  "dependencies": {
+    "docx": "^9.7.1"
+  }
+}

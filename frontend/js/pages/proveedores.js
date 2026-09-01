@@ -7,7 +7,7 @@ Auth.requiereAuth();
 
 // Solo compras y admin pueden acceder
 if (!Auth.puedeHacer(['compras','admin'])) {
-  window.location.href = 'dashboard.html';
+  window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'requerimientos.html';
 }
 
 renderSidebar();

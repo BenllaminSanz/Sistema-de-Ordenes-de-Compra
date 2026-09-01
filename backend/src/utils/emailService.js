@@ -432,26 +432,44 @@ Bandeja: ${linkBandeja}
  * Resumen diario a Compras (no se envía a solicitantes).
  * Un envío por día (America/Mexico_City) salvo forzar.
  */
-export async function enviarReporteDiarioCompras({ forzar = false } = {}) {
+export async function enviarReporteDiarioCompras({
+  forzar = false,
+  soloDestinatarios = null,
+  prueba = false,
+} = {}) {
   const {
     listarDestinatariosNotif,
     fechaHoyMexico,
     marcarReporteDiarioEnviado,
+    esDiaDeReporteDiario,
   } = await import('../models/configApp.js');
   const ajustes = await obtenerAjustesCorreo();
-  if (!ajustes.reporte_diario) {
+  const esPrueba = prueba || (Array.isArray(soloDestinatarios) && soloDestinatarios.length > 0);
+  if (!esPrueba && !ajustes.reporte_diario) {
     return { success: false, skipped: true, reason: 'reporte_diario_off' };
+  }
+  if (!forzar && !esPrueba && !esDiaDeReporteDiario(ajustes)) {
+    return { success: true, skipped: true, reason: 'dia_no_programado' };
   }
   const hoy = fechaHoyMexico();
   const ultimo = ajustes.reporte_diario_ultimo
     ? String(ajustes.reporte_diario_ultimo).slice(0, 10)
     : '';
-  if (!forzar && ultimo === hoy) {
+  if (!forzar && !esPrueba && ultimo === hoy) {
     return { success: true, skipped: true, reason: 'ya_enviado', dia: hoy };
   }
 
-  const lista = await listarDestinatariosNotif(ajustes);
-  const destinos = [...new Set(lista.map((d) => d.email))];
+  let destinos;
+  if (esPrueba) {
+    destinos = [...new Set(
+      (soloDestinatarios || [])
+        .map((e) => String(e || '').trim().toLowerCase())
+        .filter((e) => e.includes('@'))
+    )];
+  } else {
+    const lista = await listarDestinatariosNotif(ajustes);
+    destinos = [...new Set(lista.map((d) => d.email))];
+  }
   if (!destinos.length) {
     return { success: false, reason: 'sin_destinatarios' };
   }
@@ -481,12 +499,49 @@ export async function enviarReporteDiarioCompras({ forzar = false } = {}) {
      LIMIT 8`
   );
 
+  const [[{ oc_generadas }]] = await pool.query(
+    `SELECT COUNT(*) AS oc_generadas FROM ordenes_compra WHERE estado = 'generada'`
+  );
+  const [[{ oc_distribuidas }]] = await pool.query(
+    `SELECT COUNT(*) AS oc_distribuidas FROM ordenes_compra WHERE estado = 'distribuida'`
+  );
+  const [[{ oc_proceso }]] = await pool.query(
+    `SELECT COUNT(*) AS oc_proceso FROM ordenes_compra WHERE estado = 'en_proceso'`
+  );
+  const [[{ oc_recibidas }]] = await pool.query(
+    `SELECT COUNT(*) AS oc_recibidas FROM ordenes_compra WHERE estado = 'recibida'`
+  );
+  const [[{ oc_sin_po }]] = await pool.query(
+    `SELECT COUNT(*) AS oc_sin_po FROM ordenes_compra
+     WHERE estado IN ('generada','distribuida','en_proceso','recibida')
+       AND (datatextnow_id IS NULL OR TRIM(datatextnow_id) = '' OR UPPER(TRIM(datatextnow_id)) = 'NA')`
+  );
+  const [ocViejas] = await pool.query(
+    `SELECT oc.numero_oc, oc.estado, u.nombre AS solicitante,
+            DATEDIFF(NOW(), oc.created_at) AS dias
+     FROM ordenes_compra oc
+     JOIN requerimientos r ON r.id = oc.requerimiento_id
+     JOIN usuarios u ON u.id = r.solicitante_id
+     WHERE oc.estado IN ('generada','distribuida','en_proceso','recibida')
+     ORDER BY oc.created_at ASC
+     LIMIT 8`
+  );
+
   const baseUrl = frontendUrlEfectiva(ajustes);
   const linkBandeja = `${baseUrl}/dashboard.html#bandeja`;
+  const linkOc = `${baseUrl}/dashboard.html#bandeja-oc`;
   const filas = (viejos || []).map((r) =>
     `<tr>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.consecutivo || '—'}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.tipo || ''}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.estado}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.solicitante || ''}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">${r.dias}d</td>
+    </tr>`
+  ).join('');
+  const filasOc = (ocViejas || []).map((r) =>
+    `<tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.numero_oc || '—'}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.estado}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.solicitante || ''}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">${r.dias}d</td>
@@ -498,7 +553,9 @@ export async function enviarReporteDiarioCompras({ forzar = false } = {}) {
       <div style="background:white;border-radius:8px;padding:24px;">
         ${buildEmailBrandingHtml()}
         <h2 style="color:#1e40af;margin:0 0 8px;font-size:18px;">Resumen diario de Compras</h2>
-        <p style="color:#64748b;font-size:13px;margin:0 0 16px;">${hoy} · bandeja de requerimientos</p>
+        ${esPrueba ? '<p style="color:#92400e;background:#fef3c7;padding:8px 10px;border-radius:6px;font-size:13px;margin:0 0 12px;">Envío de prueba: solo te llegó a ti. Compras no recibió este correo.</p>' : ''}
+        <p style="color:#64748b;font-size:13px;margin:0 0 16px;">${hoy} · bandeja REQ y OC</p>
+        <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 6px;">Requerimientos</p>
         <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:14px;">
           <tr><td style="padding:6px 0;color:#64748b;">Por recibir</td><td style="text-align:right;font-weight:700;">${Number(por_recibir) || 0}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">En proceso (recibidos)</td><td style="text-align:right;font-weight:700;">${Number(en_proceso) || 0}</td></tr>
@@ -506,8 +563,8 @@ export async function enviarReporteDiarioCompras({ forzar = false } = {}) {
           <tr><td style="padding:6px 0;color:#64748b;">Listos para OC</td><td style="text-align:right;font-weight:700;">${Number(listos_oc) || 0}</td></tr>
         </table>
         ${filas ? `
-        <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 8px;">Más antiguos (FIFO)</p>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 8px;">REQ más antiguos (FIFO)</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;">
           <tr style="background:#f1f5f9;text-align:left;">
             <th style="padding:6px 8px;">N°</th><th style="padding:6px 8px;">Tipo</th>
             <th style="padding:6px 8px;">Estado</th><th style="padding:6px 8px;">Solicitante</th>
@@ -515,33 +572,66 @@ export async function enviarReporteDiarioCompras({ forzar = false } = {}) {
           </tr>
           ${filas}
         </table>` : '<p style="color:#64748b;font-size:14px;">No hay requerimientos pendientes.</p>'}
+        <p style="font-size:13px;font-weight:700;color:#334155;margin:16px 0 6px;">Órdenes de compra</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Generadas</td><td style="text-align:right;font-weight:700;">${Number(oc_generadas) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Distribuidas</td><td style="text-align:right;font-weight:700;">${Number(oc_distribuidas) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">En proceso</td><td style="text-align:right;font-weight:700;">${Number(oc_proceso) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Recibidas</td><td style="text-align:right;font-weight:700;">${Number(oc_recibidas) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Sin PO / NA</td><td style="text-align:right;font-weight:700;">${Number(oc_sin_po) || 0}</td></tr>
+        </table>
+        ${filasOc ? `
+        <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 8px;">OC más antiguas (FIFO)</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#f1f5f9;text-align:left;">
+            <th style="padding:6px 8px;">N°</th><th style="padding:6px 8px;">Estado</th>
+            <th style="padding:6px 8px;">Solicitante</th>
+            <th style="padding:6px 8px;text-align:right;">Días</th>
+          </tr>
+          ${filasOc}
+        </table>` : '<p style="color:#64748b;font-size:14px;">No hay OC activas.</p>'}
         <p style="text-align:center;margin:22px 0 0;">
-          <a href="${linkBandeja}" style="background:#185FA5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;display:inline-block;">Abrir bandeja</a>
+          <a href="${linkBandeja}" style="background:#185FA5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;display:inline-block;margin:0 6px 8px;">Bandeja REQ</a>
+          <a href="${linkOc}" style="background:#0f766e;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;display:inline-block;margin:0 6px 8px;">Bandeja OC</a>
         </p>
       </div>
     </div>`;
 
   const text = `Resumen diario Compras ${hoy}
-Por recibir: ${Number(por_recibir) || 0}
-En proceso: ${Number(en_proceso) || 0}
-Incompletos: ${Number(incompletos) || 0}
-Listos OC: ${Number(listos_oc) || 0}
-Bandeja: ${linkBandeja}`;
+REQ Por recibir: ${Number(por_recibir) || 0}
+REQ En proceso: ${Number(en_proceso) || 0}
+REQ Incompletos: ${Number(incompletos) || 0}
+REQ Listos OC: ${Number(listos_oc) || 0}
+OC Generadas: ${Number(oc_generadas) || 0}
+OC Distribuidas: ${Number(oc_distribuidas) || 0}
+OC En proceso: ${Number(oc_proceso) || 0}
+OC Recibidas: ${Number(oc_recibidas) || 0}
+OC Sin PO: ${Number(oc_sin_po) || 0}
+Bandeja REQ: ${linkBandeja}
+Bandeja OC: ${linkOc}`;
 
   const result = await enviarCorreo({
     to: destinos[0],
     cc: destinos.length > 1 ? destinos.slice(1).join(',') : undefined,
-    subject: `Resumen diario Compras · ${hoy}`,
+    subject: esPrueba
+      ? `PRUEBA · Resumen diario Compras · ${hoy}`
+      : `Resumen diario Compras · ${hoy}`,
     html,
     text,
     attachments: getEmailBrandingAttachments(),
   });
 
-  if (result?.success) {
+  if (result?.success && !esPrueba) {
     await marcarReporteDiarioEnviado(hoy);
   }
-  console.log(`[Email] Reporte diario Compras ${hoy} → ${destinos.join(', ')} success=${!!result?.success}`);
-  return { ...result, dia: hoy, destinatarios: destinos.length };
+  console.log(`[Email] Reporte diario Compras ${hoy}${esPrueba ? ' (prueba)' : ''} → ${destinos.join(', ')} success=${!!result?.success}`);
+  return {
+    ...result,
+    dia: hoy,
+    destinatarios: destinos.length,
+    enviados_a: destinos,
+    prueba: esPrueba,
+  };
 }
 
 export function iniciarSchedulerReporteDiario() {

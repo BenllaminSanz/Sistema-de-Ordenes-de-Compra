@@ -117,6 +117,7 @@ async function main() {
     layout: reporte.parseMeta?.layout,
     totalFilas: reporte.totalFilas,
     importados: reporte.importados,
+    actualizados: reporte.actualizados,
     ocsCreadas: reporte.ocsCreadas,
     saltados: reporte.saltados,
     usuariosCreados: reporte.usuariosCreados?.length || 0,

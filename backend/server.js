@@ -31,6 +31,9 @@ runDbMigrations()
       import('./src/utils/emailService.js')
         .then((m) => m.iniciarSchedulerReporteDiario())
         .catch((err) => console.warn('[Email] No se inició el reporte diario:', err.message));
+      import('./src/utils/purgaBorradores.js')
+        .then((m) => m.iniciarSchedulerPurgaBorradores())
+        .catch((err) => console.warn('[Mantenimiento] No se inició la purga de borradores:', err.message));
     });
   })
   .catch((err) => {

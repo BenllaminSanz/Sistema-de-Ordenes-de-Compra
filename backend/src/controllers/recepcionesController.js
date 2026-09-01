@@ -33,7 +33,7 @@ async function resumenItems(req, res) {
 
 async function crear(req, res) {
   try {
-    const { estado, notas, datatextnow_id, items, cerrar_oc } = req.body;
+    const { estado, notas, datatextnow_id, items, cerrar_oc, fecha_recepcion } = req.body;
 
     const estados_validos = ['recibido_parcial', 'recibido_completo'];
     if (estado && !estados_validos.includes(estado)) {
@@ -48,6 +48,7 @@ async function crear(req, res) {
         datatextnow_id,
         items,
         cerrar_oc: !!cerrar_oc,
+        fecha_recepcion,
       },
       req.usuario.id
     );

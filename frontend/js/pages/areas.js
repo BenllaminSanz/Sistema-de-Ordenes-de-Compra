@@ -22,7 +22,7 @@ let _editandoDeptoNombre = null;
 
 Auth.requiereAuth();
 if (!Auth.puedeHacer(['admin', 'compras'])) {
-  window.location.href = 'dashboard.html';
+  window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'requerimientos.html';
 }
 renderSidebar();
 renderTopbar('Áreas y Departamentos');

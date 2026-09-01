@@ -77,7 +77,9 @@ describeIntegration('Auth', () => {
   it('solicitante puede listar usuarios (filtro de consulta)', async () => {
     const res = await agentFor('sol1').get('/api/auth/usuarios');
     assert.equal(res.status, 200);
-    assert.ok(Array.isArray(res.body) || Array.isArray(res.body.datos) || Array.isArray(res.body.usuarios));
+    const lista = Array.isArray(res.body) ? res.body : (res.body.datos || res.body.usuarios || []);
+    assert.ok(Array.isArray(lista));
+    assert.ok(lista.every((u) => u.activo === 1 || u.activo === true));
   });
 
   it('compras no puede crear usuario admin', async () => {

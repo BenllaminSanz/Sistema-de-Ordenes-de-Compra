@@ -78,6 +78,32 @@ export function parsePeriodoExport(query = {}, opts = {}) {
   };
 }
 
+/**
+ * Umbral de la purga mensual: primer día del mes anterior (calendario).
+ * El 1 de septiembre (o cualquier día de septiembre) corta en 2026-08-01:
+ * se van julio y más viejos; agosto se conserva todo septiembre.
+ */
+export function cortePurgaBorradores(ymdHoy) {
+  const iso = ymd(ymdHoy);
+  if (!iso) return '';
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  let py = y;
+  let pm = m - 1;
+  if (pm < 1) {
+    pm = 12;
+    py -= 1;
+  }
+  return `${py}-${String(pm).padStart(2, '0')}-01`;
+}
+
+/** Medianoche México (UTC-6, sin DST) del corte, para comparar con TIMESTAMP UTC. */
+export function umbralPurgaBorradores(ymdHoy) {
+  const corte = cortePurgaBorradores(ymdHoy);
+  if (!corte) return { corte: '', umbral: null };
+  return { corte, umbral: new Date(`${corte}T00:00:00-06:00`) };
+}
+
 /** Fragmento SQL + params para filtrar una columna fecha por rango inclusivo. */
 export function sqlRangoFecha(columna, fecha_desde, fecha_hasta) {
   if (fecha_desde && fecha_hasta) {

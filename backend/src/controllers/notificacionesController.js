@@ -274,15 +274,43 @@ async function listarAvisosSolicitante(uid, limite) {
   return avisos;
 }
 
+export async function dispararPurgaBorradores(req, res) {
+  try {
+    const rol = String(req.usuario?.rol || '').toLowerCase();
+    if (rol !== 'admin') {
+      return res.status(403).json({ mensaje: 'Solo Admin puede ejecutar la purga de mantenimiento' });
+    }
+    const { ejecutarPurgaBorradores } = await import('../utils/purgaBorradores.js');
+    const result = await ejecutarPurgaBorradores({ forzar: true });
+    res.json(result);
+  } catch (err) {
+    logger.error('[notificaciones.purgaBorradores]', err);
+    res.status(500).json({ mensaje: err.message || 'Error al purgar borradores' });
+  }
+}
+
 export async function dispararReporteDiario(req, res) {
   try {
     const rol = String(req.usuario?.rol || '').toLowerCase();
-    if (rol !== 'admin' && rol !== 'compras') {
-      return res.status(403).json({ mensaje: 'Solo Compras/Admin pueden enviar el reporte diario' });
+    if (rol !== 'admin') {
+      return res.status(403).json({ mensaje: 'Solo Admin puede enviar el reporte de prueba' });
+    }
+    const email = String(req.usuario?.email || '').trim().toLowerCase();
+    if (!email.includes('@')) {
+      return res.status(400).json({ mensaje: 'Tu usuario Admin no tiene un correo válido' });
     }
     const { enviarReporteDiarioCompras } = await import('../utils/emailService.js');
-    const result = await enviarReporteDiarioCompras({ forzar: true });
-    res.json(result);
+    const result = await enviarReporteDiarioCompras({
+      forzar: true,
+      prueba: true,
+      soloDestinatarios: [email],
+    });
+    res.json({
+      ...result,
+      mensaje: result?.success
+        ? `Reporte de prueba enviado solo a ${email}`
+        : (result?.mensaje || 'No se pudo enviar el reporte de prueba'),
+    });
   } catch (err) {
     logger.error('[notificaciones.reporteDiario]', err);
     res.status(500).json({ mensaje: err.message || 'Error al enviar el reporte diario' });

@@ -13,7 +13,7 @@ import { registrarNotaSeguimientoReq } from './historialEstados.js';
  * Listar requerimientos con filtros opcionales y paginación.
  * filtros: { estado, tipo, solicitante_id, busqueda, orden, ordenar_por, pagina, limite }
  * orden: 'asc' | 'desc' (default desc)
- * ordenar_por: fecha | consecutivo | solicitante | estado | tipo | area | departamento
+ * ordenar_por: fecha | consecutivo | titulo | solicitante | estado | tipo | area | departamento
  *
  * Nota: `area`/`departamento` en BD pueden venir del import legacy
  * (depto guardado en area). Se normalizan a la vista con el catálogo.
@@ -28,6 +28,8 @@ async function listar(filtros = {}) {
     fecha: 'r.created_at',
     created_at: 'r.created_at',
     consecutivo: 'r.consecutivo',
+    titulo: 'r.titulo_solicitud',
+    titulo_solicitud: 'r.titulo_solicitud',
     solicitante: 'u.nombre',
     estado: 'r.estado',
     tipo: 'r.tipo',
@@ -397,9 +399,11 @@ async function crear(datos, solicitante_id, intento = 1) {
   }
 }
 
+const ESTADOS_EDITABLES = ['borrador', 'incompleto', 'en_revision'];
+
 /**
  * Actualizar campos editables de un requerimiento.
- * Solo permitido cuando estado = 'borrador' o 'incompleto'.
+ * Permitido en borrador, incompleto y en_revision (hasta que Compras acuse recibo).
  * Soporta reemplazo de:
  *   - ítems del catálogo (arreglo 'items')
  *   - ítems en texto libre (arreglo 'items_libres') - para cuando aún no existen en catálogo
@@ -418,7 +422,7 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
       await conn.rollback();
       return 0;
     }
-    if (!['borrador', 'incompleto'].includes(actual.estado)) {
+    if (!ESTADOS_EDITABLES.includes(actual.estado)) {
       await conn.rollback();
       return 0;
     }
@@ -447,7 +451,7 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
       const sets    = Object.keys(campos).map(c => `${c} = ?`).join(', ');
       const valores = [...Object.values(campos), id];
       const [result] = await conn.query(
-        `UPDATE requerimientos SET ${sets} WHERE id = ? AND estado IN ('borrador','incompleto')`,
+        `UPDATE requerimientos SET ${sets} WHERE id = ? AND estado IN ('borrador','incompleto','en_revision')`,
         valores
       );
       affected = result.affectedRows;
@@ -623,6 +627,71 @@ async function eliminar(id, { solicitante_id = null, rol = null } = {}) {
 }
 
 /**
+ * Borrado de mantenimiento: borrador, incompleto y en_revision sin OC, creados antes de umbral.
+ * No toca recibido / aprobado / rechazado / cerrado.
+ */
+async function purgarBorradoresEIncompletos({ umbral } = {}) {
+  if (!(umbral instanceof Date) || Number.isNaN(umbral.getTime())) {
+    return { borrados: 0, ids: [] };
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [candidatos] = await conn.query(
+      `SELECT r.id, r.consecutivo, r.estado
+       FROM requerimientos r
+       LEFT JOIN ordenes_compra oc ON oc.requerimiento_id = r.id
+       WHERE r.estado IN ('borrador', 'incompleto', 'en_revision')
+         AND r.created_at < ?
+         AND r.orden_compra_id IS NULL
+         AND oc.id IS NULL`,
+      [umbral]
+    );
+    const ids = (candidatos || []).map((r) => r.id);
+    if (!ids.length) {
+      await conn.commit();
+      return { borrados: 0, ids: [], detalle: [] };
+    }
+
+    const [cots] = await conn.query(
+      'SELECT id FROM cotizaciones WHERE requerimiento_id IN (?)',
+      [ids]
+    );
+    const cotIds = (cots || []).map((c) => c.id);
+    if (cotIds.length) {
+      await conn.query('DELETE FROM cotizacion_items WHERE cotizacion_id IN (?)', [cotIds]);
+      await conn.query('DELETE FROM cotizaciones WHERE id IN (?)', [cotIds]);
+    }
+    await conn.query('DELETE FROM requerimiento_items WHERE requerimiento_id IN (?)', [ids]);
+    await conn.query('DELETE FROM requerimiento_items_libres WHERE requerimiento_id IN (?)', [ids]);
+    await conn.query(
+      `DELETE FROM historial_estados WHERE entidad_tipo = 'requerimiento' AND entidad_id IN (?)`,
+      [ids]
+    );
+    const [result] = await conn.query(
+      `DELETE FROM requerimientos
+       WHERE id IN (?) AND estado IN ('borrador', 'incompleto', 'en_revision') AND orden_compra_id IS NULL`,
+      [ids]
+    );
+    await conn.commit();
+    return {
+      borrados: result.affectedRows || 0,
+      ids,
+      detalle: candidatos.map((r) => ({
+        id: r.id,
+        consecutivo: r.consecutivo,
+        estado: r.estado,
+      })),
+    };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Corrige área/departamento de un REQ en cualquier estado (compras/admin).
  * No altera ítems ni el resto de campos editables del flujo de borrador.
  */
@@ -677,6 +746,25 @@ async function actualizarNotas(id, notas, usuarioId) {
   return r.affectedRows;
 }
 
+/**
+ * Actualiza el título en cualquier estado (Compras / Admin).
+ */
+async function actualizarTitulo(id, titulo, usuarioId) {
+  const texto = String(titulo || '').trim().slice(0, 300);
+  const [r] = await pool.query(
+    'UPDATE requerimientos SET titulo_solicitud = ? WHERE id = ?',
+    [texto, id]
+  );
+  if (r.affectedRows && texto && usuarioId) {
+    await registrarNotaSeguimientoReq({
+      requerimientoId: id,
+      usuarioId,
+      notas: `Título actualizado: ${texto.slice(0, 180)}`,
+    });
+  }
+  return r.affectedRows;
+}
+
 export {
   listar,
   obtenerPorId,
@@ -684,8 +772,10 @@ export {
   actualizar,
   actualizarAreaDepartamento,
   actualizarNotas,
+  actualizarTitulo,
   cambiarEstado,
   eliminar,
+  purgarBorradoresEIncompletos,
   asignarCatalogoAItemLibre,
   MAX_ITEMS_POR_REQ,
 };

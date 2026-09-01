@@ -60,7 +60,7 @@
 <script>
   // Si ya tiene token válido, redirigir al dashboard
   if (Auth.getToken()) {
-    window.location.href = 'dashboard.html';
+    window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'dashboard.html';
   }
 
   // Mostrar versión del servidor (sin requerir login)
@@ -174,7 +174,7 @@
         password: passwordVal,
       });
       Auth.guardar(token, usuario);
-      window.location.href = 'dashboard.html';
+      window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'dashboard.html';
     } catch (err) {
       btn.disabled = false;
       btn.textContent = 'Iniciar sesión';

@@ -10,6 +10,7 @@ import {
   crearOc,
 } from '../helpers/factories.js';
 import { query } from '../helpers/db.js';
+import { readXlsxRows } from '../helpers/excel.js';
 
 describeIntegration('Órdenes de compra y recepciones', () => {
   it('no genera OC si REQ no está aprobado', async () => {
@@ -111,7 +112,7 @@ describeIntegration('Órdenes de compra y recepciones', () => {
     assert.match(res.body.mensaje || '', /recepci/i);
   });
 
-  it('solicitante consulta el listado general de OC', async () => {
+  it('solicitante consulta solo sus OC por defecto', async () => {
     const req1 = await reqAprobadoSinCotizacion('sol1');
     await crearOc('compras', { requerimiento_id: req1.id, datatextnow_id: 'PO-S1', fecha_po: '2026-01-01' });
 
@@ -122,6 +123,18 @@ describeIntegration('Órdenes de compra y recepciones', () => {
     assert.equal(res.status, 200);
     const datos = res.body.datos || res.body;
     assert.ok(Array.isArray(datos));
+    assert.ok(datos.length >= 1);
+    assert.ok(datos.every((o) => Number(o.solicitante_id) === 3 || String(o.solicitante_nombre || '').includes('Uno')));
+  });
+
+  it('solicitante ve OC de todos con solicitante_id=all', async () => {
+    const req1 = await reqAprobadoSinCotizacion('sol1');
+    await crearOc('compras', { requerimiento_id: req1.id, datatextnow_id: 'PO-S1B', fecha_po: '2026-01-01' });
+    const req2 = await reqAprobadoSinCotizacion('sol2');
+    await crearOc('compras', { requerimiento_id: req2.id, datatextnow_id: 'PO-S2B', fecha_po: '2026-01-02' });
+    const res = await agentFor('sol1').get('/api/ordenes-compra?solicitante_id=all');
+    assert.equal(res.status, 200);
+    const datos = res.body.datos || res.body;
     assert.ok(datos.length >= 2);
   });
 
@@ -237,6 +250,38 @@ describeIntegration('Órdenes de compra y recepciones', () => {
     assert.equal(rec.status, 422);
   });
 
+  it('compras puede registrar recepción con fecha histórica', async () => {
+    const req = await reqAprobadoSinCotizacion('sol1');
+    const ocRes = await crearOc('compras', { requerimiento_id: req.id, datatextnow_id: 'PO-FEC', fecha_po: '2026-04-01' });
+    const ocId = ocRes.body.id;
+    const detalle = await agentFor('compras').get(`/api/ordenes-compra/${ocId}`);
+    const item = detalle.body.items[0];
+    const key = `cat-${item.id}`;
+    const rec = await agentFor('compras')
+      .post(`/api/ordenes-compra/${ocId}/recepciones`)
+      .send({
+        estado: 'recibido_parcial',
+        fecha_recepcion: '2025-11-15',
+        items: [{
+          item_key: key,
+          descripcion: item.descripcion,
+          codigo: item.codigo,
+          cantidad_solicitada: item.cantidad,
+          cantidad_recibida: 1,
+          unidad: item.unidad || 'pza',
+        }],
+      });
+    assert.equal(rec.status, 201, JSON.stringify(rec.body));
+    assert.match(String(rec.body.fecha_recepcion || ''), /2025-11-15/);
+
+    const recId = rec.body.id;
+    const upd = await agentFor('compras')
+      .put(`/api/ordenes-compra/${ocId}/recepciones/${recId}`)
+      .send({ fecha_recepcion: '2025-12-01' });
+    assert.equal(upd.status, 200, JSON.stringify(upd.body));
+    assert.match(String(upd.body.fecha_recepcion || ''), /2025-12-01/);
+  });
+
   it('solicitante no puede crear recepción', async () => {
     const req = await reqAprobadoSinCotizacion('sol1');
     const ocRes = await crearOc('compras', { requerimiento_id: req.id });
@@ -244,5 +289,66 @@ describeIntegration('Órdenes de compra y recepciones', () => {
       .post(`/api/ordenes-compra/${ocRes.body.id}/recepciones`)
       .send({ estado: 'recibido_completo', items: [] });
     assert.equal(res.status, 403);
+  });
+
+  it('export Excel de OC respeta filtro de estado', async () => {
+    const reqGen = await reqAprobadoSinCotizacion('sol1');
+    await crearOc('compras', {
+      requerimiento_id: reqGen.id,
+      datatextnow_id: 'PO-EX-GEN',
+      fecha_po: '2026-01-01',
+    });
+    const reqDist = await reqAprobadoSinCotizacion('sol2');
+    const ocDist = await crearOc('compras', {
+      requerimiento_id: reqDist.id,
+      datatextnow_id: 'PO-EX-DIST',
+      fecha_po: '2026-01-02',
+    });
+    assert.equal(ocDist.status, 201, JSON.stringify(ocDist.body));
+    const dist = await agentFor('compras')
+      .patch(`/api/ordenes-compra/${ocDist.body.id}/estado`)
+      .send({ estado: 'distribuida' });
+    assert.equal(dist.status, 200, JSON.stringify(dist.body));
+
+    const res = await agentFor('compras')
+      .get('/api/reportes/ordenes-compra?libre=1&estado=generada')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    assert.equal(res.status, 200);
+    const blob = JSON.stringify(readXlsxRows(res.body));
+    assert.match(blob, /PO-EX-GEN/);
+    assert.doesNotMatch(blob, /PO-EX-DIST/);
+  });
+
+  it('solicitante puede exportar Excel de OC (solo las suyas por defecto)', async () => {
+    const req1 = await reqAprobadoSinCotizacion('sol1');
+    await crearOc('compras', {
+      requerimiento_id: req1.id,
+      datatextnow_id: 'PO-SOL1-XLS',
+      fecha_po: '2026-01-01',
+    });
+    const req2 = await reqAprobadoSinCotizacion('sol2');
+    await crearOc('compras', {
+      requerimiento_id: req2.id,
+      datatextnow_id: 'PO-SOL2-XLS',
+      fecha_po: '2026-01-02',
+    });
+
+    const res = await agentFor('sol1')
+      .get('/api/reportes/ordenes-compra?libre=1')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    assert.equal(res.status, 200);
+    const blob = JSON.stringify(readXlsxRows(res.body));
+    assert.match(blob, /PO-SOL1-XLS/);
+    assert.doesNotMatch(blob, /PO-SOL2-XLS/);
   });
 });

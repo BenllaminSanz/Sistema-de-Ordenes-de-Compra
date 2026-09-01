@@ -1,10 +1,19 @@
 # Sistema de Órdenes de Compra
 
-**Versión 1.9.4** — Agosto 2026
+**Versión 1.10.0** — Agosto 2026
 
 Sistema web para la gestión completa del proceso de compras: **Requerimientos → Cotizaciones → Órdenes de Compra → Recepciones**.
 
-Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.9.4.md](./DESPLIEGUE-v1.9.4.md)
+Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIONING.md](./VERSIONING.md) · Despliegue: [DESPLIEGUE-v1.10.0.md](./DESPLIEGUE-v1.10.0.md)
+
+## Novedades v1.10.0
+
+- Título del REQ editable (Compras/Admin en cualquier estado; el solicitante puede editar el REQ **en revisión** hasta que Compras lo reciba)
+- Excel BASE GRAL: **Tipo de servicio** = título; **Status** = notas; recargar actualiza N° existentes
+- Export Excel de REQ y OC respeta los filtros de la página (el solicitante también exporta OC)
+- Dashboard / bandeja solo para Compras y Admin
+- Reporte diario (7:00 México) incluye OC; días configurables (L–V por defecto); prueba solo al Admin logueado
+- Purga mensual el día 1: borradores, en revisión e incompletos de hace dos meses calendario (septiembre borra julio, no agosto); Admin puede detenerla o forzarla
 
 ## Novedades v1.9.0
 
@@ -110,9 +119,10 @@ Sistema de Ordenes de Compra/
 │   ├── uploads/
 │   └── app.js
 ├── frontend/                # HTML + JS + CSS
-├── docs-generados/          # PDFs / material de apoyo (no va al deploy)
+├── docs/                    # Generador del Manual de Operaciones
+├── docs-generados/          # Word/PDF de apoyo (no va al deploy)
 ├── empaquetar-deploy.ps1
-├── DESPLIEGUE-v1.9.4.md
+├── DESPLIEGUE-v1.10.0.md
 ├── CHANGELOG.md
 ├── VERSIONING.md
 ├── RECARGAR-BASE-GRAL-SERVIDOR.md
@@ -131,6 +141,7 @@ Sistema de Ordenes de Compra/
 | `node backend/scripts/corregir-nombres-usuarios.mjs` | Fusiona duplicados de import; conserva el nombre corto (`--apply`; también al arrancar) |
 | `npm run test:ci` (en `backend/`) | CI sin BD (GitHub Actions) |
 | `powershell -ExecutionPolicy Bypass -File .\empaquetar-deploy.ps1` | Generar ZIP de deploy |
+| `cd docs && npm install && npm run manual` | Regenerar Manual de Operaciones (Word) |
 
 Detalle de import en servidor: [RECARGAR-BASE-GRAL-SERVIDOR.md](./RECARGAR-BASE-GRAL-SERVIDOR.md).
 
@@ -155,7 +166,7 @@ Los administradores pueden configurar SMTP completo (incluido CC de cotizaciones
 
 | Rol | Acceso principal |
 |-----|------------------|
-| **Solicitante** | Dashboard general; consulta de REQ/OC de todos (solo lectura); edita solo los propios; catálogo (lectura) |
+| **Solicitante** | Requerimientos y OC (propios por defecto; puede ver todos en solo lectura); edita los propios en borrador, incompleto y en revisión; catálogo (lectura); exporta Excel; sin Dashboard |
 | **Compras** | Flujo completo operativo, proveedores, usuarios (no admin), áreas |
 | **Admin** | Todo lo anterior + configuración SMTP |
 
@@ -198,7 +209,7 @@ flowchart TD
 
 ## Actualizar en producción
 
-Guía paso a paso: **[DESPLIEGUE-v1.9.4.md](./DESPLIEGUE-v1.9.4.md)**
+Guía paso a paso: **[DESPLIEGUE-v1.10.0.md](./DESPLIEGUE-v1.10.0.md)**
 
 Resumen:
 
@@ -207,7 +218,7 @@ Resumen:
 3. Descomprimir en el servidor conservando `.env` y `backend/uploads/`
 4. `cd backend && npm install --omit=dev`
 5. Reiniciar Node/PM2
-6. Verificar `GET /api/health` → version `1.9.4`
+6. Verificar `GET /api/health` → version `1.10.0`
 
 > Al arrancar se unifican usuarios duplicados del import (nombre corto). No se requiere SQL manual.
 

@@ -75,6 +75,7 @@ El `package-lock.json` del backend debe llevar la misma versión que `package.js
 | `v1.9.2` | Editar proveedor/moneda de cotización con OC generada |
 | `v1.9.3` | Búsqueda de REQ/OC por nombre actual del usuario |
 | `v1.9.4` | REQ del placeholder Excel se reasignan al login (nunca al revés) |
+| `v1.10.0` | Título/Excel REQ, filtros de export, Dashboard solo Compras, reporte diario con OC y días, purga mensual, Excel OC para solicitante |
 
 ## Convención de mensajes de commit (recomendado)
 

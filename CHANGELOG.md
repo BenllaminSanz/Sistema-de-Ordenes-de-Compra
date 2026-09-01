@@ -7,6 +7,31 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-08-31
+
+Título editable del REQ, Excel alineado a filtros de la página, reporte diario de Compras con OC y días L–V, y purga mensual de REQ viejos.
+
+### Añadido
+- Título del requerimiento editable en el detalle (Compras/Admin) en cualquier estado
+- Al recargar BASE GRAL, los N° existentes actualizan título y notas (no se omiten)
+- Excel de OC: una fila por ítem, con **% entregado** y **fecha de última recepción**
+- Fecha de recepción editable (Compras/Admin; por defecto el día de hoy)
+- Días del reporte diario configurables en Configuración (por defecto lunes a viernes)
+- El resumen de las 7:00 (hora México) incluye KPIs y FIFO de **órdenes de compra**
+- Purga mensual (día 1, 7:00 México): borra **borrador**, **en revisión** e **incompleto** del mes anterior al anterior (el 1 de septiembre se van julio y más viejos; agosto se queda). No toca recibido, aprobado, rechazado ni cerrado. Sin correo al solicitante. Admin puede **detenerla** en Configuración.
+- Configuración (Admin): botones **Enviar reporte de prueba a mi correo** (solo al Admin logueado, no a Compras/Araceli) y **Ejecutar purga ahora**
+
+### Cambiado
+- Columna **Tipo de servicio** del reporte Excel = título del REQ (ya no concatena ítems/notas)
+- Columna **Status** del Excel = notas del REQ
+- Import Excel: descripción/Tipo de servicio → `titulo_solicitud`; Status → `notas`
+- Listado de REQ muestra **Título** junto al consecutivo
+- El solicitante no puede editar el título (lápiz) una vez que Compras lo recibió; sí puede editar el REQ completo mientras está **en revisión**
+- El menú **Dashboard** (bandeja) es solo de Compras/Admin; el solicitante entra a Requerimientos
+- Listados REQ/OC del solicitante arrancan en lo suyo; «Todos» + usuarios activos en el filtro
+- Export Excel de REQ y de OC aplica los **mismos filtros de la página** (estado, tipo, usuario, búsqueda, área, sin PO…) más el periodo que se elige al exportar
+- El solicitante también puede exportar Excel de OC (con los filtros de su lista; por defecto las suyas)
+
 ## [1.9.4] — 2026-08-28
 
 Reasignar REQ del Excel (`@import.local`) a la cuenta de login aunque el placeholder tenga más requerimientos.

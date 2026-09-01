@@ -34,8 +34,30 @@ function etiquetaPeriodo(periodo) {
   return 'completo';
 }
 
+function qsFiltrosPaginaReq() {
+  const qs = new URLSearchParams();
+  const busqueda = document.getElementById('fil-busqueda')?.value?.trim();
+  const estado = document.getElementById('fil-estado')?.value;
+  const tipo = document.getElementById('fil-tipo')?.value;
+  const area = document.getElementById('fil-area')?.value;
+  const depto = document.getElementById('fil-departamento')?.value;
+  const solicitante = document.getElementById('fil-solicitante')?.value;
+  if (busqueda) qs.set('busqueda', busqueda);
+  if (estado) qs.set('estado', estado);
+  if (tipo) qs.set('tipo', tipo);
+  if (area) qs.set('area', area);
+  if (depto) qs.set('departamento', depto);
+  if (solicitante) qs.set('solicitante_id', solicitante);
+  else if (Auth.puedeHacer(['solicitante']) && Auth.getUsuario()?.id) {
+    qs.set('solicitante_id', String(Auth.getUsuario().id));
+  }
+  return qs;
+}
+
 async function descargarRequerimientosExcel(btn, periodo) {
-  const params = qsPeriodoExport(periodo);
+  const qs = new URLSearchParams(qsPeriodoExport(periodo).replace(/^\?/, ''));
+  qsFiltrosPaginaReq().forEach((v, k) => qs.set(k, v));
+  const params = qs.toString() ? `?${qs.toString()}` : '';
   if (window.ExcelUI?.descargar) {
     await ExcelUI.descargar(`/requerimientos/exportar${params}`, {
       btn,
@@ -118,19 +140,17 @@ async function ejecutarImport() {
       return;
     }
 
-    const color = data.importados > 0 ? '#f0fdf4' : '#f8fafc';
-    const borde = data.importados > 0 ? '#86efac' : '#e2e8f0';
-    const texto = data.importados > 0 ? '#166534' : '#475569';
+    const huboCambios = (data.importados > 0) || (data.actualizados > 0);
+    const color = huboCambios ? '#f0fdf4' : '#f8fafc';
+    const borde = huboCambios ? '#86efac' : '#e2e8f0';
+    const texto = huboCambios ? '#166534' : '#475569';
     resultado.style.cssText = `display:block;background:${color};border:1px solid ${borde};border-radius:6px;padding:10px 14px;font-size:13px;line-height:1.5;margin-top:14px;color:${texto}`;
 
     let html = `<strong>${data.mensaje || 'Importación finalizada'}</strong>`;
     if (data.layout) html += `<br>Layout detectado: <strong>${data.layout}</strong>`;
     if (data.importados != null) html += `<br>Nuevos REQ: <strong>${data.importados}</strong>`;
+    if (data.actualizados) html += `<br>Actualizados (título y notas): <strong>${data.actualizados}</strong>`;
     if (data.ocsCreadas) html += `<br>OC creadas: <strong>${data.ocsCreadas}</strong>`;
-    const saltados = data.saltados
-      ?? (data.errores || []).filter((e) =>
-          String(e?.error || e || '').toLowerCase().includes('ya existe')).length;
-    if (saltados) html += `<br>Ya existentes (omitidos): <strong>${saltados}</strong>`;
     if (data.duplicados?.length) {
       html += `<br>Duplicados en archivo (1 sola carga): <strong>${data.duplicados.length}</strong>`;
     }
@@ -152,10 +172,9 @@ async function ejecutarImport() {
     }
     resultado.innerHTML = html;
 
-    if (data.importados > 0) {
+    if (huboCambios) {
       fileInput.value = '';
       document.getElementById('imp-preview').style.display = 'none';
-      // Refrescar la lista
       if (typeof cargarRequerimientos === 'function') cargarRequerimientos(1);
     }
   } catch (err) {

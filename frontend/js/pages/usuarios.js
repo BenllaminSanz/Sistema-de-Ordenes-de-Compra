@@ -4,7 +4,9 @@
  */
 
 Auth.requiereAuth();
-if (!Auth.puedeHacer(['admin', 'compras'])) window.location.href = 'dashboard.html';
+if (!Auth.puedeHacer(['admin', 'compras'])) {
+  window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'requerimientos.html';
+}
 
 const usuarioActual = Auth.getUsuario();
 const esAdmin = usuarioActual?.rol === 'admin';

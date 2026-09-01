@@ -42,6 +42,18 @@ function formatearFechaPoInput(valor) {
 }
 
 /** Formato de fecha para campos DATE (fecha_po) sin desfase de zona horaria. */
+function fechaYmdLocal(valor) {
+  if (valor) {
+    const m = String(valor).trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  const d = new Date();
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
 function fechaPoUi(valor) {
   if (!valor) return '—';
   const ymd = formatearFechaPoInput(valor);
@@ -289,8 +301,12 @@ async function cargarFiltroSolicitantesOc() {
     const usuarios = await Api.get('/auth/usuarios');
     const crudos = Array.isArray(usuarios) ? usuarios : (usuarios?.usuarios || []);
     const lista = UI.usuariosParaFiltro(crudos);
+    const yo = Auth.getUsuario();
+    const esSol = Auth.puedeHacer(['solicitante']);
     const preferido = window._filSolicitanteOcPreferido || sel.value;
-    sel.innerHTML = '<option value="">Todos los usuarios</option>';
+    sel.innerHTML = esSol
+      ? '<option value="all">Todos los usuarios</option>'
+      : '<option value="">Todos los usuarios</option>';
     lista
       .slice()
       .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
@@ -302,6 +318,7 @@ async function cargarFiltroSolicitantesOc() {
         sel.appendChild(opt);
       });
     if (preferido) sel.value = String(preferido);
+    else if (esSol && yo?.id) sel.value = String(yo.id);
     window._filSolicitanteOcPreferido = null;
     sel.dataset.loaded = '1';
     sel.onchange = () => cargarOrdenes(1);
@@ -325,9 +342,6 @@ if (tablaOC) {
 
 // ── LISTA ─────────────────────────────────────────────────────
 async function exportarOrdenesExcel(btn) {
-  if (!Auth.puedeHacer(['compras', 'admin'])) {
-    return Toast.error('Solo Compras/Admin pueden exportar OCs');
-  }
   Reportes.solicitarPeriodoExportacion({
     titulo: 'Exportar órdenes de compra',
     btn,
@@ -347,6 +361,17 @@ async function descargarOrdenesExcel(btn, periodo) {
   } else {
     qs = new URLSearchParams({ libre: '1' });
   }
+
+  const estado = document.getElementById('fil-estado')?.value || '';
+  const tipo = document.getElementById('fil-tipo')?.value || '';
+  const sinPo = document.getElementById('fil-sin-po')?.checked;
+  const busqueda = document.getElementById('fil-busqueda-oc')?.value.trim() || '';
+  const solicitante = document.getElementById('fil-solicitante-oc')?.value || '';
+  if (estado) qs.set('estado', estado);
+  if (tipo) qs.set('tipo_req', tipo);
+  if (sinPo) qs.set('sin_po', 'true');
+  if (busqueda) qs.set('busqueda', busqueda);
+  if (solicitante) qs.set('solicitante_id', solicitante);
 
   const targetBtn = btn || document.getElementById('btn-exportar-oc');
   if (window.ExcelUI?.descargar) {
@@ -391,11 +416,9 @@ async function cargarOrdenes(pagina) {
   const contenedor = document.getElementById('tabla-oc');
   UI.spinner(contenedor);
 
-  const puedeOperarOc = Auth.puedeHacer(['compras', 'admin']);
-
-  const adminActions = document.getElementById('oc-admin-actions');
-  if (adminActions) {
-    adminActions.style.display = puedeOperarOc ? 'flex' : 'none';
+  const headerActions = document.getElementById('oc-header-actions');
+  if (headerActions) {
+    headerActions.style.display = 'flex';
   }
 
   const subtitle = document.getElementById('oc-subtitle');
@@ -419,6 +442,7 @@ async function cargarOrdenes(pagina) {
   if (sinPo)    qs += '&sin_po=true';
   if (busqueda) qs += `&busqueda=${encodeURIComponent(busqueda)}`;
   if (solicitante) qs += `&solicitante_id=${encodeURIComponent(solicitante)}`;
+  else if (Auth.puedeHacer(['solicitante'])) qs += '&solicitante_id=' + encodeURIComponent(Auth.getUsuario()?.id || '');
   if (_ordenOc.por) {
     qs += `&ordenar_por=${encodeURIComponent(_ordenOc.por)}`;
     qs += `&orden=${encodeURIComponent(_ordenOc.dir || 'desc')}`;
@@ -1195,6 +1219,8 @@ async function abrirRecepcion(recepcion = null) {
   if (titulo) titulo.textContent = recepcionEditandoId ? 'Editar recepción' : 'Registrar recepción';
   if (btn) btn.textContent = recepcionEditandoId ? 'Guardar cambios' : 'Confirmar recepción';
 
+  const fechaEl = document.getElementById('rec-fecha');
+  if (fechaEl) fechaEl.value = fechaYmdLocal(recepcion?.fecha_recepcion);
   if (recepcion) {
     document.getElementById('rec-notas').value = recepcion.notas || '';
   }
@@ -1550,7 +1576,8 @@ document.getElementById('form-recepcion').addEventListener('submit', async e => 
     if (mensaje && !confirm(mensaje)) return;
   }
 
-  const payload = { estado, datatextnow_id: poNuevo, notas, items };
+  const fecha_recepcion = document.getElementById('rec-fecha')?.value || null;
+  const payload = { estado, datatextnow_id: poNuevo, notas, items, fecha_recepcion };
 
   try {
     let resp;

@@ -1,6 +1,7 @@
 import pool from '../config/db.js';
 import { validarCierreOrden } from '../utils/ocCierre.js';
 import { obtenerPorId as obtenerOcPorId } from './ordenes.js';
+import { normalizarFechaRecepcion } from '../utils/filtroSolicitante.js';
 
 async function cargarItemsRecepcion(recepcionIds) {
   if (!recepcionIds.length) return {};
@@ -125,6 +126,23 @@ async function calcularAcumuladoPorItem(conn, orden_compra_id, excluir_recepcion
   return acumulado;
 }
 
+async function ultimaFechaEntregaPorItem(conn, orden_compra_id) {
+  const [rows] = await conn.query(
+    `SELECT ri.item_key, MAX(r.fecha_recepcion) AS ultima
+     FROM recepcion_items ri
+     JOIN recepciones r ON r.id = ri.recepcion_id
+     WHERE r.orden_compra_id = ?
+       AND ri.cantidad_recibida > 0
+     GROUP BY ri.item_key`,
+    [orden_compra_id]
+  );
+  const map = {};
+  for (const row of rows) {
+    map[row.item_key] = row.ultima || null;
+  }
+  return map;
+}
+
 function construirResumenItemsOc(oc, acumulado) {
   return (oc.items || []).map((it, idx) => {
     const key = it.origen === 'cotizacion'
@@ -229,17 +247,19 @@ async function crear(datos, recibido_por) {
 
     const esCompleta = datos.estado !== 'recibido_parcial';
     const estadoRecepcion = datos.estado || 'recibido_completo';
+    const fechaRec = normalizarFechaRecepcion(datos.fecha_recepcion);
 
     const [result] = await conn.query(
       `INSERT INTO recepciones
          (orden_compra_id, recibido_por, estado, notas, datatextnow_id, fecha_recepcion)
-       VALUES (?, ?, ?, ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, COALESCE(?, NOW()))`,
       [
         datos.orden_compra_id,
         recibido_por,
         estadoRecepcion,
         datos.notas || null,
         datos.datatextnow_id || null,
+        fechaRec,
       ]
     );
     const recepcionId = result.insertId;
@@ -346,6 +366,13 @@ async function actualizar(id, datos, usuarioId) {
     if (datos.estado !== undefined) { campos.push('estado = ?'); params.push(datos.estado); }
     if (datos.notas !== undefined) { campos.push('notas = ?'); params.push(datos.notas); }
     if (datos.datatextnow_id !== undefined) { campos.push('datatextnow_id = ?'); params.push(datos.datatextnow_id); }
+    if (datos.fecha_recepcion !== undefined) {
+      const fechaRec = normalizarFechaRecepcion(datos.fecha_recepcion);
+      if (fechaRec) {
+        campos.push('fecha_recepcion = ?');
+        params.push(fechaRec);
+      }
+    }
 
     if (campos.length) {
       params.push(id);
@@ -411,7 +438,17 @@ async function resumenItemsOrden(orden_compra_id, opciones = {}) {
   if (!oc) return [];
 
   const acumulado = await calcularAcumuladoPorItem(db, orden_compra_id, excluir_recepcion_id);
-  return construirResumenItemsOc(oc, acumulado);
+  const fechas = await ultimaFechaEntregaPorItem(db, orden_compra_id);
+  return construirResumenItemsOc(oc, acumulado).map((it) => {
+    const sol = parseFloat(it.cantidad_solicitada) || 0;
+    const rec = parseFloat(it.cantidad_recibida) || 0;
+    const pct = sol > 0 ? Math.min(100, Math.round((rec / sol) * 100)) : 0;
+    return {
+      ...it,
+      pct_entrega: pct,
+      fecha_ultima_entrega: fechas[it.item_key] || null,
+    };
+  });
 }
 
 export {

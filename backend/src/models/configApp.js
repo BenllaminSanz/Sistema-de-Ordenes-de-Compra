@@ -1,4 +1,19 @@
 import pool from '../config/db.js';
+import {
+  DIAS_REPORTE_DEFAULT,
+  parseDiasReporte,
+  serializarDiasReporte,
+  diaSemanaMexico,
+  esDiaDeReporteDiario,
+} from '../utils/diasReporte.js';
+
+export {
+  DIAS_REPORTE_DEFAULT,
+  parseDiasReporte,
+  serializarDiasReporte,
+  diaSemanaMexico,
+  esDiaDeReporteDiario,
+};
 
 const EMAIL_PLACEHOLDER = /@import\.local$/i;
 
@@ -69,7 +84,9 @@ const DEFAULTS = {
   email_notif_compras: '',
   notif_roles: ['compras', 'admin'],
   reporte_diario: true,
+  reporte_diario_dias: [...DIAS_REPORTE_DEFAULT],
   reporte_diario_ultimo: null,
+  purga_borradores: true,
   updated_at: null,
 };
 
@@ -78,7 +95,8 @@ export async function obtenerAjustesCorreo() {
   try {
     const [[row]] = await pool.query(
       `SELECT frontend_url, notif_req_revision, email_notif_compras, notif_roles,
-              reporte_diario, reporte_diario_ultimo, updated_at
+              reporte_diario, reporte_diario_dias, reporte_diario_ultimo,
+              purga_borradores, updated_at
        FROM configuracion_app
        WHERE id = 1
        LIMIT 1`
@@ -89,9 +107,11 @@ export async function obtenerAjustesCorreo() {
       email_notif_compras: row?.email_notif_compras || '',
       notif_roles: parseRolesNotif(row?.notif_roles),
       reporte_diario: row ? Number(row.reporte_diario) !== 0 : true,
+      reporte_diario_dias: parseDiasReporte(row?.reporte_diario_dias),
       reporte_diario_ultimo: row?.reporte_diario_ultimo
         ? String(row.reporte_diario_ultimo).slice(0, 10)
         : null,
+      purga_borradores: row ? Number(row.purga_borradores) !== 0 : true,
       updated_at: row?.updated_at || null,
     };
   } catch (err) {
@@ -121,6 +141,12 @@ export async function guardarAjustesCorreo(datos = {}, updatedById = null) {
   const reporte_diario = datos.reporte_diario !== undefined
     ? !!datos.reporte_diario
     : (actual.reporte_diario !== false);
+  const reporte_diario_dias = datos.reporte_diario_dias !== undefined
+    ? parseDiasReporte(datos.reporte_diario_dias)
+    : parseDiasReporte(actual.reporte_diario_dias);
+  const purga_borradores = datos.purga_borradores !== undefined
+    ? !!datos.purga_borradores
+    : (actual.purga_borradores !== false);
 
   if (datos.frontend_url !== undefined && datos.frontend_url && !frontend_url) {
     throw Object.assign(new Error('La URL pública debe empezar con http:// o https://'), { status: 400 });
@@ -128,19 +154,29 @@ export async function guardarAjustesCorreo(datos = {}, updatedById = null) {
   if (datos.notif_roles !== undefined && !notif_roles.length) {
     throw Object.assign(new Error('Elige al menos un rol: Compras o Admin'), { status: 400 });
   }
+  if (datos.reporte_diario_dias !== undefined) {
+    const raw = datos.reporte_diario_dias;
+    const vacio = Array.isArray(raw) ? raw.length === 0 : !String(raw || '').trim();
+    if (vacio) {
+      throw Object.assign(new Error('Elige al menos un día para el reporte diario'), { status: 400 });
+    }
+  }
 
   const updatedBy = Number.isInteger(Number(updatedById)) ? Number(updatedById) : null;
 
   await pool.query(
     `INSERT INTO configuracion_app
-       (id, frontend_url, notif_req_revision, email_notif_compras, notif_roles, reporte_diario, updated_by)
-     VALUES (1, ?, ?, ?, ?, ?, ?)
+       (id, frontend_url, notif_req_revision, email_notif_compras, notif_roles,
+        reporte_diario, reporte_diario_dias, purga_borradores, updated_by)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        frontend_url = VALUES(frontend_url),
        notif_req_revision = VALUES(notif_req_revision),
        email_notif_compras = VALUES(email_notif_compras),
        notif_roles = VALUES(notif_roles),
        reporte_diario = VALUES(reporte_diario),
+       reporte_diario_dias = VALUES(reporte_diario_dias),
+       purga_borradores = VALUES(purga_borradores),
        updated_by = VALUES(updated_by)`,
     [
       frontend_url || null,
@@ -148,6 +184,8 @@ export async function guardarAjustesCorreo(datos = {}, updatedById = null) {
       email_notif_compras || null,
       serializarRolesNotif(notif_roles),
       reporte_diario ? 1 : 0,
+      serializarDiasReporte(reporte_diario_dias),
+      purga_borradores ? 1 : 0,
       updatedBy,
     ]
   );

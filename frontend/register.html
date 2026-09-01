@@ -78,7 +78,7 @@
 <script src="js/app.js"></script>
 <script>
   // Si ya está logueado, redirigir
-  if (Auth.getToken()) window.location.href = 'dashboard.html';
+  if (Auth.getToken()) window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'requerimientos.html';
 
   const form = document.getElementById('form-registro');
   const errorDiv = document.getElementById('registro-error');

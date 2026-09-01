@@ -34,6 +34,10 @@ async function bloqueNotificaciones(req) {
     email_notif_compras: ajustes.email_notif_compras || '',
     notif_roles: Array.isArray(ajustes.notif_roles) ? ajustes.notif_roles : ['compras', 'admin'],
     reporte_diario: ajustes.reporte_diario !== false,
+    reporte_diario_dias: Array.isArray(ajustes.reporte_diario_dias)
+      ? ajustes.reporte_diario_dias
+      : [1, 2, 3, 4, 5],
+    purga_borradores: ajustes.purga_borradores !== false,
     destinatarios,
   };
 }
@@ -73,16 +77,20 @@ export async function updateNotificaciones(req, res) {
       email_notif_compras: body.email_notif_compras,
       notif_roles: body.notif_roles,
       reporte_diario: body.reporte_diario,
+      reporte_diario_dias: body.reporte_diario_dias,
+      purga_borradores: body.purga_borradores,
     }, req.usuario?.id || null);
 
+    let mensaje = 'Ajustes de notificaciones guardados';
+    if (body.purga_borradores === false) mensaje = 'Purga mensual de borradores desactivada';
+    else if (body.purga_borradores === true) mensaje = 'Purga mensual de borradores activada';
+    else if (body.notif_req_revision === false) mensaje = 'Notificaciones de REQ en revisión desactivadas';
+    else if (body.notif_req_revision === true && body.notif_roles === undefined) {
+      mensaje = 'Notificaciones de REQ en revisión activadas';
+    } else if (body.notif_roles) mensaje = 'Destinatarios actualizados';
+
     res.json({
-      mensaje: body.notif_req_revision === false
-        ? 'Notificaciones de REQ en revisión desactivadas'
-        : (body.notif_req_revision === true && body.notif_roles === undefined
-          ? 'Notificaciones de REQ en revisión activadas'
-          : (body.notif_roles
-            ? 'Destinatarios actualizados'
-            : 'Ajustes de notificaciones guardados')),
+      mensaje,
       notificaciones: await bloqueNotificaciones(req),
       ajustes,
     });

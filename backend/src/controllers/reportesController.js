@@ -3,19 +3,22 @@ import pool from '../config/db.js';
 import logger from '../utils/logger.js';
 import {
   generarExcelBaseGral,
+  generarExcelOrdenesPorItem,
   estadoExcelDesdeSistema,
   formatoProveedorBaseGral,
+  statusDesdeNotas,
 } from '../utils/excelRequerimientos.js';
+import { resumenItemsOrden } from '../models/recepciones.js';
 import {
   construirIndiceAreasDeptos,
   resolverAreaDepartamentoVista,
 } from '../config/departamentosStore.js';
 import { parsePeriodoExport, sqlRangoFecha, rangoMes } from '../utils/fechas.js';
+import { aplicarFiltroSolicitante } from '../utils/filtroSolicitante.js';
 
 function extraerStatusNotas(notasReq, notasOc) {
-  const n = String(notasReq || notasOc || '');
-  const m = n.match(/Status:\s*(.+?)(?:\s*\|\s*Import:|$)/i);
-  if (m) return m[1].trim();
+  const fromReq = statusDesdeNotas(notasReq);
+  if (fromReq) return fromReq;
   if (notasOc && String(notasOc).trim()) return String(notasOc).trim();
   return '';
 }
@@ -65,16 +68,7 @@ function filaBaseGralDesdeOc(oc, indice) {
  */
 function filaBaseGralDesdeReq(req, indice) {
   const ad = camposAreaDeptoVista(req.area, req.departamento, indice);
-  // Detalle: título + notas (sin Status) — no solo el tipo PARTES/SERVICIOS
   const titulo = String(req.titulo_solicitud || '').trim();
-  let notas = String(req.notas || '').trim()
-    .replace(/\s*\|\s*Status:\s*.+$/i, '')
-    .replace(/^Status:\s*.+?(?:\s*\|\s*Import:.*)?$/i, '')
-    .replace(/\s*\|\s*Import:.*$/i, '')
-    .trim();
-  const detalle = [titulo, notas && notas !== titulo ? notas : '']
-    .filter(Boolean)
-    .join(' | ');
   return {
     orden_compra: req.oc_datatextnow_id || '',
     fecha_po: req.oc_fecha_po || null,
@@ -95,7 +89,7 @@ function filaBaseGralDesdeReq(req, indice) {
     oc_estado: req.oc_estado,
     ...ad,
     compania: '31',
-    tipo_servicio: detalle || titulo || notas || '',
+    tipo_servicio: titulo,
     status: extraerStatusNotas(req.notas, null),
   };
 }
@@ -171,6 +165,7 @@ export async function generarReporteOrdenesCompra(req, res) {
       filtros.tipo = req.query.tipo;
     }
     if (solicitante_id) filtros.solicitante_id = solicitante_id;
+    aplicarFiltroSolicitante(req.usuario, solicitante_id, filtros);
 
     const { datos: ocs } = await Ordenes.listar({
       ...filtros,
@@ -178,17 +173,35 @@ export async function generarReporteOrdenesCompra(req, res) {
     });
 
     const indice = await construirIndiceAreasDeptos();
-    const filas = ocs.map((oc) =>
-      filaBaseGralDesdeOc({
-        ...oc,
-        notas_req: oc.descripcion || oc.notas_req,
-        notas_oc: oc.notas,
-        req_estado: oc.req_estado,
-        req_created_at: oc.req_created_at || oc.created_at,
-      }, indice)
-    );
+    const filas = [];
+    const TAM = 15;
+    for (let i = 0; i < ocs.length; i += TAM) {
+      const chunk = ocs.slice(i, i + TAM);
+      const resumenes = await Promise.all(
+        chunk.map(async (oc) => {
+          try {
+            return await resumenItemsOrden(oc.id);
+          } catch {
+            return [];
+          }
+        })
+      );
+      chunk.forEach((oc, idx) => {
+        const base = filaBaseGralDesdeOc({
+          ...oc,
+          notas_req: oc.descripcion || oc.notas_req,
+          notas_oc: oc.notas,
+          req_estado: oc.req_estado,
+          req_created_at: oc.req_created_at || oc.created_at,
+        }, indice);
+        filas.push({
+          ...base,
+          items: resumenes[idx] || [],
+        });
+      });
+    }
 
-    const buffer = generarExcelBaseGral(filas);
+    const buffer = generarExcelOrdenesPorItem(filas);
 
     const filename = exportLibre
       ? `BASE_GRAL_OC_${new Date().toISOString().slice(0, 10)}.xlsx`

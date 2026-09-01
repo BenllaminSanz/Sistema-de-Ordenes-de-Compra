@@ -6,6 +6,7 @@ import {
   rangoMes,
   parsePeriodoExport,
   sqlRangoFecha,
+  cortePurgaBorradores,
 } from '../../../src/utils/fechas.js';
 
 describe('fechas — sin desfase UTC-6', () => {
@@ -62,5 +63,11 @@ describe('fechas — sin desfase UTC-6', () => {
     assert.match(r.sql, /BETWEEN/);
     assert.deepEqual(r.params, ['2026-01-01', '2026-12-31']);
     assert.equal(sqlRangoFecha('c', null, null).sql, '');
+  });
+
+  it('cortePurgaBorradores: 1 sep → agosto 1 (borra julio, no agosto)', () => {
+    assert.equal(cortePurgaBorradores('2026-09-01'), '2026-08-01');
+    assert.equal(cortePurgaBorradores('2026-09-15'), '2026-08-01');
+    assert.equal(cortePurgaBorradores('2026-01-01'), '2025-12-01');
   });
 });

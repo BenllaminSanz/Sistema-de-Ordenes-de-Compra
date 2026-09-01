@@ -6,7 +6,7 @@ Auth.requiereAuth();
 
 const usuarioActual = Auth.getUsuario();
 if (!usuarioActual || usuarioActual.rol !== 'admin') {
-  window.location.href = 'dashboard.html';
+  window.location.href = Auth.rutaInicio ? Auth.rutaInicio() : 'requerimientos.html';
 }
 
 renderSidebar();
@@ -81,6 +81,26 @@ function renderNotificaciones(n) {
   if (chkAdmin) chkAdmin.checked = roles.includes('admin');
   const chkDiario = document.getElementById('cfg-reporte-diario');
   if (chkDiario) chkDiario.checked = n.reporte_diario !== false;
+  const chkPurga = document.getElementById('cfg-purga-borradores');
+  if (chkPurga) chkPurga.checked = n.purga_borradores !== false;
+  const hintPrueba = document.getElementById('cfg-probar-reporte-hint');
+  const miCorreo = Auth.getUsuario()?.email || '';
+  if (hintPrueba) {
+    hintPrueba.textContent = miCorreo
+      ? `Se enviará solo a ${miCorreo}. No llega a Compras ni a Araceli.`
+      : 'No se envía a Compras ni a Araceli; solo a la cuenta con la que estás logueado.';
+  }
+  const btnPrueba = document.getElementById('btn-probar-reporte-diario');
+  if (btnPrueba && miCorreo) {
+    btnPrueba.title = `Enviar a ${miCorreo}`;
+  }
+  const dias = Array.isArray(n.reporte_diario_dias) && n.reporte_diario_dias.length
+    ? n.reporte_diario_dias.map(Number)
+    : [1, 2, 3, 4, 5];
+  document.querySelectorAll('.cfg-dia').forEach((chk) => {
+    chk.checked = dias.includes(Number(chk.value));
+    chk.disabled = n.reporte_diario === false;
+  });
 
   const urlHint = document.getElementById('cfg-frontend-url-hint');
   if (urlHint) {
@@ -329,6 +349,27 @@ async function guardarRolesNotif() {
 document.getElementById('notif-rol-compras')?.addEventListener('change', guardarRolesNotif);
 document.getElementById('notif-rol-admin')?.addEventListener('change', guardarRolesNotif);
 
+function diasReporteDesdeUI() {
+  return [...document.querySelectorAll('.cfg-dia:checked')].map((c) => Number(c.value));
+}
+
+async function guardarDiasReporte() {
+  const dias = diasReporteDesdeUI();
+  if (!dias.length) {
+    Toast.error('Elige al menos un día para el reporte.');
+    renderNotificaciones(_notifEstado);
+    return;
+  }
+  try {
+    const resp = await Api.put('/config/notificaciones', { reporte_diario_dias: dias });
+    renderNotificaciones(resp.notificaciones);
+    Toast.success('Días del reporte diario actualizados');
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudieron guardar los días');
+    renderNotificaciones(_notifEstado);
+  }
+}
+
 document.getElementById('cfg-reporte-diario')?.addEventListener('change', async (e) => {
   const on = !!e.target.checked;
   try {
@@ -338,6 +379,76 @@ document.getElementById('cfg-reporte-diario')?.addEventListener('change', async 
   } catch (err) {
     Toast.error(err.mensaje || 'No se pudo guardar el reporte diario');
     e.target.checked = !on;
+  }
+});
+
+document.getElementById('cfg-purga-borradores')?.addEventListener('change', async (e) => {
+  const on = !!e.target.checked;
+  try {
+    const resp = await Api.put('/config/notificaciones', { purga_borradores: on });
+    renderNotificaciones(resp.notificaciones);
+    Toast.success(on ? 'Purga mensual activada' : 'Purga mensual detenida');
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo guardar la purga mensual');
+    e.target.checked = !on;
+  }
+});
+
+document.querySelectorAll('.cfg-dia').forEach((chk) => {
+  chk.addEventListener('change', guardarDiasReporte);
+});
+
+document.getElementById('btn-probar-reporte-diario')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const correo = Auth.getUsuario()?.email || '';
+  if (!correo) {
+    Toast.error('Tu usuario Admin no tiene correo');
+    return;
+  }
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  try {
+    const resp = await Api.post('/notificaciones/reporte-diario');
+    if (resp?.success === false) {
+      Toast.error(resp.mensaje || 'No se pudo enviar el reporte de prueba');
+    } else {
+      Toast.success(resp.mensaje || `Reporte de prueba enviado a ${correo}`);
+    }
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo enviar el reporte de prueba');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+
+document.getElementById('btn-forzar-purga')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (document.getElementById('cfg-purga-borradores') && !document.getElementById('cfg-purga-borradores').checked) {
+    Toast.error('Activa primero la purga mensual para poder ejecutarla.');
+    return;
+  }
+  if (!confirm(
+    '¿Ejecutar la purga ahora?\n\nSe eliminarán borradores, en revisión e incompletos creados antes del mes anterior '
+    + '(p. ej. en septiembre se van los de julio). Recibidos y aprobados no se tocan. Esta acción no se puede deshacer.'
+  )) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Purgando…';
+  try {
+    const resp = await Api.post('/notificaciones/purga-borradores');
+    if (resp?.skipped && resp.reason === 'purga_off') {
+      Toast.error('La purga está detenida. Actívala para ejecutarla.');
+    } else {
+      const n = Number(resp?.borrados) || 0;
+      Toast.success(n ? `Purga hecha: ${n} requerimiento(s) eliminado(s)` : 'Purga hecha: no había REQ antiguos para borrar');
+    }
+  } catch (err) {
+    Toast.error(err.mensaje || 'No se pudo ejecutar la purga');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
   }
 });
 
