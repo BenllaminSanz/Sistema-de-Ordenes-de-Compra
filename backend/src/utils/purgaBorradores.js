@@ -1,6 +1,7 @@
 /**
  * Purga mensual: borradores e incompletos más viejos que el mes anterior.
- * El 1 de septiembre borra julio y anteriores; agosto se conserva todo el mes.
+ * El 1 de septiembre toca julio y anteriores; agosto se conserva todo el mes.
+ * Con N° → cancelado (rechazado); sin N° (borrador) → se elimina.
  */
 import logger from './logger.js';
 import { umbralPurgaBorradores, ymd } from './fechas.js';
@@ -36,41 +37,46 @@ async function marcarPurgaEjecutada(dia) {
 }
 
 /**
- * @param {{ forzar?: boolean, hoy?: string }} [opts]
+ * @param {{ forzar?: boolean, hoy?: string, actorUserId?: number }} [opts]
  * hoy = YYYY-MM-DD en calendario México (tests).
+ * actorUserId = Admin que disparó la purga (historial.cambiado_por es NOT NULL en el servidor).
  */
-export async function ejecutarPurgaBorradores({ forzar = false, hoy = null } = {}) {
+export async function ejecutarPurgaBorradores({ forzar = false, hoy = null, actorUserId = null } = {}) {
   const dia = hoy || fechaHoyMexico();
   const ajustes = await obtenerAjustesCorreo();
   if (ajustes.purga_borradores === false) {
-    return { success: true, skipped: true, reason: 'purga_off', dia, borrados: 0 };
+    return { success: true, skipped: true, reason: 'purga_off', dia, borrados: 0, cancelados: 0 };
   }
   if (!forzar) {
     const ultimo = await leerUltimaPurga();
     if (ultimo && String(ultimo).slice(0, 7) === String(dia).slice(0, 7)) {
-      return { success: true, skipped: true, reason: 'ya_ejecutada', dia, borrados: 0 };
+      return { success: true, skipped: true, reason: 'ya_ejecutada', dia, borrados: 0, cancelados: 0 };
     }
   }
 
   const { corte, umbral } = umbralPurgaBorradores(dia);
-  const result = await purgarBorradoresEIncompletos({ umbral });
+  const result = await purgarBorradoresEIncompletos({ umbral, actorUserId });
   await marcarPurgaEjecutada(dia);
 
   logger.info('[Mantenimiento] Purga REQ borrador/incompleto', {
     dia,
     corte,
     borrados: result.borrados,
+    cancelados: result.cancelados,
     ids: result.ids,
   });
   console.log(
-    `[Mantenimiento] Purga REQ ${dia} corte<${corte} borrados=${result.borrados}`
+    `[Mantenimiento] Purga REQ ${dia} corte<${corte} cancelados=${result.cancelados || 0} borrados=${result.borrados}`
   );
   return {
     success: true,
     dia,
     corte,
     borrados: result.borrados,
+    cancelados: result.cancelados || 0,
     ids: result.ids || [],
+    idsBorrados: result.idsBorrados || [],
+    idsCancelados: result.idsCancelados || [],
     detalle: result.detalle || [],
   };
 }

@@ -36,6 +36,20 @@ export const restablecerPasswordUsuarioSchema = z.object({
 // ESQUEMAS DE REQUERIMIENTOS
 // ============================================================
 
+const itemLibreSchema = z.object({
+  descripcion: z.string().min(3, 'La descripción debe tener al menos 3 caracteres').trim(),
+  cantidad: z.number().positive(),
+  unidad: z.string().trim().optional().nullable(),
+  notas: z.string().trim().optional().nullable(),
+  referencia_tipo: z.enum(['link', 'archivo']).optional().nullable(),
+  referencia_url: z.string().max(500).optional().nullable(),
+  referencia_nombre: z.string().max(255).optional().nullable(),
+  precio_sugerido: z
+    .union([z.null(), z.literal(''), z.coerce.number().nonnegative()])
+    .optional()
+    .transform((v) => (v === '' || v == null ? null : v)),
+});
+
 export const crearRequerimientoSchema = z.object({
   titulo_solicitud: z.string().min(5, 'El título debe tener al menos 5 caracteres').trim(),
   notas: z.string().trim().optional().default(''),
@@ -50,17 +64,7 @@ export const crearRequerimientoSchema = z.object({
     })
   ).optional().default([]),
   // Ítems en texto libre (cuando no existen aún en el catálogo)
-  items_libres: z.array(
-    z.object({
-      descripcion: z.string().min(3, 'La descripción debe tener al menos 3 caracteres').trim(),
-      cantidad: z.number().positive(),
-      unidad: z.string().trim().optional().nullable(),
-      notas: z.string().trim().optional().nullable(),
-      referencia_tipo: z.enum(['link', 'archivo']).optional().nullable(),
-      referencia_url: z.string().max(500).optional().nullable(),
-      referencia_nombre: z.string().max(255).optional().nullable(),
-    })
-  ).optional().default([]),
+  items_libres: z.array(itemLibreSchema).optional().default([]),
 }).refine((data) => {
   const tieneItems = Array.isArray(data.items) && data.items.length > 0;
   const tieneLibres = Array.isArray(data.items_libres) && data.items_libres.length > 0;
@@ -85,18 +89,7 @@ export const actualizarRequerimientoSchema = z.object({
       cantidad: z.number().positive(),
     })
   ).optional(),
-  // Ítems en texto libre (cuando no existen aún en el catálogo)
-  items_libres: z.array(
-    z.object({
-      descripcion: z.string().min(3, 'La descripción debe tener al menos 3 caracteres').trim(),
-      cantidad: z.number().positive(),
-      unidad: z.string().trim().optional().nullable(),
-      notas: z.string().trim().optional().nullable(),
-      referencia_tipo: z.enum(['link', 'archivo']).optional().nullable(),
-      referencia_url: z.string().max(500).optional().nullable(),
-      referencia_nombre: z.string().max(255).optional().nullable(),
-    })
-  ).optional(),
+  items_libres: z.array(itemLibreSchema).optional(),
 }).refine((data) => {
   const tieneItems = Array.isArray(data.items) && data.items.length > 0;
   const tieneLibres = Array.isArray(data.items_libres) && data.items_libres.length > 0;

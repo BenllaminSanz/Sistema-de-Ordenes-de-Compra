@@ -1,10 +1,11 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { describeIntegration } from '../helpers/integration.js';
-import { agentFor } from '../helpers/auth.js';
+import { agentFor, USERS } from '../helpers/auth.js';
 import { createRequerimiento, patchEstado } from '../helpers/factories.js';
 import { query } from '../helpers/db.js';
 import { ejecutarPurgaBorradores } from '../../src/utils/purgaBorradores.js';
+import { importarBaseRequerimientos } from '../../src/utils/importBaseReq.js';
 
 describeIntegration('Purga mensual de borradores e incompletos', () => {
   async function envejecer(id, createdAt) {
@@ -24,7 +25,7 @@ describeIntegration('Purga mensual de borradores e incompletos', () => {
     return r.body;
   }
 
-  it('el 1 de septiembre borra julio (borrador, en revisión e incompleto) y deja agosto', async () => {
+  it('el 1 de septiembre cancela julio con N° (en revisión e incompleto), borra borrador y deja agosto', async () => {
     const julBorr = await createRequerimiento('sol1', { titulo_solicitud: 'Borrador julio' });
     assert.equal(julBorr.status, 201);
     await envejecer(julBorr.body.id, '2026-07-15 18:00:00');
@@ -51,7 +52,8 @@ describeIntegration('Purga mensual de borradores e incompletos', () => {
     const r = await ejecutarPurgaBorradores({ forzar: true, hoy: '2026-09-01' });
     assert.equal(r.success, true);
     assert.equal(r.corte, '2026-08-01');
-    assert.ok(r.borrados >= 3, JSON.stringify(r));
+    assert.ok(r.borrados >= 1, JSON.stringify(r));
+    assert.ok(r.cancelados >= 2, JSON.stringify(r));
     assert.ok(r.ids.includes(julBorr.body.id));
     assert.ok(r.ids.includes(julInc.id));
     assert.ok(r.ids.includes(julRev.body.id));
@@ -60,15 +62,79 @@ describeIntegration('Purga mensual de borradores e incompletos', () => {
 
     const goneBorr = await agentFor('sol1').get(`/api/requerimientos/${julBorr.body.id}`);
     assert.equal(goneBorr.status, 404);
-    const goneInc = await agentFor('sol1').get(`/api/requerimientos/${julInc.id}`);
-    assert.equal(goneInc.status, 404);
-    const goneRev = await agentFor('compras').get(`/api/requerimientos/${julRev.body.id}`);
-    assert.equal(goneRev.status, 404);
+
+    const keepInc = await agentFor('sol1').get(`/api/requerimientos/${julInc.id}`);
+    assert.equal(keepInc.status, 200);
+    assert.equal(keepInc.body.estado, 'rechazado');
+    assert.ok(keepInc.body.consecutivo);
+    assert.ok((keepInc.body.historial || []).some((h) => h.estado_nuevo === 'rechazado'));
+    const [[hist]] = await query(
+      `SELECT cambiado_por FROM historial_estados
+       WHERE entidad_tipo = 'requerimiento' AND entidad_id = ? AND estado_nuevo = 'rechazado'
+       ORDER BY id DESC LIMIT 1`,
+      [julInc.id]
+    );
+    assert.ok(hist?.cambiado_por, 'cambiado_por no puede ser null (el servidor lo exige)');
+    assert.equal(Number(hist.cambiado_por), USERS.admin.id);
+
+    const keepRev = await agentFor('compras').get(`/api/requerimientos/${julRev.body.id}`);
+    assert.equal(keepRev.status, 200);
+    assert.equal(keepRev.body.estado, 'rechazado');
+    assert.ok(keepRev.body.consecutivo);
+
     const keepAgo = await agentFor('sol1').get(`/api/requerimientos/${agoBorr.body.id}`);
     assert.equal(keepAgo.status, 200);
     const keepRec = await agentFor('compras').get(`/api/requerimientos/${julRec.body.id}`);
     assert.equal(keepRec.status, 200);
     assert.equal(keepRec.body.estado, 'recibido');
+  });
+
+  it('reimportar Excel no recrea ni reabre un N° cancelado por la purga', async () => {
+    const created = await createRequerimiento('sol1', { titulo_solicitud: 'Julio a cancelar' });
+    assert.equal(created.status, 201);
+    const env = await patchEstado('sol1', created.body.id, 'en_revision');
+    assert.equal(env.status, 200, JSON.stringify(env.body));
+    const consecutivo = env.body.consecutivo;
+    assert.ok(consecutivo);
+    await envejecer(created.body.id, '2026-07-10 12:00:00');
+
+    const r = await ejecutarPurgaBorradores({ forzar: true, hoy: '2026-09-01' });
+    assert.ok(r.cancelados >= 1, JSON.stringify(r));
+    assert.ok(r.idsCancelados.includes(created.body.id));
+
+    const after = await agentFor('sol1').get(`/api/requerimientos/${created.body.id}`);
+    assert.equal(after.status, 200);
+    assert.equal(after.body.estado, 'rechazado');
+
+    const reporte = await importarBaseRequerimientos({
+      actorUserId: USERS.admin.id,
+      filas: [{
+        consecutivo,
+        titulo: 'Reimportado desde Excel',
+        descripcion: 'Reimportado desde Excel',
+        status_texto: 'En revision',
+        reqEstado: 'en_revision',
+        crearOc: false,
+        tipo: 'PARTES',
+        area: 'ADMINISTRACIÓN',
+        departamento: 'MATERIAL DE OFICINA-55500',
+        usuario: 'Solicitante Uno',
+      }],
+    });
+    assert.equal(reporte.ok, true, JSON.stringify(reporte));
+    assert.equal(reporte.importados, 0, JSON.stringify(reporte));
+    assert.equal(reporte.actualizados, 1, JSON.stringify(reporte));
+
+    const keep = await agentFor('sol1').get(`/api/requerimientos/${created.body.id}`);
+    assert.equal(keep.status, 200);
+    assert.equal(keep.body.estado, 'rechazado');
+    assert.equal(keep.body.consecutivo, consecutivo);
+
+    const [rows] = await query(
+      'SELECT COUNT(*) AS n FROM requerimientos WHERE consecutivo = ?',
+      [consecutivo]
+    );
+    assert.equal(Number(rows[0].n), 1);
   });
 
   it('sin forzar no vuelve a correr en el mismo mes', async () => {
@@ -88,6 +154,28 @@ describeIntegration('Purga mensual de borradores e incompletos', () => {
     const ok = await agentFor('admin').post('/api/notificaciones/purga-borradores');
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
     assert.equal(ok.body.success, true);
+  });
+
+  it('purga forzada registra cambiado_por del Admin (NOT NULL en el servidor)', async () => {
+    const created = await createRequerimiento('sol1', { titulo_solicitud: 'Historial actor' });
+    const env = await patchEstado('sol1', created.body.id, 'en_revision');
+    assert.equal(env.status, 200, JSON.stringify(env.body));
+    await envejecer(created.body.id, '2026-07-01 12:00:00');
+
+    const r = await ejecutarPurgaBorradores({
+      forzar: true,
+      hoy: '2026-09-01',
+      actorUserId: USERS.admin.id,
+    });
+    assert.ok(r.cancelados >= 1, JSON.stringify(r));
+
+    const [[hist]] = await query(
+      `SELECT cambiado_por FROM historial_estados
+       WHERE entidad_tipo = 'requerimiento' AND entidad_id = ? AND estado_nuevo = 'rechazado'
+       ORDER BY id DESC LIMIT 1`,
+      [created.body.id]
+    );
+    assert.equal(Number(hist?.cambiado_por), USERS.admin.id);
   });
 
   it('admin puede detener la purga: no borra aunque se fuerce', async () => {

@@ -132,6 +132,13 @@ function renderItemsSeleccionados() {
     if (item.cantidad > 1 || item.unidad) {
       metaPartes.push(`${item.cantidad}${item.unidad ? ' ' + item.unidad : ''}`);
     }
+    if (item.precio_sugerido != null && item.precio_sugerido !== '' && !Number.isNaN(Number(item.precio_sugerido))) {
+      const precioFmt = Number(item.precio_sugerido).toLocaleString('es-MX', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      metaPartes.push(`$${precioFmt} sugerido`);
+    }
     let refHtml = '';
     if (item.referencia_tipo === 'link' && item.referencia_url) {
       refHtml = `<a href="${item.referencia_url}" target="_blank" rel="noopener" style="font-size:10.5px; color:var(--primary); margin-left:4px;">🔗 enlace</a>`;

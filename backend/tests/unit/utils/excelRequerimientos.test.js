@@ -7,6 +7,8 @@ import {
   statusDesdeNotas,
   detalleRequerimientoExport,
   generarExcelOrdenesPorItem,
+  generarExcelRequerimientos,
+  parseNumeroExcel,
 } from '../../../src/utils/excelRequerimientos.js';
 import { buildXlsxBuffer, readXlsxRows } from '../../helpers/excel.js';
 
@@ -66,6 +68,63 @@ describe('excelRequerimientos — título vs Status', () => {
     assert.notEqual(f.titulo, '2026P-777');
     assert.notEqual(f.titulo, 'P-ALPHA-001');
     assert.equal(f.notas, 'Bitacora status');
+  });
+});
+
+describe('excel REQ — precios de catálogo / sugerido', () => {
+  it('parseNumeroExcel acepta número, texto con coma y vacío', () => {
+    assert.equal(parseNumeroExcel(463), 463);
+    assert.equal(parseNumeroExcel('1,500.25'), 1500.25);
+    assert.equal(parseNumeroExcel(''), null);
+    assert.equal(parseNumeroExcel(null), null);
+  });
+
+  it('parse por ítem lee cantidad, unidad y precio unitario', () => {
+    const rows = [
+      HEADERS_REQUERIMIENTOS_POR_ITEM,
+      [
+        '', '', '2026P-88002', '', 'PARTES',
+        '', '', '', 'MXN', 'Solicitante Uno',
+        'Recibido', 'ADMINISTRACIÓN', 'MATERIAL DE OFICINA-55500', '31',
+        '', 'PAPEL BOND', 10, 'BO', 45, 450,
+        '',
+      ],
+    ];
+    const parsed = parseExcelRequerimientos(buildXlsxBuffer(rows));
+    const f = parsed.filas.find((x) => String(x.consecutivo).includes('2026P-88002'));
+    assert.ok(f, JSON.stringify(parsed.filas.slice(0, 2)));
+    assert.equal(Number(f.cantidad), 10);
+    assert.equal(f.unidad, 'BO');
+    assert.equal(Number(f.precio_unitario), 45);
+    assert.equal(f.titulo, 'PAPEL BOND');
+  });
+
+  it('export usa precio de ítem y suma Total si no hay OC/cotización', () => {
+    const buf = generarExcelRequerimientos([{
+      consecutivo: '2026P-990',
+      tipo: 'PARTES',
+      estado: 'recibido',
+      solicitante_nombre: 'Adrian Velarde',
+      area: 'PRODUCCIÓN',
+      departamento: 'HILATURA-RS',
+      items_reporte: [{
+        codigo_catalogo: '1028183',
+        descripcion: 'COUPLING INSERT BOWEX',
+        cantidad: 2,
+        unidad: 'EA',
+        precio_unitario: 463,
+      }],
+    }]);
+    const rows = readXlsxRows(buf);
+    const headers = rows[0].map(String);
+    const idxPrecio = headers.findIndex((h) => /precio unitario/i.test(h));
+    const idxTotal = headers.findIndex((h) => /total/i.test(h));
+    const idxSub = headers.findIndex((h) => /subtotal/i.test(h));
+    const fila = rows.slice(1).find((r) => String(r[2]).includes('2026P-990'));
+    assert.ok(fila, JSON.stringify(rows.slice(0, 2)));
+    assert.equal(Number(fila[idxPrecio]), 463);
+    assert.equal(Number(fila[idxSub]), 926);
+    assert.equal(Number(fila[idxTotal]), 926);
   });
 });
 

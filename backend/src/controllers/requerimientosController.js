@@ -445,8 +445,8 @@ async function exportarExcel(req, res) {
         u.nombre  AS solicitante_nombre,
         oc.numero_oc             AS oc_numero,
         oc.estado                AS oc_estado,
-        COALESCE(oc.monto_total, cot.monto_total) AS oc_monto_total,
-        COALESCE(oc.moneda, cot.moneda)           AS oc_moneda,
+        COALESCE(oc.monto_total, cot.monto_total, r.monto_estimado) AS oc_monto_total,
+        COALESCE(oc.moneda, cot.moneda, r.moneda_estimada)           AS oc_moneda,
         oc.datatextnow_id        AS oc_datatextnow_id,
         oc.fecha_po              AS oc_fecha_po,
         oc.fecha_autorizacion    AS oc_fecha_autorizacion,
@@ -510,7 +510,11 @@ async function exportarExcel(req, res) {
           [reqIds]
         ),
         pool.query(
-          `SELECT ri.requerimiento_id, c.codigo AS codigo_catalogo, c.descripcion, ri.cantidad, c.unidad
+          `SELECT ri.requerimiento_id, c.codigo AS codigo_catalogo, c.descripcion, ri.cantidad, c.unidad,
+                  CASE
+                    WHEN c.costo_referencia IS NULL OR c.costo_referencia = 0 THEN NULL
+                    ELSE c.costo_referencia
+                  END AS precio_unitario
            FROM requerimiento_items ri
            JOIN catalogo c ON c.id = ri.catalogo_id
            WHERE ri.requerimiento_id IN (?)
@@ -518,7 +522,8 @@ async function exportarExcel(req, res) {
           [reqIds]
         ),
         pool.query(
-          `SELECT ril.requerimiento_id, c.codigo AS codigo_catalogo, ril.descripcion, ril.cantidad, ril.unidad
+          `SELECT ril.requerimiento_id, c.codigo AS codigo_catalogo, ril.descripcion, ril.cantidad, ril.unidad,
+                  ril.precio_sugerido AS precio_unitario
            FROM requerimiento_items_libres ril
            LEFT JOIN catalogo c ON c.id = ril.catalogo_asignado_id
            WHERE ril.requerimiento_id IN (?)

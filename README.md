@@ -13,7 +13,8 @@ Historial de cambios: [CHANGELOG.md](./CHANGELOG.md) · Cómo versionar: [VERSIO
 - Export Excel de REQ y OC respeta los filtros de la página (el solicitante también exporta OC). Excel de OC: una fila por recepción, % de esa entrega
 - Dashboard / bandeja solo para Compras y Admin
 - Reporte diario (7:00 México) incluye OC; días configurables (L–V por defecto); prueba solo al Admin logueado
-- Purga mensual el día 1: borradores, en revisión e incompletos de hace dos meses calendario (septiembre borra julio, no agosto); Admin puede detenerla o forzarla
+- Purga mensual el día 1: con N° (en revisión e incompletos de hace dos meses) pasan a cancelados; borradores sin número se eliminan; Admin puede detenerla o forzarla
+- Ítem fuera de catálogo: **Precio sugerido** opcional; el Excel conserva el Total como monto estimado si aún no hay OC
 
 ## Novedades v1.9.0
 

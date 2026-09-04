@@ -310,6 +310,10 @@ function resolverMapaBaseGral(headerRow) {
     tipoServicio: 14,
     usuario2: 15,
     status: 16,
+    codigo: -1,
+    cantidad: -1,
+    unidad: -1,
+    precio: -1,
     legacy: false,
   };
 
@@ -371,7 +375,7 @@ function resolverMapaBaseGral(headerRow) {
   setIf('tipo', /^tipo$/);
   setIf('noProv', /no\.?\s*proveedor/, /num(ero)?\s*proveedor/, /^vendor/);
   setIf('proveedor', /^proveedor$/, /nombre\s*proveedor/, /^supplier$/);
-  setIf('total', /^total$/);
+  setIf('total', /^total\b/, /total req/);
   setIf('moneda', /^moneda$/, /^currency$/);
   setIf('usuario', /^usuario$/);
   setIf('estado', /^estado$/);
@@ -386,6 +390,9 @@ function resolverMapaBaseGral(headerRow) {
     /^description$/
   );
   setIf('codigo', /codigo/, /no\.?\s*de serie/, /no\.?\s*parte/);
+  setIf('cantidad', /^cantidad$/);
+  setIf('unidad', /^unidad$/);
+  setIf('precio', /precio unitario/, /^precio$/);
   setIf('status', /^status$/, /^estatus$/);
 
   // Segunda columna Usuario (si hay dos)
@@ -398,6 +405,39 @@ function resolverMapaBaseGral(headerRow) {
   }
 
   return map;
+}
+
+/**
+ * Número desde celda Excel (acepta 1,500.00 o 1500).
+ * Vacío / no numérico → null.
+ */
+export function parseNumeroExcel(v) {
+  if (v === '' || v == null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const s = String(v).trim().replace(/\s/g, '').replace(/,/g, '');
+  if (!s) return null;
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function numeroOVacio(v) {
+  if (v == null || v === '') return '';
+  const n = Number(v);
+  return Number.isFinite(n) ? n : '';
+}
+
+function totalReqDesdeItems(items) {
+  let sum = 0;
+  let has = false;
+  for (const item of items) {
+    const cantidad = numeroOVacio(item.cantidad);
+    const precio = numeroOVacio(item.precio_unitario);
+    if (cantidad !== '' && precio !== '') {
+      sum += precio * cantidad;
+      has = true;
+    }
+  }
+  return has ? Math.round(sum * 100) / 100 : '';
 }
 
 function cellAt(row, idx) {
@@ -488,6 +528,9 @@ function parseHojaBaseGral(data, filas, meta) {
     // (acordado: solo REQ rechazado)
     const totalRaw = cellAt(row, map.total);
     const monedaRaw = cellAt(row, map.moneda);
+    const cantidadRaw = map.cantidad >= 0 ? cellAt(row, map.cantidad) : '';
+    const unidadRaw = map.unidad >= 0 ? String(cellAt(row, map.unidad) || '').trim() : '';
+    const precioRaw = map.precio >= 0 ? cellAt(row, map.precio) : '';
 
     filas.push({
       filaExcel: r + 1,
@@ -507,10 +550,10 @@ function parseHojaBaseGral(data, filas, meta) {
       oc_numero: po,
       po_na: poNa,
       sin_po: poInfo.sinPo && !poNa,
-      total:
-        totalRaw !== '' && totalRaw != null
-          ? parseFloat(String(totalRaw).replace(/,/g, '')) || null
-          : null,
+      total: parseNumeroExcel(totalRaw),
+      cantidad: parseNumeroExcel(cantidadRaw),
+      unidad: unidadRaw || null,
+      precio_unitario: parseNumeroExcel(precioRaw),
       moneda: String(monedaRaw || '').trim() || null,
       estado_excel: estadoExcel,
       reqEstado: mapEst.reqEstado,
@@ -929,17 +972,16 @@ export function generarExcelRequerimientos(reqs = []) {
       ? req.items_reporte
       : [{ codigo_catalogo: '', descripcion: '', cantidad: '', unidad: '', precio_unitario: null }];
 
+    const totalNivel = numeroOVacio(req.oc_monto_total);
+    const totalCalculado = totalNivel !== '' ? totalNivel : totalReqDesdeItems(items);
+
     items.forEach((item, index) => {
-      const cantidad = item.cantidad == null || item.cantidad === '' ? '' : Number(item.cantidad);
-      const precio = item.precio_unitario == null || item.precio_unitario === ''
-        ? ''
-        : Number(item.precio_unitario);
-      const subtotal = precio !== '' && cantidad !== '' && Number.isFinite(precio) && Number.isFinite(cantidad)
+      const cantidad = numeroOVacio(item.cantidad);
+      const precio = numeroOVacio(item.precio_unitario);
+      const subtotal = precio !== '' && cantidad !== ''
         ? Math.round(precio * cantidad * 100) / 100
         : '';
-      const totalReq = index === 0 && req.oc_monto_total != null && req.oc_monto_total !== ''
-        ? Number(req.oc_monto_total)
-        : '';
+      const totalReq = index === 0 ? totalCalculado : '';
       const row = [
         req.oc_datatextnow_id || '',
         formatFechaBaseGral(req.oc_fecha_po),

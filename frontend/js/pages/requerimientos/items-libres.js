@@ -102,17 +102,25 @@ window.mostrarLibreInline = function() {
   }
 };
 
-function _limpiarFormLibreInline() {
+function limpiarCamposFormLibre() {
   const descEl = document.getElementById('libre-descripcion');
   const cantEl = document.getElementById('libre-cantidad');
   const unidEl = document.getElementById('libre-unidad');
+  const precioEl = document.getElementById('libre-precio');
   if (descEl) descEl.value = '';
   if (cantEl) cantEl.value = '1';
+  if (precioEl) precioEl.value = '';
   if (unidEl) {
     unidEl.value = '';
     if (unidEl.tagName === 'SELECT') cargarUnidadesMedidaReq('').catch(() => {});
   }
   limpiarReferenciaLibreForm();
+}
+
+window.limpiarCamposFormLibre = limpiarCamposFormLibre;
+
+function _limpiarFormLibreInline() {
+  limpiarCamposFormLibre();
 }
 
 /**
@@ -207,13 +215,18 @@ window.cerrarModalItemsLibres = function() {
   if (panel) panel.style.display = 'none';
   if (typeof _limpiarFormLibreInline === 'function') _limpiarFormLibreInline();
   else {
-    const descEl = document.getElementById('libre-descripcion');
-    const cantEl = document.getElementById('libre-cantidad');
-    const unidEl = document.getElementById('libre-unidad');
-    if (descEl) descEl.value = '';
-    if (cantEl) cantEl.value = '1';
-    if (unidEl) unidEl.value = '';
-    if (typeof limpiarReferenciaLibreForm === 'function') limpiarReferenciaLibreForm();
+    if (typeof limpiarCamposFormLibre === 'function') limpiarCamposFormLibre();
+    else {
+      const descEl = document.getElementById('libre-descripcion');
+      const cantEl = document.getElementById('libre-cantidad');
+      const unidEl = document.getElementById('libre-unidad');
+      const precioEl = document.getElementById('libre-precio');
+      if (descEl) descEl.value = '';
+      if (cantEl) cantEl.value = '1';
+      if (unidEl) unidEl.value = '';
+      if (precioEl) precioEl.value = '';
+      if (typeof limpiarReferenciaLibreForm === 'function') limpiarReferenciaLibreForm();
+    }
   }
 
   const cb = document.getElementById('usar-items-nuevos');
@@ -267,7 +280,18 @@ window.agregarItemLibre = async function() {
   const desc   = document.getElementById('libre-descripcion')?.value.trim();
   let cant     = parseFloat(document.getElementById('libre-cantidad')?.value) || 1;
   const unidad = (document.getElementById('libre-unidad')?.value || '').trim() || '';
+  const precioRaw = document.getElementById('libre-precio')?.value;
   cant = Math.max(1, Math.round(cant));
+  let precioSugerido = null;
+  if (precioRaw !== '' && precioRaw != null) {
+    const n = parseFloat(precioRaw);
+    if (!Number.isFinite(n) || n < 0) {
+      Toast.error('El precio sugerido debe ser un número mayor o igual a 0');
+      document.getElementById('libre-precio')?.focus();
+      return;
+    }
+    precioSugerido = Math.round(n * 100) / 100;
+  }
 
   if (!desc || desc.length < 3) {
     Toast.error('La descripción debe tener al menos 3 caracteres');
@@ -283,7 +307,7 @@ window.agregarItemLibre = async function() {
     return;
   }
 
-  const item = { descripcion: desc, cantidad: cant, unidad, notas: '' };
+  const item = { descripcion: desc, cantidad: cant, unidad, notas: '', precio_sugerido: precioSugerido };
   const esArchivo = document.getElementById('libre-ref-archivo')?.checked;
   const link      = document.getElementById('libre-link')?.value.trim() || '';
   const archivo   = document.getElementById('libre-archivo')?.files?.[0] || null;
@@ -325,14 +349,8 @@ window.agregarItemLibre = async function() {
     sincronizarListas();
 
     // Limpiar el form para el siguiente ítem (la lista de seleccionados se mantiene)
-    const descInput   = document.getElementById('libre-descripcion');
-    const cantInput   = document.getElementById('libre-cantidad');
-    const unidadInput = document.getElementById('libre-unidad');
-    if (descInput)   descInput.value = '';
-    if (cantInput)   cantInput.value = '1';
-    if (unidadInput) unidadInput.value = '';
-    limpiarReferenciaLibreForm();
-    if (descInput) descInput.focus();
+    _limpiarFormLibreInline();
+    document.getElementById('libre-descripcion')?.focus();
     Toast.success('Ítem nuevo agregado a la lista');
 
   } catch (err) {

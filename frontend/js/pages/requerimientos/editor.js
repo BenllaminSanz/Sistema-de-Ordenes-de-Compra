@@ -138,6 +138,9 @@ async function abrirEditorRequerimiento(req = null, opts = {}) {
       cantidad:    Math.max(1, Math.round(parseFloat(i.cantidad) || 1)),
       unidad:      i.unidad || '',
       notas:       i.notas || '',
+      precio_sugerido: i.precio_sugerido != null && i.precio_sugerido !== ''
+        ? parseFloat(i.precio_sugerido)
+        : null,
       referencia_tipo: i.referencia_tipo || null,
       referencia_url: i.referencia_url || null,
       referencia_nombre: i.referencia_nombre || null,
@@ -339,6 +342,9 @@ document.getElementById('form-req').addEventListener('submit', async e => {
       cantidad:    i.cantidad,
       unidad:      i.unidad || null,
       notas:       i.notas  || null,
+      precio_sugerido: i.precio_sugerido != null && i.precio_sugerido !== ''
+        ? Number(i.precio_sugerido)
+        : null,
       referencia_tipo: i.referencia_tipo || null,
       referencia_url: i.referencia_url || null,
       referencia_nombre: i.referencia_nombre || null,

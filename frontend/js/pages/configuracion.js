@@ -430,8 +430,8 @@ document.getElementById('btn-forzar-purga')?.addEventListener('click', async (e)
     return;
   }
   if (!confirm(
-    '¿Ejecutar la purga ahora?\n\nSe eliminarán borradores, en revisión e incompletos creados antes del mes anterior '
-    + '(p. ej. en septiembre se van los de julio). Recibidos y aprobados no se tocan. Esta acción no se puede deshacer.'
+    '¿Ejecutar la purga ahora?\n\nLos que ya tienen N° (en revisión e incompletos viejos) pasan a cancelados. '
+    + 'Los borradores sin número se eliminan. Recibidos y aprobados no se tocan.'
   )) return;
   const original = btn.textContent;
   btn.disabled = true;
@@ -441,8 +441,16 @@ document.getElementById('btn-forzar-purga')?.addEventListener('click', async (e)
     if (resp?.skipped && resp.reason === 'purga_off') {
       Toast.error('La purga está detenida. Actívala para ejecutarla.');
     } else {
-      const n = Number(resp?.borrados) || 0;
-      Toast.success(n ? `Purga hecha: ${n} requerimiento(s) eliminado(s)` : 'Purga hecha: no había REQ antiguos para borrar');
+      const nCancel = Number(resp?.cancelados) || 0;
+      const nBorr = Number(resp?.borrados) || 0;
+      if (nCancel || nBorr) {
+        const partes = [];
+        if (nCancel) partes.push(`${nCancel} cancelado(s)`);
+        if (nBorr) partes.push(`${nBorr} borrador(es) eliminado(s)`);
+        Toast.success(`Purga hecha: ${partes.join(', ')}`);
+      } else {
+        Toast.success('Purga hecha: no había REQ antiguos para depurar');
+      }
     }
   } catch (err) {
     Toast.error(err.mensaje || 'No se pudo ejecutar la purga');

@@ -10,7 +10,7 @@ import {
 } from '../helpers/factories.js';
 import { query } from '../helpers/db.js';
 import { buildXlsxBuffer, readXlsxRows } from '../helpers/excel.js';
-import { HEADERS_BASE_GRAL } from '../../src/utils/excelRequerimientos.js';
+import { HEADERS_BASE_GRAL, HEADERS_REQUERIMIENTOS_POR_ITEM } from '../../src/utils/excelRequerimientos.js';
 
 describeIntegration('Requerimientos', () => {
   it('crea REQ con ítems de catálogo en borrador', async () => {
@@ -317,6 +317,120 @@ describeIntegration('Requerimientos', () => {
     const got = await agentFor('compras').get(`/api/requerimientos/${req.id}`);
     assert.equal(got.body.titulo_solicitud, 'Descripcion del reporte de excel');
     assert.equal(got.body.notas, 'Bitacora de estatus del Excel');
+  });
+
+  it('crea REQ libre con precio sugerido', async () => {
+    const res = await createRequerimiento('sol1', {
+      items: [],
+      items_libres: [{
+        descripcion: 'Papel bond oficio',
+        cantidad: 10,
+        unidad: 'BO',
+        precio_sugerido: 45,
+      }],
+    });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(Number(res.body.items_libres?.[0]?.precio_sugerido), 45);
+  });
+
+  it('export Excel de REQ usa costo de catálogo si no hay cotización', async () => {
+    const created = await createRequerimiento('sol1', {
+      items: [{ catalogo_id: 1, cantidad: 2 }],
+      titulo_solicitud: 'Export precio catalogo tornillo',
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+
+    const res = await agentFor('compras')
+      .get('/api/requerimientos/exportar?completo=1')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    assert.equal(res.status, 200);
+    const rows = readXlsxRows(res.body);
+    const headers = rows[0].map(String);
+    const idxPrecio = headers.findIndex((h) => /precio unitario/i.test(h));
+    const idxCodigo = headers.findIndex((h) => /c[oó]digo/i.test(h));
+    const idxTotal = headers.findIndex((h) => /total/i.test(h));
+    const fila = rows.slice(1).find((r) => String(r[idxCodigo]).includes('P-ALPHA-001'));
+    assert.ok(fila, JSON.stringify({ headers, rows: rows.slice(0, 3) }));
+    assert.equal(Number(fila[idxPrecio]), 12.5);
+    assert.equal(Number(fila[idxTotal]), 25);
+  });
+
+  it('import Excel Recibido con Total guarda monto estimado y sale en el export', async () => {
+    const rowsIn = [
+      HEADERS_BASE_GRAL,
+      [
+        '', '', '2026P-88001', '', 'PARTES',
+        '00001', 'Proveedor Alpha', 1500, 'MXN', 'Solicitante Uno',
+        'Recibido', AREA_DEPT.area, AREA_DEPT.departamento, '31',
+        'Parte con precio importado', '', '',
+      ],
+    ];
+    const buffer = buildXlsxBuffer(rowsIn);
+    const imp = await agentFor('compras')
+      .post('/api/requerimientos/importar')
+      .attach('archivo', buffer, 'base-gral.xlsx');
+    assert.equal(imp.status, 200, JSON.stringify(imp.body));
+    assert.equal(imp.body.importados, 1, JSON.stringify(imp.body));
+
+    const [[{ monto_estimado, moneda_estimada }]] = await query(
+      'SELECT monto_estimado, moneda_estimada FROM requerimientos WHERE consecutivo = ?',
+      ['2026P-88001']
+    );
+    assert.equal(Number(monto_estimado), 1500);
+    assert.equal(moneda_estimada, 'MXN');
+
+    const res = await agentFor('compras')
+      .get('/api/requerimientos/exportar?completo=1')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    assert.equal(res.status, 200);
+    const rows = readXlsxRows(res.body);
+    const headers = rows[0].map(String);
+    const idxN = headers.findIndex((h) => /^n/i.test(h));
+    const idxTotal = headers.findIndex((h) => /total/i.test(h));
+    const fila = rows.slice(1).find((r) => String(r[idxN]).includes('2026P-88001'));
+    assert.ok(fila, JSON.stringify({ headers, rows: rows.slice(0, 3) }));
+    assert.equal(Number(fila[idxTotal]), 1500);
+  });
+
+  it('import Excel por ítem guarda precio sugerido en ítem libre', async () => {
+    const rowsIn = [
+      HEADERS_REQUERIMIENTOS_POR_ITEM,
+      [
+        '', '', '2026P-88002', '', 'PARTES',
+        '', '', '', 'MXN', 'Solicitante Uno',
+        'Recibido', AREA_DEPT.area, AREA_DEPT.departamento, '31',
+        '', 'PAPEL BOND', 10, 'BO', 45, 450, '',
+      ],
+    ];
+    const buffer = buildXlsxBuffer(rowsIn);
+    const imp = await agentFor('compras')
+      .post('/api/requerimientos/importar')
+      .attach('archivo', buffer, 'items.xlsx');
+    assert.equal(imp.status, 200, JSON.stringify(imp.body));
+    assert.equal(imp.body.importados, 1, JSON.stringify(imp.body));
+
+    const [[item]] = await query(
+      `SELECT ril.descripcion, ril.cantidad, ril.unidad, ril.precio_sugerido
+       FROM requerimiento_items_libres ril
+       JOIN requerimientos r ON r.id = ril.requerimiento_id
+       WHERE r.consecutivo = ?`,
+      ['2026P-88002']
+    );
+    assert.ok(item, 'ítem libre no creado');
+    assert.match(String(item.descripcion), /PAPEL BOND/i);
+    assert.equal(Number(item.cantidad), 10);
+    assert.equal(item.unidad, 'BO');
+    assert.equal(Number(item.precio_sugerido), 45);
   });
 
   it('export Excel de REQ respeta filtro tipo', async () => {

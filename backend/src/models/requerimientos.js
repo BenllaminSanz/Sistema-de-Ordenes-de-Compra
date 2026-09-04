@@ -168,7 +168,7 @@ async function obtenerPorId(id) {
        h.notas, h.created_at,
        u.nombre AS cambiado_por
      FROM historial_estados h
-     JOIN usuarios u ON u.id = h.cambiado_por
+     LEFT JOIN usuarios u ON u.id = h.cambiado_por
      WHERE h.entidad_tipo = 'requerimiento' AND h.entidad_id = ?
      ORDER BY h.created_at ASC`,
     [id]
@@ -229,6 +229,7 @@ async function obtenerPorId(id) {
        ril.cantidad,
        ril.unidad,
        ril.notas,
+       ril.precio_sugerido,
        ril.referencia_tipo,
        ril.referencia_url,
        ril.referencia_nombre,
@@ -288,6 +289,33 @@ function contarItemsPayload(datos) {
   const nCat = Array.isArray(datos.items) ? datos.items.filter((i) => i?.catalogo_id && (i.cantidad || 0) > 0).length : 0;
   const nLib = Array.isArray(datos.items_libres) ? datos.items_libres.filter((i) => i?.descripcion && (i.cantidad || 0) > 0).length : 0;
   return nCat + nLib;
+}
+
+function precioSugeridoSql(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 10000) / 10000;
+}
+
+async function insertarItemLibre(conn, requerimientoId, item) {
+  const cantidad = Math.max(1, Math.round(parseFloat(item.cantidad) || 1));
+  await conn.query(
+    `INSERT INTO requerimiento_items_libres
+       (requerimiento_id, descripcion, cantidad, unidad, notas, referencia_tipo, referencia_url, referencia_nombre, precio_sugerido)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      requerimientoId,
+      item.descripcion,
+      cantidad,
+      item.unidad || null,
+      item.notas || null,
+      item.referencia_tipo || null,
+      item.referencia_url || null,
+      item.referencia_nombre || null,
+      precioSugeridoSql(item.precio_sugerido),
+    ]
+  );
 }
 
 function assertLimiteItems(datos) {
@@ -365,22 +393,7 @@ async function crear(datos, solicitante_id, intento = 1) {
     if (tieneLibres) {
       for (const item of datos.items_libres) {
         if (item && item.descripcion && (item.cantidad || 0) > 0) {
-          const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
-          await conn.query(
-            `INSERT INTO requerimiento_items_libres
-               (requerimiento_id, descripcion, cantidad, unidad, notas, referencia_tipo, referencia_url, referencia_nombre)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              requerimientoId,
-              item.descripcion,
-              cantidad,
-              item.unidad || null,
-              item.notas || null,
-              item.referencia_tipo || null,
-              item.referencia_url || null,
-              item.referencia_nombre || null
-            ]
-          );
+          await insertarItemLibre(conn, requerimientoId, item);
         }
       }
     }
@@ -488,22 +501,7 @@ async function actualizar(id, datos, items = null, itemsLibres = null) {
 
       for (const item of itemsLibres) {
         if (item && item.descripcion && (item.cantidad || 0) > 0) {
-          const cantidad = Math.max(1, Math.round( parseFloat(item.cantidad) || 1 ));
-          await conn.query(
-            `INSERT INTO requerimiento_items_libres
-               (requerimiento_id, descripcion, cantidad, unidad, notas, referencia_tipo, referencia_url, referencia_nombre)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              id,
-              item.descripcion,
-              cantidad,
-              item.unidad || null,
-              item.notas || null,
-              item.referencia_tipo || null,
-              item.referencia_url || null,
-              item.referencia_nombre || null
-            ]
-          );
+          await insertarItemLibre(conn, id, item);
         }
       }
       if (affected === 0) affected = 1;
@@ -626,13 +624,58 @@ async function eliminar(id, { solicitante_id = null, rol = null } = {}) {
   }
 }
 
+function resultadoPurgaVacio() {
+  return {
+    borrados: 0,
+    cancelados: 0,
+    ids: [],
+    idsBorrados: [],
+    idsCancelados: [],
+    detalle: [],
+  };
+}
+
+function tieneConsecutivoAsignado(row) {
+  return String(row?.consecutivo || '').trim() !== '';
+}
+
+/** En el servidor `historial_estados.cambiado_por` es NOT NULL. */
+async function resolverActorPurga(conn, actorUserId) {
+  const id = Number(actorUserId);
+  if (Number.isInteger(id) && id > 0) {
+    const [[row]] = await conn.query('SELECT id FROM usuarios WHERE id = ? LIMIT 1', [id]);
+    if (row?.id) return row.id;
+  }
+  const [[admin]] = await conn.query(
+    `SELECT id FROM usuarios
+     WHERE LOWER(rol) = 'admin' AND activo = 1
+     ORDER BY id
+     LIMIT 1`
+  );
+  if (admin?.id) return admin.id;
+  const [[compras]] = await conn.query(
+    `SELECT id FROM usuarios
+     WHERE LOWER(rol) IN ('compras', 'contabilidad') AND activo = 1
+     ORDER BY id
+     LIMIT 1`
+  );
+  if (compras?.id) return compras.id;
+  const [[any]] = await conn.query('SELECT id FROM usuarios ORDER BY id LIMIT 1');
+  if (!any?.id) {
+    throw { status: 500, mensaje: 'No hay usuario para registrar la purga en el historial' };
+  }
+  return any.id;
+}
+
 /**
- * Borrado de mantenimiento: borrador, incompleto y en_revision sin OC, creados antes de umbral.
+ * Mantenimiento: borrador / incompleto / en_revision sin OC, creados antes de umbral.
+ * Con consecutivo → rechazado (cancelado): no deja huecos y el Excel no recrea el N°.
+ * Sin consecutivo (borrador) → se elimina.
  * No toca recibido / aprobado / rechazado / cerrado.
  */
-async function purgarBorradoresEIncompletos({ umbral } = {}) {
+async function purgarBorradoresEIncompletos({ umbral, actorUserId } = {}) {
   if (!(umbral instanceof Date) || Number.isNaN(umbral.getTime())) {
-    return { borrados: 0, ids: [] };
+    return resultadoPurgaVacio();
   }
   const conn = await pool.getConnection();
   try {
@@ -647,40 +690,72 @@ async function purgarBorradoresEIncompletos({ umbral } = {}) {
          AND oc.id IS NULL`,
       [umbral]
     );
-    const ids = (candidatos || []).map((r) => r.id);
-    if (!ids.length) {
+    if (!candidatos?.length) {
       await conn.commit();
-      return { borrados: 0, ids: [], detalle: [] };
+      return resultadoPurgaVacio();
     }
 
-    const [cots] = await conn.query(
-      'SELECT id FROM cotizaciones WHERE requerimiento_id IN (?)',
-      [ids]
-    );
-    const cotIds = (cots || []).map((c) => c.id);
-    if (cotIds.length) {
-      await conn.query('DELETE FROM cotizacion_items WHERE cotizacion_id IN (?)', [cotIds]);
-      await conn.query('DELETE FROM cotizaciones WHERE id IN (?)', [cotIds]);
+    const aCancelar = candidatos.filter(tieneConsecutivoAsignado);
+    const aBorrar = candidatos.filter((r) => !tieneConsecutivoAsignado(r));
+    const idsCancelados = aCancelar.map((r) => r.id);
+    const idsBorrados = aBorrar.map((r) => r.id);
+
+    if (idsCancelados.length) {
+      const actorId = await resolverActorPurga(conn, actorUserId);
+      await conn.query(
+        `INSERT INTO historial_estados
+           (entidad_tipo, entidad_id, estado_anterior, estado_nuevo, cambiado_por, notas)
+         SELECT 'requerimiento', id, estado, 'rechazado', ?, ?
+         FROM requerimientos
+         WHERE id IN (?) AND estado IN ('borrador', 'incompleto', 'en_revision')`,
+        [actorId, 'Purga mensual: sin movimiento', idsCancelados]
+      );
+      await conn.query(
+        `UPDATE requerimientos
+         SET estado = 'rechazado',
+             notas_rechazo = COALESCE(NULLIF(TRIM(notas_rechazo), ''), ?)
+         WHERE id IN (?)
+           AND estado IN ('borrador', 'incompleto', 'en_revision')
+           AND orden_compra_id IS NULL`,
+        ['Purga mensual: sin movimiento', idsCancelados]
+      );
     }
-    await conn.query('DELETE FROM requerimiento_items WHERE requerimiento_id IN (?)', [ids]);
-    await conn.query('DELETE FROM requerimiento_items_libres WHERE requerimiento_id IN (?)', [ids]);
-    await conn.query(
-      `DELETE FROM historial_estados WHERE entidad_tipo = 'requerimiento' AND entidad_id IN (?)`,
-      [ids]
-    );
-    const [result] = await conn.query(
-      `DELETE FROM requerimientos
-       WHERE id IN (?) AND estado IN ('borrador', 'incompleto', 'en_revision') AND orden_compra_id IS NULL`,
-      [ids]
-    );
+
+    if (idsBorrados.length) {
+      const [cots] = await conn.query(
+        'SELECT id FROM cotizaciones WHERE requerimiento_id IN (?)',
+        [idsBorrados]
+      );
+      const cotIds = (cots || []).map((c) => c.id);
+      if (cotIds.length) {
+        await conn.query('DELETE FROM cotizacion_items WHERE cotizacion_id IN (?)', [cotIds]);
+        await conn.query('DELETE FROM cotizaciones WHERE id IN (?)', [cotIds]);
+      }
+      await conn.query('DELETE FROM requerimiento_items WHERE requerimiento_id IN (?)', [idsBorrados]);
+      await conn.query('DELETE FROM requerimiento_items_libres WHERE requerimiento_id IN (?)', [idsBorrados]);
+      await conn.query(
+        `DELETE FROM historial_estados WHERE entidad_tipo = 'requerimiento' AND entidad_id IN (?)`,
+        [idsBorrados]
+      );
+      await conn.query(
+        `DELETE FROM requerimientos
+         WHERE id IN (?) AND estado IN ('borrador', 'incompleto', 'en_revision') AND orden_compra_id IS NULL`,
+        [idsBorrados]
+      );
+    }
+
     await conn.commit();
     return {
-      borrados: result.affectedRows || 0,
-      ids,
+      borrados: idsBorrados.length,
+      cancelados: idsCancelados.length,
+      ids: [...idsCancelados, ...idsBorrados],
+      idsBorrados,
+      idsCancelados,
       detalle: candidatos.map((r) => ({
         id: r.id,
         consecutivo: r.consecutivo,
         estado: r.estado,
+        accion: tieneConsecutivoAsignado(r) ? 'cancelado' : 'borrado',
       })),
     };
   } catch (err) {

@@ -82,6 +82,8 @@ CREATE TABLE requerimientos (
   tipo ENUM('PARTES','SERVICIOS','FLETES') NULL,
   notas TEXT NULL,
   requiere_cotizacion TINYINT(1) NOT NULL DEFAULT 0,
+  monto_estimado DECIMAL(14,2) NULL,
+  moneda_estimada CHAR(3) NULL,
   estado ENUM(
     'borrador','en_revision','recibido','aprobado','incompleto','rechazado','cerrado'
   ) NOT NULL DEFAULT 'borrador',
@@ -115,6 +117,7 @@ CREATE TABLE requerimiento_items_libres (
   cantidad DECIMAL(14,3) NOT NULL DEFAULT 1,
   unidad VARCHAR(50) NULL,
   notas TEXT NULL,
+  precio_sugerido DECIMAL(14,4) NULL,
   referencia_tipo ENUM('link','archivo') NULL,
   referencia_url VARCHAR(500) NULL,
   referencia_nombre VARCHAR(255) NULL,
@@ -231,12 +234,12 @@ CREATE TABLE historial_estados (
   entidad_id INT UNSIGNED NOT NULL,
   estado_anterior VARCHAR(40) NULL,
   estado_nuevo VARCHAR(40) NOT NULL,
-  cambiado_por INT UNSIGNED NULL,
+  cambiado_por INT UNSIGNED NOT NULL,
   notas TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_hist_ent (entidad_tipo, entidad_id),
-  CONSTRAINT fk_hist_user FOREIGN KEY (cambiado_por) REFERENCES usuarios(id) ON DELETE SET NULL
+  CONSTRAINT fk_hist_user FOREIGN KEY (cambiado_por) REFERENCES usuarios(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE consecutivos_control (

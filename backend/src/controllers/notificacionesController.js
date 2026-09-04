@@ -281,7 +281,10 @@ export async function dispararPurgaBorradores(req, res) {
       return res.status(403).json({ mensaje: 'Solo Admin puede ejecutar la purga de mantenimiento' });
     }
     const { ejecutarPurgaBorradores } = await import('../utils/purgaBorradores.js');
-    const result = await ejecutarPurgaBorradores({ forzar: true });
+    const result = await ejecutarPurgaBorradores({
+      forzar: true,
+      actorUserId: req.usuario?.id,
+    });
     res.json(result);
   } catch (err) {
     logger.error('[notificaciones.purgaBorradores]', err);

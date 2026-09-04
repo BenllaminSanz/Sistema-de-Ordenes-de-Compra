@@ -565,7 +565,7 @@ function renderDetalle(req) {
             : '';
           return `
           <li style="margin-bottom:7px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;">
-            <span>${item.descripcion} &mdash; <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}</span>
+            <span>${item.descripcion} &mdash; <strong>${parseFloat(item.cantidad).toLocaleString('es-MX')}</strong>${item.unidad ? ' ' + item.unidad : ''}${item.precio_sugerido != null && item.precio_sugerido !== '' ? ` · $${Number(item.precio_sugerido).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sugerido` : ''}</span>
             ${UI.referenciaItemHtml(item, true)}
             ${catBadge}
             ${btnAsignar}

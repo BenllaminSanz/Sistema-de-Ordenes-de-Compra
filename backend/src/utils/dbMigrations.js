@@ -82,6 +82,22 @@ export async function runDbMigrations() {
   await addColumnIfMissing('cotizacion_items', 'codigo_catalogo', 'VARCHAR(100) NULL AFTER descripcion');
   await addColumnIfMissing('cotizacion_items', 'catalogo_id', `${catFk} NULL AFTER codigo_catalogo`);
   await addColumnIfMissing('requerimiento_items_libres', 'catalogo_asignado_id', `${catFk} NULL`);
+  await addColumnIfMissing(
+    'requerimiento_items_libres',
+    'precio_sugerido',
+    "DECIMAL(14,4) NULL COMMENT 'Precio sugerido del solicitante (ítem aún no en catálogo)' AFTER notas"
+  );
+
+  await addColumnIfMissing(
+    'requerimientos',
+    'monto_estimado',
+    "DECIMAL(14,2) NULL COMMENT 'Total del Excel u OC pendiente (sin cotización seleccionada)' AFTER requiere_cotizacion"
+  );
+  await addColumnIfMissing(
+    'requerimientos',
+    'moneda_estimada',
+    "CHAR(3) NULL COMMENT 'Moneda del monto_estimado (import Excel)' AFTER monto_estimado"
+  );
 
   // Fecha manual del PO en DataTextNow (distinta de created_at / fecha_autorizacion del sistema)
   await addColumnIfMissing(

@@ -81,7 +81,8 @@ export function parsePeriodoExport(query = {}, opts = {}) {
 /**
  * Umbral de la purga mensual: primer día del mes anterior (calendario).
  * El 1 de septiembre (o cualquier día de septiembre) corta en 2026-08-01:
- * se van julio y más viejos; agosto se conserva todo septiembre.
+ * julio y más viejos se cancelan (con N°) o se eliminan (borrador sin N°);
+ * agosto se conserva todo septiembre.
  */
 export function cortePurgaBorradores(ymdHoy) {
   const iso = ymd(ymdHoy);

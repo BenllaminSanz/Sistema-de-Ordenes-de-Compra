@@ -9,7 +9,7 @@
 
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
-import { parseExcelRequerimientos, extraerCodigoDesdeDescripcion } from './excelRequerimientos.js';
+import { parseExcelRequerimientos, extraerCodigoDesdeDescripcion, parseNumeroExcel } from './excelRequerimientos.js';
 import { sincronizarConsecutivosControl } from './consecutivos.js';
 import logger from './logger.js';
 
@@ -34,6 +34,45 @@ function camposTituloNotas(f) {
     .trim()
     .slice(0, 4000);
   return { titulo, notas };
+}
+
+function monedaEstimadaDesdeFila(f) {
+  const m = String(f.moneda || '').trim().toUpperCase();
+  if (!m) return null;
+  return m.slice(0, 3);
+}
+
+function montoEstimadoDesdeFila(f) {
+  const total = parseNumeroExcel(f.total);
+  if (total != null) return Math.round(total * 100) / 100;
+  const precio = parseNumeroExcel(f.precio_unitario);
+  const cant = cantidadDesdeFila(f);
+  if (precio != null && cant) return Math.round(precio * cant * 100) / 100;
+  return null;
+}
+
+function cantidadDesdeFila(f, code = '') {
+  const directa = parseNumeroExcel(f.cantidad);
+  if (directa != null && directa > 0) return Math.max(1, Math.round(directa));
+  if (code) {
+    const codeEsc = String(code).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mCant = String(f.descripcion || '').match(
+      new RegExp(`^${codeEsc}\\s+([\\d.,]+)`, 'i')
+    );
+    if (mCant) {
+      const n = parseFloat(String(mCant[1]).replace(',', ''));
+      if (Number.isFinite(n) && n > 0) return Math.max(1, Math.round(n));
+    }
+  }
+  return 1;
+}
+
+function precioSugeridoDesdeFila(f, cantidad) {
+  const directa = parseNumeroExcel(f.precio_unitario);
+  if (directa != null && directa >= 0) return Math.round(directa * 10000) / 10000;
+  const total = parseNumeroExcel(f.total);
+  if (total != null && cantidad) return Math.round((total / cantidad) * 10000) / 10000;
+  return null;
 }
 
 function parseProveedorExcel(texto) {
@@ -489,6 +528,8 @@ export async function importarBaseRequerimientos(opts = {}) {
     for (const f of filas) {
       const key = String(f.consecutivo).trim().toUpperCase();
       if (existMap.has(key)) {
+        // N° ya existe (incluye cancelados/rechazados): solo título/notas/monto.
+        // No recrea ni reabre el estado — un reimport no resucita lo purgado.
         try {
           const reqId = existMap.get(key);
           const { titulo, notas } = camposTituloNotas(f);
@@ -502,6 +543,15 @@ export async function importarBaseRequerimientos(opts = {}) {
             await conn.query(
               'UPDATE requerimientos SET notas = ? WHERE id = ?',
               [notas, reqId]
+            );
+          }
+          const montoEst = montoEstimadoDesdeFila(f);
+          if (montoEst != null) {
+            await conn.query(
+              `UPDATE requerimientos
+               SET monto_estimado = ?, moneda_estimada = COALESCE(?, moneda_estimada)
+               WHERE id = ? AND orden_compra_id IS NULL`,
+              [montoEst, monedaEstimadaDesdeFila(f), reqId]
             );
           }
           reporte.actualizados += 1;
@@ -544,8 +594,8 @@ export async function importarBaseRequerimientos(opts = {}) {
         const [ins] = await conn.query(
           `INSERT INTO requerimientos
              (consecutivo, solicitante_id, titulo_solicitud, area, departamento, tipo,
-              notas, requiere_cotizacion, estado, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()), NOW())`,
+              notas, requiere_cotizacion, estado, monto_estimado, moneda_estimada, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()), NOW())`,
           [
             f.consecutivo,
             solicitanteId,
@@ -556,6 +606,8 @@ export async function importarBaseRequerimientos(opts = {}) {
             notasFinal,
             usaLibre ? 1 : 0,
             f.reqEstado,
+            montoEstimadoDesdeFila(f),
+            monedaEstimadaDesdeFila(f),
             createdAt,
           ]
         );
@@ -576,15 +628,7 @@ export async function importarBaseRequerimientos(opts = {}) {
         );
 
         if (!usaLibre && cat) {
-          // cantidad: intentar leer del texto "CODE 3 Pzas"
-          let cant = 1;
-          const codeEsc = String(code).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const mCant = String(f.descripcion || '').match(
-            new RegExp(`^${codeEsc}\\s+([\\d.,]+)`, 'i')
-          );
-          if (mCant) {
-            cant = parseFloat(String(mCant[1]).replace(',', '')) || 1;
-          }
+          const cant = cantidadDesdeFila(f, code);
           await conn.query(
             `INSERT INTO requerimiento_items (requerimiento_id, catalogo_id, cantidad)
              VALUES (?, ?, ?)`,
@@ -593,16 +637,20 @@ export async function importarBaseRequerimientos(opts = {}) {
           reporte.itemsCatalogo += 1;
         } else {
           const descItem = (f.descripcion || f.titulo || f.consecutivo).slice(0, 2000);
+          const cant = cantidadDesdeFila(f, code);
           await conn.query(
             `INSERT INTO requerimiento_items_libres
-               (requerimiento_id, descripcion, cantidad, unidad, notas)
-             VALUES (?, ?, 1, NULL, ?)`,
+               (requerimiento_id, descripcion, cantidad, unidad, notas, precio_sugerido)
+             VALUES (?, ?, ?, ?, ?, ?)`,
             [
               reqId,
               descItem,
+              cant,
+              f.unidad || null,
               code && !cat
                 ? `No existe en catálogo (código sugerido: ${code})`
                 : 'Import histórico — validar catálogo',
+              precioSugeridoDesdeFila(f, cant),
             ]
           );
           reporte.itemsLibres += 1;

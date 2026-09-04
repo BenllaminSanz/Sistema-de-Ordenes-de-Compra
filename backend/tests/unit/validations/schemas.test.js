@@ -51,6 +51,29 @@ describe('validations/schemas — crearRequerimientoSchema', () => {
     assert.equal(r.success, true);
   });
 
+  it('acepta precio sugerido en ítem libre y trata vacío como null', () => {
+    const conPrecio = safeParse(crearRequerimientoSchema, {
+      ...base,
+      items_libres: [{ descripcion: 'Papel bond oficio', cantidad: 10, precio_sugerido: 45.5 }],
+    });
+    assert.equal(conPrecio.success, true, JSON.stringify(conPrecio.error));
+    assert.equal(conPrecio.data.items_libres[0].precio_sugerido, 45.5);
+
+    const vacio = safeParse(crearRequerimientoSchema, {
+      ...base,
+      items_libres: [{ descripcion: 'Papel bond oficio', cantidad: 10, precio_sugerido: '' }],
+    });
+    assert.equal(vacio.success, true, JSON.stringify(vacio.error));
+    assert.equal(vacio.data.items_libres[0].precio_sugerido, null);
+
+    const nulo = safeParse(crearRequerimientoSchema, {
+      ...base,
+      items_libres: [{ descripcion: 'Papel bond oficio', cantidad: 10, precio_sugerido: null }],
+    });
+    assert.equal(nulo.success, true);
+    assert.equal(nulo.data.items_libres[0].precio_sugerido, null);
+  });
+
   it('rechaza mezcla catálogo + libres', () => {
     const r = safeParse(crearRequerimientoSchema, {
       ...base,

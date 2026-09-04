@@ -503,7 +503,7 @@ function prellenarItemsCotizacionDesdeReq(req) {
   tbody.innerHTML = '';
 
   const itemsFuente = tieneLibres
-    ? req.items_libres.map(l => ({ descripcion: l.descripcion || '', cantidad: Math.max(1, Math.round(l.cantidad || 1)), unidad: l.unidad || 'pieza', precio_unitario: '' }))
+    ? req.items_libres.map(l => ({ descripcion: l.descripcion || '', cantidad: Math.max(1, Math.round(l.cantidad || 1)), unidad: l.unidad || 'pieza', precio_unitario: l.precio_sugerido != null && l.precio_sugerido !== '' ? l.precio_sugerido : '' }))
     : req.items.filter(i => costoCatalogoEsVariable(i.costo_referencia)).map(i => ({
         descripcion: i.descripcion || i.codigo || '',
         cantidad: Math.max(1, Math.round(i.cantidad || 1)),

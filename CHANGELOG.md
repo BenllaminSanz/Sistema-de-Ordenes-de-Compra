@@ -9,7 +9,7 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [1.10.0] — 2026-08-31
 
-Título editable del REQ, Excel alineado a filtros de la página, reporte diario de Compras con OC y días L–V, y purga mensual de REQ viejos.
+Título editable del REQ, Excel alineado a filtros de la página, reporte diario de Compras con OC y días L–V, y purga mensual de REQ viejos. ZIP del 2026-09-01: precio sugerido, montos del Excel y purga que cancela (no borra) los N°.
 
 ### Añadido
 - Título del requerimiento editable en el detalle (Compras/Admin) en cualquier estado
@@ -18,8 +18,10 @@ Título editable del REQ, Excel alineado a filtros de la página, reporte diario
 - Fecha de recepción editable (Compras/Admin; por defecto el día de hoy)
 - Días del reporte diario configurables en Configuración (por defecto lunes a viernes)
 - El resumen de las 7:00 (hora México) incluye KPIs y FIFO de **órdenes de compra**
-- Purga mensual (día 1, 7:00 México): borra **borrador**, **en revisión** e **incompleto** del mes anterior al anterior (el 1 de septiembre se van julio y más viejos; agosto se queda). No toca recibido, aprobado, rechazado ni cerrado. Sin correo al solicitante. Admin puede **detenerla** en Configuración.
+- Purga mensual (día 1, 7:00 México): **cancela** (rechazado) **en revisión** e **incompleto** con N° del mes anterior al anterior (el 1 de septiembre se van julio y más viejos; agosto se queda). Los **borradores** sin N° se eliminan. No toca recibido, aprobado, rechazado ni cerrado. Así un reimport de Excel no vuelve a crear esos N°. Sin correo al solicitante. Admin puede **detenerla** en Configuración.
 - Configuración (Admin): botones **Enviar reporte de prueba a mi correo** (solo al Admin logueado, no a Compras/Araceli) y **Ejecutar purga ahora**
+- Ítem nuevo (fuera de catálogo): campo opcional **Precio sugerido** (referencia para Compras; no sustituye la cotización)
+- Al importar Excel sin OC (p. ej. Estado Recibido), se conserva el **Total** / precio unitario como monto estimado del REQ
 
 ### Cambiado
 - Columna **Tipo de servicio** del reporte Excel = título del REQ (ya no concatena ítems/notas)
@@ -32,10 +34,13 @@ Título editable del REQ, Excel alineado a filtros de la página, reporte diario
 - Export Excel de REQ y de OC aplica los **mismos filtros de la página** (estado, tipo, usuario, búsqueda, área, sin PO…) más el periodo que se elige al exportar
 - El solicitante también puede exportar Excel de OC (con los filtros de su lista; por defecto las suyas)
 - Import Excel: título desde **Descripción del ítem** (si hay varias filas del mismo N°, se queda la primera descripción; ya no se usa el consecutivo como título)
+- Excel de REQ: si no hay cotización ganadora, **Precio unitario cotizado** usa el costo de catálogo o el precio sugerido; el **Total REQ/OC** usa el monto estimado o la suma de líneas
+- Reporte diario: las filas de REQ usan el estado real (**En revisión**, **Recibido**, **Incompleto**, **Aprobado**), no los apodos de bandeja (Por recibir / Listos para OC)
 
 ### Corregido
 - Excel de OC: el **% entrega** es el de esa recepción, no el acumulado de la OC
 - Una OC con varias recepciones ya no duplica filas en el listado ni en el Excel (3 entregas → 3 filas, no 9)
+- Purga: el historial usa el Admin que la ejecuta (el servidor no acepta `cambiado_por` vacío)
 
 ## [1.9.4] — 2026-08-28
 

@@ -127,6 +127,9 @@ describeIntegration('Notificaciones config (URL, roles, on/off)', () => {
     assert.ok(!blob.includes('sol1@test.local'), 'el solicitante no debe recibir el reporte');
     assert.ok(!blob.includes('compras@test.local'), 'Compras/Araceli no debe recibir la prueba');
     assert.match(blob, /órdenes de compra|ordenes de compra|oc generadas|generadas/);
+    assert.match(blob, /en revisi[oó]n/);
+    assert.ok(!blob.includes('por recibir'), 'REQ debe decir En revisión, no Por recibir');
+    assert.ok(!blob.includes('listos para oc') && !blob.includes('listos oc'), 'REQ debe decir Aprobado, no Listos para OC');
   });
 
   it('compras no dispara el reporte de prueba', async () => {

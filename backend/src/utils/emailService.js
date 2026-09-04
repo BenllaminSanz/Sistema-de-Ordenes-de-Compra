@@ -35,6 +35,21 @@ const UNIDADES_ENTERAS = new Set([
   'servicio', 'servicios', 'lote', 'lotes', 'unidad', 'unidades',
 ]);
 
+const ETIQUETA_ESTADO_REQ = {
+  en_revision: 'En revisión',
+  recibido: 'Recibido',
+  incompleto: 'Incompleto',
+  aprobado: 'Aprobado',
+  rechazado: 'Rechazado',
+  cerrado: 'Cerrado',
+  borrador: 'Borrador',
+};
+
+function etiquetaEstadoReq(estado) {
+  const key = String(estado || '').trim().toLowerCase();
+  return ETIQUETA_ESTADO_REQ[key] || String(estado || '—').replace(/_/g, ' ');
+}
+
 function formatCantidadEmail(cantidad, unidad = '') {
   const n = parseFloat(cantidad);
   if (!Number.isFinite(n)) return '1';
@@ -534,7 +549,7 @@ export async function enviarReporteDiarioCompras({
     `<tr>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.consecutivo || '—'}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.tipo || ''}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.estado}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${etiquetaEstadoReq(r.estado)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.solicitante || ''}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">${r.dias}d</td>
     </tr>`
@@ -557,10 +572,10 @@ export async function enviarReporteDiarioCompras({
         <p style="color:#64748b;font-size:13px;margin:0 0 16px;">${hoy} · bandeja REQ y OC</p>
         <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 6px;">Requerimientos</p>
         <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:14px;">
-          <tr><td style="padding:6px 0;color:#64748b;">Por recibir</td><td style="text-align:right;font-weight:700;">${Number(por_recibir) || 0}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">En proceso (recibidos)</td><td style="text-align:right;font-weight:700;">${Number(en_proceso) || 0}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Incompletos</td><td style="text-align:right;font-weight:700;">${Number(incompletos) || 0}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Listos para OC</td><td style="text-align:right;font-weight:700;">${Number(listos_oc) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">En revisión</td><td style="text-align:right;font-weight:700;">${Number(por_recibir) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Recibido</td><td style="text-align:right;font-weight:700;">${Number(en_proceso) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Incompleto</td><td style="text-align:right;font-weight:700;">${Number(incompletos) || 0}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Aprobado</td><td style="text-align:right;font-weight:700;">${Number(listos_oc) || 0}</td></tr>
         </table>
         ${filas ? `
         <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 8px;">REQ más antiguos (FIFO)</p>
@@ -598,10 +613,10 @@ export async function enviarReporteDiarioCompras({
     </div>`;
 
   const text = `Resumen diario Compras ${hoy}
-REQ Por recibir: ${Number(por_recibir) || 0}
-REQ En proceso: ${Number(en_proceso) || 0}
-REQ Incompletos: ${Number(incompletos) || 0}
-REQ Listos OC: ${Number(listos_oc) || 0}
+REQ En revisión: ${Number(por_recibir) || 0}
+REQ Recibido: ${Number(en_proceso) || 0}
+REQ Incompleto: ${Number(incompletos) || 0}
+REQ Aprobado: ${Number(listos_oc) || 0}
 OC Generadas: ${Number(oc_generadas) || 0}
 OC Distribuidas: ${Number(oc_distribuidas) || 0}
 OC En proceso: ${Number(oc_proceso) || 0}
